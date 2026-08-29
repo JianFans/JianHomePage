@@ -1,0 +1,542 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yujian.me/schemas/content-snapshot/1.0.0",
+  "title": "Yujian content snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseId",
+    "generatedAt",
+    "site",
+    "homepage",
+    "heroSlides",
+    "releases",
+    "tracks",
+    "videos",
+    "events",
+    "moments",
+    "artist",
+    "assets"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "releaseId": {
+      "type": "string",
+      "pattern": "^rel_[a-z0-9_]+$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "site": {
+      "$ref": "#/$defs/SiteConfig"
+    },
+    "homepage": {
+      "$ref": "#/$defs/Homepage"
+    },
+    "heroSlides": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/HeroSlide"
+      }
+    },
+    "releases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Release"
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Track"
+      }
+    },
+    "videos": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Video"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Event"
+      }
+    },
+    "moments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Moment"
+      }
+    },
+    "artist": {
+      "$ref": "#/$defs/ArtistProfile"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Asset"
+      }
+    }
+  },
+  "$defs": {
+    "LocalizedText": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zh-CN"],
+      "properties": {
+        "zh-CN": {
+          "type": "string",
+          "minLength": 1
+        },
+        "en": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "HttpsUrl": {
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "MediaUrl": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^/media/"
+        },
+        {
+          "$ref": "#/$defs/HttpsUrl"
+        }
+      ]
+    },
+    "PlatformLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "url"],
+      "properties": {
+        "provider": {
+          "enum": [
+            "qq-music",
+            "netease-music",
+            "weibo",
+            "bilibili",
+            "douyin",
+            "website",
+            "other"
+          ]
+        },
+        "url": {
+          "$ref": "#/$defs/HttpsUrl"
+        },
+        "label": {
+          "$ref": "#/$defs/LocalizedText"
+        }
+      }
+    },
+    "ContentTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "contentId"],
+          "properties": {
+            "kind": {
+              "const": "internal"
+            },
+            "contentId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "link"],
+          "properties": {
+            "kind": {
+              "const": "external"
+            },
+            "link": {
+              "$ref": "#/$defs/PlatformLink"
+            }
+          }
+        }
+      ]
+    },
+    "SiteConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brand",
+        "artistName",
+        "defaultLocale",
+        "supportedLocales",
+        "canonicalUrl",
+        "socialLinks",
+        "seo",
+        "futureNavigation"
+      ],
+      "properties": {
+        "brand": {
+          "$ref": "#/$defs/LocalizedText"
+        },
+        "artistName": {
+          "$ref": "#/$defs/LocalizedText"
+        },
+        "defaultLocale": {
+          "const": "zh-CN"
+        },
+        "supportedLocales": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["zh-CN", "en"]
+          }
+        },
+        "canonicalUrl": {
+          "$ref": "#/$defs/HttpsUrl"
+        },
+        "socialLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlatformLink"
+          }
+        },
+        "seo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["title", "description", "ogAssetId"],
+          "properties": {
+            "title": {
+              "$ref": "#/$defs/LocalizedText"
+            },
+            "description": {
+              "$ref": "#/$defs/LocalizedText"
+            },
+            "ogAssetId": {
+              "type": "string",
+              "pattern": "^asset_"
+            }
+          }
+        },
+        "futureNavigation": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "url", "enabled"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^nav_"
+              },
+              "label": {
+                "$ref": "#/$defs/LocalizedText"
+              },
+              "url": {
+                "$ref": "#/$defs/HttpsUrl"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "Homepage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sections"],
+      "properties": {
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/HeroSection" },
+              { "$ref": "#/$defs/MusicSection" },
+              { "$ref": "#/$defs/VideoSection" },
+              { "$ref": "#/$defs/EventSection" },
+              { "$ref": "#/$defs/MomentSection" },
+              { "$ref": "#/$defs/ArtistSection" }
+            ]
+          }
+        }
+      }
+    },
+    "HeroSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "enabled", "layoutVariant", "itemIds"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^section_" },
+        "type": { "const": "hero" },
+        "enabled": { "type": "boolean" },
+        "layoutVariant": { "const": "immersive" },
+        "itemIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": { "type": "string", "pattern": "^hero_" }
+        }
+      }
+    },
+    "MusicSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "enabled", "layoutVariant", "itemIds", "limit"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^section_" },
+        "type": { "const": "music" },
+        "enabled": { "type": "boolean" },
+        "layoutVariant": { "const": "cover-reel" },
+        "itemIds": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^release_" }
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 8 }
+      }
+    },
+    "VideoSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "enabled", "layoutVariant", "itemIds", "limit"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^section_" },
+        "type": { "const": "video" },
+        "enabled": { "type": "boolean" },
+        "layoutVariant": { "const": "asymmetric" },
+        "itemIds": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^video_" }
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 5 }
+      }
+    },
+    "EventSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "enabled", "layoutVariant", "itemIds", "limit"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^section_" },
+        "type": { "const": "event" },
+        "enabled": { "type": "boolean" },
+        "layoutVariant": { "const": "timeline" },
+        "itemIds": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^event_" }
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 6 }
+      }
+    },
+    "MomentSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "enabled", "layoutVariant", "itemIds", "limit"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^section_" },
+        "type": { "const": "moment" },
+        "enabled": { "type": "boolean" },
+        "layoutVariant": { "const": "mosaic" },
+        "itemIds": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^moment_" }
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 8 }
+      }
+    },
+    "ArtistSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "enabled", "layoutVariant", "itemIds"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^section_" },
+        "type": { "const": "artist" },
+        "enabled": { "type": "boolean" },
+        "layoutVariant": { "const": "split" },
+        "itemIds": {
+          "type": "array",
+          "maxItems": 1,
+          "items": { "const": "artist_primary" }
+        }
+      }
+    },
+    "HeroSlide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mediaKind", "assetId", "focalPoint", "headline", "autoplay"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^hero_" },
+        "mediaKind": { "enum": ["image", "gif", "video"] },
+        "assetId": { "type": "string", "pattern": "^asset_" },
+        "mobileAssetId": { "type": "string", "pattern": "^asset_" },
+        "posterAssetId": { "type": "string", "pattern": "^asset_" },
+        "focalPoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 100 },
+            "y": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "headline": { "$ref": "#/$defs/LocalizedText" },
+        "releaseId": { "type": "string", "pattern": "^release_" },
+        "target": { "$ref": "#/$defs/ContentTarget" },
+        "autoplay": { "type": "boolean" },
+        "startsAt": { "type": "string", "format": "date-time" },
+        "endsAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "coverAssetId", "releaseDate", "trackIds", "platformLinks", "featured"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^release_" },
+        "kind": { "enum": ["single", "ep", "album"] },
+        "title": { "$ref": "#/$defs/LocalizedText" },
+        "coverAssetId": { "type": "string", "pattern": "^asset_" },
+        "releaseDate": { "type": "string", "format": "date" },
+        "trackIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^track_" }
+        },
+        "platformLinks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PlatformLink" }
+        },
+        "featured": { "type": "boolean" }
+      }
+    },
+    "Track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "releaseId", "title", "durationSeconds", "platformLinks", "credits"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^track_" },
+        "releaseId": { "type": "string", "pattern": "^release_" },
+        "title": { "$ref": "#/$defs/LocalizedText" },
+        "durationSeconds": { "type": "integer", "minimum": 1 },
+        "previewAssetId": { "type": "string", "pattern": "^asset_" },
+        "previewDurationSeconds": { "type": "integer", "minimum": 1, "maximum": 90 },
+        "platformLinks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PlatformLink" }
+        },
+        "credits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "name"],
+            "properties": {
+              "role": { "$ref": "#/$defs/LocalizedText" },
+              "name": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "Video": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "posterAssetId", "durationSeconds", "platformLinks", "featured"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^video_" },
+        "title": { "$ref": "#/$defs/LocalizedText" },
+        "posterAssetId": { "type": "string", "pattern": "^asset_" },
+        "videoAssetId": { "type": "string", "pattern": "^asset_" },
+        "durationSeconds": { "type": "integer", "minimum": 1 },
+        "platformLinks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/PlatformLink" }
+        },
+        "featured": { "type": "boolean" }
+      }
+    },
+    "Event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "dateTime", "city", "venue", "status", "detailUrl"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^event_" },
+        "title": { "$ref": "#/$defs/LocalizedText" },
+        "dateTime": { "type": "string", "format": "date-time" },
+        "city": { "$ref": "#/$defs/LocalizedText" },
+        "venue": { "$ref": "#/$defs/LocalizedText" },
+        "status": { "enum": ["scheduled", "sold-out", "cancelled"] },
+        "detailUrl": { "$ref": "#/$defs/HttpsUrl" },
+        "posterAssetId": { "type": "string", "pattern": "^asset_" }
+      }
+    },
+    "Moment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "assetId"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^moment_" },
+        "assetId": { "type": "string", "pattern": "^asset_" },
+        "caption": { "$ref": "#/$defs/LocalizedText" },
+        "target": { "$ref": "#/$defs/ContentTarget" }
+      }
+    },
+    "ArtistProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "shortBio", "portraitAssetId", "platformLinks"],
+      "properties": {
+        "id": { "const": "artist_primary" },
+        "name": { "$ref": "#/$defs/LocalizedText" },
+        "shortBio": { "$ref": "#/$defs/LocalizedText" },
+        "portraitAssetId": { "type": "string", "pattern": "^asset_" },
+        "platformLinks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PlatformLink" }
+        }
+      }
+    },
+    "Asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "src", "mimeType", "alt", "rights", "checksum"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^asset_" },
+        "kind": { "enum": ["image", "gif", "video", "audio"] },
+        "src": { "$ref": "#/$defs/MediaUrl" },
+        "mimeType": {
+          "enum": ["image/webp", "image/gif", "video/mp4", "audio/wav", "audio/mpeg"]
+        },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "durationSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "posterAssetId": { "type": "string", "pattern": "^asset_" },
+        "alt": { "$ref": "#/$defs/LocalizedText" },
+        "rights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": { "$ref": "#/$defs/LocalizedText" },
+            "credit": { "type": "string" },
+            "license": { "type": "string" }
+          }
+        },
+        "checksum": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

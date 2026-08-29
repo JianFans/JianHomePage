@@ -155,7 +155,7 @@ git commit -m "chore(工程): 初始化 Nuxt 工作区"
 - 创建：`packages/schema/test/snapshot.test.ts`
 - 创建：`content/fixtures/homepage.json`
 
-- [ ] **步骤 1：编写失败的 fixture 契约测试**
+- [x] **步骤 1：编写失败的 fixture 契约测试**
 
 ```ts
 // packages/schema/test/snapshot.test.ts
@@ -187,7 +187,7 @@ describe('首页快照契约', () => {
 })
 ```
 
-- [ ] **步骤 2：运行测试并确认因 Schema 与 fixture 缺失而失败**
+- [x] **步骤 2：运行测试并确认因 Schema 与 fixture 缺失而失败**
 
 运行：
 
@@ -197,13 +197,13 @@ pnpm --filter @yujian/schema test
 
 预期：FAIL，提示找不到 Schema 或 fixture。
 
-- [ ] **步骤 3：实现 JSON Schema 和双语 fixture**
+- [x] **步骤 3：实现 JSON Schema 和双语 fixture**
 
 Schema 必须完整定义 `SiteConfig`、`HomepageSection`、`HeroSlide`、`Release`、`Track`、`Video`、`Event`、`Moment`、`ArtistProfile`、`Asset`、`LocalizedText` 和 `PlatformLink`。所有外部 URL 使用 `^https://` 约束；首页板块使用判别联合 `type`；未知属性默认拒绝。
 
 fixture 使用稳定 ID，包含 3 个大封面、5 个音乐作品、3 个影像、2 个现场、3 个片段和音乐人信息。示例内容明确放在 `content/fixtures`，不声称是真实履历或发行信息。
 
-- [ ] **步骤 4：生成 TypeScript 类型**
+- [x] **步骤 4：生成 TypeScript 类型**
 
 ```js
 // packages/schema/scripts/generate.mjs
@@ -218,7 +218,7 @@ await mkdir(new URL('../src', import.meta.url), { recursive: true })
 await writeFile(new URL('../src/generated.ts', import.meta.url), output)
 ```
 
-- [ ] **步骤 5：验证契约、生成文件和类型检查**
+- [x] **步骤 5：验证契约、生成文件和类型检查**
 
 运行：
 
@@ -231,7 +231,7 @@ git diff --exit-code packages/schema/src/generated.ts
 
 预期：全部通过，生成文件无漂移。
 
-- [ ] **步骤 6：提交**
+- [x] **步骤 6：提交**
 
 ```bash
 git add packages/schema content/fixtures package.json pnpm-lock.yaml

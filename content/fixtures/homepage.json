@@ -1,0 +1,520 @@
+{
+  "schemaVersion": "1.0.0",
+  "releaseId": "rel_fixture_20260829",
+  "generatedAt": "2026-08-29T00:00:00Z",
+  "site": {
+    "brand": {
+      "zh-CN": "遇健我",
+      "en": "Meet Jian"
+    },
+    "artistName": {
+      "zh-CN": "王子健",
+      "en": "Wang Zijian"
+    },
+    "defaultLocale": "zh-CN",
+    "supportedLocales": ["zh-CN", "en"],
+    "canonicalUrl": "https://yujian.me",
+    "socialLinks": [
+      {
+        "provider": "netease-music",
+        "url": "https://music.163.com/#/artist?id=12382128"
+      },
+      {
+        "provider": "qq-music",
+        "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB"
+      },
+      {
+        "provider": "weibo",
+        "url": "https://weibo.com/u/5693099362"
+      },
+      {
+        "provider": "bilibili",
+        "url": "https://space.bilibili.com/21096618"
+      },
+      {
+        "provider": "douyin",
+        "url": "https://www.douyin.com/user/MS4wLjABAAAABfp-B2z7duVeezC81eAOicdyJ9pn_ANxkbCWVT__uR0"
+      }
+    ],
+    "seo": {
+      "title": {
+        "zh-CN": "遇健我 · 王子健",
+        "en": "Meet Jian · Wang Zijian"
+      },
+      "description": {
+        "zh-CN": "音乐人王子健官方站",
+        "en": "The official website of musician Wang Zijian"
+      },
+      "ogAssetId": "asset_hero_studio"
+    },
+    "futureNavigation": []
+  },
+  "homepage": {
+    "sections": [
+      {
+        "id": "section_hero",
+        "type": "hero",
+        "enabled": true,
+        "layoutVariant": "immersive",
+        "itemIds": ["hero_studio", "hero_stage", "hero_release"]
+      },
+      {
+        "id": "section_music",
+        "type": "music",
+        "enabled": true,
+        "layoutVariant": "cover-reel",
+        "itemIds": ["release_01", "release_02", "release_03", "release_04", "release_05"],
+        "limit": 5
+      },
+      {
+        "id": "section_video",
+        "type": "video",
+        "enabled": true,
+        "layoutVariant": "asymmetric",
+        "itemIds": ["video_01", "video_02", "video_03"],
+        "limit": 3
+      },
+      {
+        "id": "section_event",
+        "type": "event",
+        "enabled": true,
+        "layoutVariant": "timeline",
+        "itemIds": ["event_01", "event_02"],
+        "limit": 2
+      },
+      {
+        "id": "section_moment",
+        "type": "moment",
+        "enabled": true,
+        "layoutVariant": "mosaic",
+        "itemIds": ["moment_01", "moment_02", "moment_03"],
+        "limit": 3
+      },
+      {
+        "id": "section_artist",
+        "type": "artist",
+        "enabled": true,
+        "layoutVariant": "split",
+        "itemIds": ["artist_primary"]
+      }
+    ]
+  },
+  "heroSlides": [
+    {
+      "id": "hero_studio",
+      "mediaKind": "image",
+      "assetId": "asset_hero_studio",
+      "focalPoint": { "x": 50, "y": 45 },
+      "headline": {
+        "zh-CN": "遇健我",
+        "en": "Meet Jian"
+      },
+      "autoplay": false
+    },
+    {
+      "id": "hero_stage",
+      "mediaKind": "image",
+      "assetId": "asset_hero_stage",
+      "focalPoint": { "x": 62, "y": 40 },
+      "headline": {
+        "zh-CN": "示例现场",
+        "en": "Sample Live Session"
+      },
+      "target": {
+        "kind": "external",
+        "link": {
+          "provider": "bilibili",
+          "url": "https://space.bilibili.com/21096618"
+        }
+      },
+      "autoplay": false
+    },
+    {
+      "id": "hero_release",
+      "mediaKind": "image",
+      "assetId": "asset_hero_stage",
+      "focalPoint": { "x": 35, "y": 55 },
+      "headline": {
+        "zh-CN": "示例作品 01",
+        "en": "Sample Release 01"
+      },
+      "releaseId": "release_01",
+      "target": {
+        "kind": "internal",
+        "contentId": "release_01"
+      },
+      "autoplay": false
+    }
+  ],
+  "releases": [
+    {
+      "id": "release_01",
+      "kind": "single",
+      "title": { "zh-CN": "示例作品 01", "en": "Sample Release 01" },
+      "coverAssetId": "asset_cover_01",
+      "releaseDate": "2026-08-01",
+      "trackIds": ["track_01"],
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "featured": true
+    },
+    {
+      "id": "release_02",
+      "kind": "single",
+      "title": { "zh-CN": "示例作品 02", "en": "Sample Release 02" },
+      "coverAssetId": "asset_cover_02",
+      "releaseDate": "2026-07-01",
+      "trackIds": ["track_02"],
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "featured": true
+    },
+    {
+      "id": "release_03",
+      "kind": "ep",
+      "title": { "zh-CN": "示例作品 03", "en": "Sample Release 03" },
+      "coverAssetId": "asset_cover_03",
+      "releaseDate": "2026-06-01",
+      "trackIds": ["track_03"],
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "featured": false
+    },
+    {
+      "id": "release_04",
+      "kind": "single",
+      "title": { "zh-CN": "示例作品 04", "en": "Sample Release 04" },
+      "coverAssetId": "asset_cover_04",
+      "releaseDate": "2026-05-01",
+      "trackIds": ["track_04"],
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "featured": false
+    },
+    {
+      "id": "release_05",
+      "kind": "album",
+      "title": { "zh-CN": "示例作品 05", "en": "Sample Release 05" },
+      "coverAssetId": "asset_cover_05",
+      "releaseDate": "2026-04-01",
+      "trackIds": ["track_05"],
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "featured": false
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track_01",
+      "releaseId": "release_01",
+      "title": { "zh-CN": "示例曲目 01", "en": "Sample Track 01" },
+      "durationSeconds": 180,
+      "previewAssetId": "asset_preview_sample",
+      "previewDurationSeconds": 3,
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "credits": [{ "role": { "zh-CN": "音乐人", "en": "Musician" }, "name": "王子健" }]
+    },
+    {
+      "id": "track_02",
+      "releaseId": "release_02",
+      "title": { "zh-CN": "示例曲目 02", "en": "Sample Track 02" },
+      "durationSeconds": 205,
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "credits": [{ "role": { "zh-CN": "音乐人", "en": "Musician" }, "name": "王子健" }]
+    },
+    {
+      "id": "track_03",
+      "releaseId": "release_03",
+      "title": { "zh-CN": "示例曲目 03", "en": "Sample Track 03" },
+      "durationSeconds": 194,
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "credits": [{ "role": { "zh-CN": "音乐人", "en": "Musician" }, "name": "王子健" }]
+    },
+    {
+      "id": "track_04",
+      "releaseId": "release_04",
+      "title": { "zh-CN": "示例曲目 04", "en": "Sample Track 04" },
+      "durationSeconds": 216,
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "credits": [{ "role": { "zh-CN": "音乐人", "en": "Musician" }, "name": "王子健" }]
+    },
+    {
+      "id": "track_05",
+      "releaseId": "release_05",
+      "title": { "zh-CN": "示例曲目 05", "en": "Sample Track 05" },
+      "durationSeconds": 231,
+      "platformLinks": [
+        { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+        { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" }
+      ],
+      "credits": [{ "role": { "zh-CN": "音乐人", "en": "Musician" }, "name": "王子健" }]
+    }
+  ],
+  "videos": [
+    {
+      "id": "video_01",
+      "title": { "zh-CN": "示例影像 01", "en": "Sample Video 01" },
+      "posterAssetId": "asset_video_01",
+      "durationSeconds": 240,
+      "platformLinks": [{ "provider": "bilibili", "url": "https://space.bilibili.com/21096618" }],
+      "featured": true
+    },
+    {
+      "id": "video_02",
+      "title": { "zh-CN": "示例影像 02", "en": "Sample Video 02" },
+      "posterAssetId": "asset_video_02",
+      "durationSeconds": 180,
+      "platformLinks": [{ "provider": "douyin", "url": "https://www.douyin.com/user/MS4wLjABAAAABfp-B2z7duVeezC81eAOicdyJ9pn_ANxkbCWVT__uR0" }],
+      "featured": false
+    },
+    {
+      "id": "video_03",
+      "title": { "zh-CN": "示例影像 03", "en": "Sample Video 03" },
+      "posterAssetId": "asset_video_03",
+      "durationSeconds": 150,
+      "platformLinks": [{ "provider": "bilibili", "url": "https://space.bilibili.com/21096618" }],
+      "featured": false
+    }
+  ],
+  "events": [
+    {
+      "id": "event_01",
+      "title": { "zh-CN": "示例现场 01", "en": "Sample Live Event 01" },
+      "dateTime": "2027-05-16T12:00:00Z",
+      "city": { "zh-CN": "待定", "en": "TBA" },
+      "venue": { "zh-CN": "待定场地", "en": "Venue TBA" },
+      "status": "scheduled",
+      "detailUrl": "https://weibo.com/u/5693099362"
+    },
+    {
+      "id": "event_02",
+      "title": { "zh-CN": "示例现场 02", "en": "Sample Live Event 02" },
+      "dateTime": "2027-08-29T12:00:00Z",
+      "city": { "zh-CN": "待定", "en": "TBA" },
+      "venue": { "zh-CN": "待定场地", "en": "Venue TBA" },
+      "status": "scheduled",
+      "detailUrl": "https://weibo.com/u/5693099362"
+    }
+  ],
+  "moments": [
+    {
+      "id": "moment_01",
+      "assetId": "asset_moment_01",
+      "caption": { "zh-CN": "示例片段 01", "en": "Sample Moment 01" }
+    },
+    {
+      "id": "moment_02",
+      "assetId": "asset_moment_02",
+      "caption": { "zh-CN": "示例片段 02", "en": "Sample Moment 02" }
+    },
+    {
+      "id": "moment_03",
+      "assetId": "asset_moment_03",
+      "caption": { "zh-CN": "示例片段 03", "en": "Sample Moment 03" }
+    }
+  ],
+  "artist": {
+    "id": "artist_primary",
+    "name": { "zh-CN": "王子健", "en": "Wang Zijian" },
+    "shortBio": {
+      "zh-CN": "音乐人。首版内容占位，正式资料将在授权后更新。",
+      "en": "Musician. First-release placeholder copy, pending authorized profile content."
+    },
+    "portraitAssetId": "asset_artist_texture",
+    "platformLinks": [
+      { "provider": "netease-music", "url": "https://music.163.com/#/artist?id=12382128" },
+      { "provider": "qq-music", "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB" },
+      { "provider": "weibo", "url": "https://weibo.com/u/5693099362" },
+      { "provider": "bilibili", "url": "https://space.bilibili.com/21096618" },
+      { "provider": "douyin", "url": "https://www.douyin.com/user/MS4wLjABAAAABfp-B2z7duVeezC81eAOicdyJ9pn_ANxkbCWVT__uR0" }
+    ]
+  },
+  "assets": [
+    {
+      "id": "asset_hero_studio",
+      "kind": "image",
+      "src": "/media/hero-studio.webp",
+      "mimeType": "image/webp",
+      "width": 1920,
+      "height": 1200,
+      "alt": { "zh-CN": "抽象录音室光影", "en": "Abstract studio light" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "asset_hero_stage",
+      "kind": "image",
+      "src": "/media/hero-stage.webp",
+      "mimeType": "image/webp",
+      "width": 1920,
+      "height": 1200,
+      "alt": { "zh-CN": "抽象舞台光影", "en": "Abstract stage light" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "id": "asset_artist_texture",
+      "kind": "image",
+      "src": "/media/hero-studio.webp",
+      "mimeType": "image/webp",
+      "width": 1920,
+      "height": 1200,
+      "alt": { "zh-CN": "音乐人信息背景纹理", "en": "Artist profile background texture" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "asset_cover_01",
+      "kind": "image",
+      "src": "/media/cover-01.webp",
+      "mimeType": "image/webp",
+      "width": 1200,
+      "height": 1200,
+      "alt": { "zh-CN": "示例作品 01 封面", "en": "Sample Release 01 cover" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "id": "asset_cover_02",
+      "kind": "image",
+      "src": "/media/cover-02.webp",
+      "mimeType": "image/webp",
+      "width": 1200,
+      "height": 1200,
+      "alt": { "zh-CN": "示例作品 02 封面", "en": "Sample Release 02 cover" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "id": "asset_cover_03",
+      "kind": "image",
+      "src": "/media/cover-03.webp",
+      "mimeType": "image/webp",
+      "width": 1200,
+      "height": 1200,
+      "alt": { "zh-CN": "示例作品 03 封面", "en": "Sample Release 03 cover" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    {
+      "id": "asset_cover_04",
+      "kind": "image",
+      "src": "/media/cover-04.webp",
+      "mimeType": "image/webp",
+      "width": 1200,
+      "height": 1200,
+      "alt": { "zh-CN": "示例作品 04 封面", "en": "Sample Release 04 cover" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    {
+      "id": "asset_cover_05",
+      "kind": "image",
+      "src": "/media/cover-05.webp",
+      "mimeType": "image/webp",
+      "width": 1200,
+      "height": 1200,
+      "alt": { "zh-CN": "示例作品 05 封面", "en": "Sample Release 05 cover" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    {
+      "id": "asset_video_01",
+      "kind": "image",
+      "src": "/media/video-01.webp",
+      "mimeType": "image/webp",
+      "width": 1600,
+      "height": 900,
+      "alt": { "zh-CN": "示例影像 01 海报", "en": "Sample Video 01 poster" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    {
+      "id": "asset_video_02",
+      "kind": "image",
+      "src": "/media/video-02.webp",
+      "mimeType": "image/webp",
+      "width": 1600,
+      "height": 900,
+      "alt": { "zh-CN": "示例影像 02 海报", "en": "Sample Video 02 poster" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    },
+    {
+      "id": "asset_video_03",
+      "kind": "image",
+      "src": "/media/video-03.webp",
+      "mimeType": "image/webp",
+      "width": 1600,
+      "height": 900,
+      "alt": { "zh-CN": "示例影像 03 海报", "en": "Sample Video 03 poster" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+    },
+    {
+      "id": "asset_moment_01",
+      "kind": "image",
+      "src": "/media/moment-01.webp",
+      "mimeType": "image/webp",
+      "width": 1200,
+      "height": 1500,
+      "alt": { "zh-CN": "示例片段 01", "en": "Sample Moment 01" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "asset_moment_02",
+      "kind": "image",
+      "src": "/media/moment-02.webp",
+      "mimeType": "image/webp",
+      "width": 1200,
+      "height": 1200,
+      "alt": { "zh-CN": "示例片段 02", "en": "Sample Moment 02" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "id": "asset_moment_03",
+      "kind": "image",
+      "src": "/media/moment-03.webp",
+      "mimeType": "image/webp",
+      "width": 1200,
+      "height": 1600,
+      "alt": { "zh-CN": "示例片段 03", "en": "Sample Moment 03" },
+      "rights": { "source": { "zh-CN": "AI 生成的测试素材", "en": "AI-generated fixture asset" } },
+      "checksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "id": "asset_preview_sample",
+      "kind": "audio",
+      "src": "/media/preview-sample.wav",
+      "mimeType": "audio/wav",
+      "durationSeconds": 3,
+      "alt": { "zh-CN": "三秒测试试听音频", "en": "Three-second fixture preview audio" },
+      "rights": { "source": { "zh-CN": "本地生成的测试提示音", "en": "Locally generated fixture tone" } },
+      "checksum": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  ]
+}

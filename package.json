@@ -6,6 +6,7 @@
     "dev": "pnpm --filter @yujian/web dev",
     "generate": "pnpm -r --if-present generate",
     "lint": "eslint .",
+    "schema:generate": "pnpm --filter @yujian/schema generate",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm generate"
