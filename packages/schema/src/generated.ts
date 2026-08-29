@@ -10,7 +10,7 @@ export type ContentTarget =
       kind: "external";
       link: PlatformLink;
     };
-export type MediaUrl = HttpsUrl;
+export type MediaUrl = HttpsUrl | `/media/${string}`;
 
 export interface YujianContentSnapshot {
   schemaVersion: "1.0.0";
@@ -90,6 +90,7 @@ export interface MusicSection {
   layoutVariant: "cover-reel";
   itemIds: string[];
   limit: number;
+  moreLink?: PlatformLink;
 }
 export interface VideoSection {
   id: string;

@@ -1,0 +1,375 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "遇健我管理 API",
+    "version": "1.0.0",
+    "description": "内容草稿、素材、审核、发布与回滚接口。"
+  },
+  "servers": [
+    { "url": "https://api.yujian.me" }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "服务可用",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Health" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/versions": {
+      "post": {
+        "operationId": "createVersion",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/VersionWrite" } }
+          }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/VersionResponse" },
+          "400": { "$ref": "#/components/responses/ErrorResponse" },
+          "401": { "$ref": "#/components/responses/ErrorResponse" },
+          "403": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/v1/versions/{versionId}": {
+      "get": {
+        "operationId": "getVersion",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/VersionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/VersionResponse" },
+          "404": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      },
+      "put": {
+        "operationId": "updateVersion",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/VersionId" },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\\"[1-9][0-9]*\\\"$" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/VersionWrite" } }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/VersionResponse" },
+          "409": { "$ref": "#/components/responses/ErrorResponse" },
+          "428": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/v1/versions/{versionId}/review": {
+      "post": {
+        "operationId": "submitReview",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/VersionId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/RevisionRequest" },
+        "responses": { "200": { "$ref": "#/components/responses/VersionResponse" } }
+      }
+    },
+    "/api/v1/versions/{versionId}/approve": {
+      "post": {
+        "operationId": "approveReview",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/VersionId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/RevisionRequest" },
+        "responses": { "200": { "$ref": "#/components/responses/VersionResponse" } }
+      }
+    },
+    "/api/v1/versions/{versionId}/reject": {
+      "post": {
+        "operationId": "rejectReview",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/VersionId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RejectRequest" } }
+          }
+        },
+        "responses": { "200": { "$ref": "#/components/responses/VersionResponse" } }
+      }
+    },
+    "/api/v1/assets/uploads": {
+      "post": {
+        "operationId": "createAssetUpload",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AssetUploadRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "签名上传已创建",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AssetUpload" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assets/{assetId}/complete": {
+      "post": {
+        "operationId": "completeAssetUpload",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AssetId" }],
+        "responses": {
+          "200": {
+            "description": "素材已完成",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Asset" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assets/{assetId}": {
+      "delete": {
+        "operationId": "deleteAsset",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AssetId" }],
+        "responses": { "204": { "description": "素材已删除" } }
+      }
+    },
+    "/api/v1/publishes": {
+      "post": {
+        "operationId": "createPublish",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{
+          "name": "Idempotency-Key",
+          "in": "header",
+          "required": true,
+          "schema": { "type": "string", "minLength": 8, "maxLength": 128 }
+        }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PublishRequest" } }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "发布任务已创建",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PublishJob" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/publishes/{publishId}": {
+      "get": {
+        "operationId": "getPublish",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/PublishId" }],
+        "responses": {
+          "200": {
+            "description": "发布任务",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PublishJob" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/publishes/{publishId}/refresh": {
+      "post": {
+        "operationId": "refreshPublish",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/PublishId" }],
+        "responses": {
+          "200": {
+            "description": "发布状态已刷新",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PublishJob" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rollbacks": {
+      "post": {
+        "operationId": "createRollback",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{
+          "name": "Idempotency-Key",
+          "in": "header",
+          "required": true,
+          "schema": { "type": "string", "minLength": 8, "maxLength": 128 }
+        }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RollbackRequest" } }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "回滚任务已创建",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PublishJob" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "parameters": {
+      "VersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string" } },
+      "AssetId": { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
+      "PublishId": { "name": "publishId", "in": "path", "required": true, "schema": { "type": "string" } }
+    },
+    "requestBodies": {
+      "RevisionRequest": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/RevisionRequest" } }
+        }
+      }
+    },
+    "responses": {
+      "VersionResponse": {
+        "description": "内容版本",
+        "headers": { "ETag": { "schema": { "type": "string" } } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ContentVersion" } }
+        }
+      },
+      "ErrorResponse": {
+        "description": "错误",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "const": "ok" } }
+      },
+      "VersionWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["snapshot"],
+        "properties": { "snapshot": { "type": "object", "additionalProperties": true } }
+      },
+      "RevisionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["revision"],
+        "properties": { "revision": { "type": "integer", "minimum": 1 } }
+      },
+      "RejectRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["revision", "reason"],
+        "properties": {
+          "revision": { "type": "integer", "minimum": 1 },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        }
+      },
+      "ContentVersion": {
+        "type": "object",
+        "required": ["id", "status", "revision", "snapshot", "checksum"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["draft", "in_review", "published", "archived"] },
+          "revision": { "type": "integer" },
+          "snapshot": { "type": "object", "additionalProperties": true },
+          "checksum": { "type": "string" },
+          "reviewApproved": { "type": "boolean" }
+        }
+      },
+      "AssetUploadRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fileName", "contentType", "size", "rights"],
+        "properties": {
+          "fileName": { "type": "string" },
+          "contentType": { "type": "string" },
+          "size": { "type": "integer", "minimum": 1 },
+          "checksum": { "type": "string" },
+          "rights": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "Asset": {
+        "type": "object",
+        "required": ["id", "status", "metadata", "rights"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["pending", "ready", "deleted"] },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "rights": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "AssetUpload": {
+        "type": "object",
+        "required": ["asset", "uploadUrl", "expiresAt"],
+        "properties": {
+          "asset": { "$ref": "#/components/schemas/Asset" },
+          "uploadUrl": { "type": "string", "format": "uri" },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PublishRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["versionId"],
+        "properties": { "versionId": { "type": "string" } }
+      },
+      "RollbackRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["versionId"],
+        "properties": { "versionId": { "type": "string" } }
+      },
+      "PublishJob": {
+        "type": "object",
+        "required": ["id", "versionId", "status", "snapshotKey", "snapshotChecksum"],
+        "properties": {
+          "id": { "type": "string" },
+          "versionId": { "type": "string" },
+          "status": { "enum": ["pending", "building", "succeeded", "failed"] },
+          "snapshotKey": { "type": "string" },
+          "snapshotChecksum": { "type": "string" },
+          "buildId": { "type": "string" },
+          "errorMessage": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["code", "message", "requestId"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "requestId": { "type": "string" }
+        }
+      }
+    }
+  }
+}

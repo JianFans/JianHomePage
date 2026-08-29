@@ -302,7 +302,8 @@
           "type": "array",
           "items": { "type": "string", "pattern": "^release_" }
         },
-        "limit": { "type": "integer", "minimum": 1, "maximum": 8 }
+        "limit": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "moreLink": { "$ref": "#/$defs/PlatformLink" }
       }
     },
     "VideoSection": {

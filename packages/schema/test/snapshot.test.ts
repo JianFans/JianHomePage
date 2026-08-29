@@ -22,6 +22,11 @@ describe('首页快照契约', () => {
     expect(validate(fixture), JSON.stringify(validate.errors)).toBe(true)
   })
 
+  it('生成类型保留本地媒体 URL 形式', () => {
+    const generated = readFileSync(new URL('../src/generated.ts', import.meta.url), 'utf8')
+    expect(generated).toMatch(/export type MediaUrl = HttpsUrl \| `\/media\/\$\{string\}`;/)
+  })
+
   it('拒绝没有版本号的快照', () => {
     const invalid = structuredClone(fixture)
     delete invalid.schemaVersion
@@ -32,6 +37,22 @@ describe('首页快照契约', () => {
     const invalid = structuredClone(fixture)
     invalid.site.socialLinks[0].url = 'http://example.com'
     expect(validate(invalid)).toBe(false)
+  })
+
+  it('允许音乐板块配置安全的全部作品入口', () => {
+    const configured = structuredClone(fixture)
+    const musicSection = configured.homepage.sections.find(
+      (section: { type: string }) => section.type === 'music',
+    )
+    musicSection.moreLink = {
+      provider: 'qq-music',
+      url: 'https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB',
+    }
+
+    expect(validate(configured), JSON.stringify(validate.errors)).toBe(true)
+
+    musicSection.moreLink.url = 'http://example.com/music'
+    expect(validate(configured)).toBe(false)
   })
 
   it('所有本地资源引用都指向格式、尺寸和校验和匹配的文件', async () => {
