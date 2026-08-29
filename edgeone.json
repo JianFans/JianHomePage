@@ -1,0 +1,6 @@
+{
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @yujian/web generate",
+  "outputDirectory": "apps/web/.output/public",
+  "nodeVersion": "22"
+}
