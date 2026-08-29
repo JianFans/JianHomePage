@@ -1,28 +1,24 @@
 <script setup lang="ts">
-import type { HeroSection, MusicSection as MusicSectionConfig } from '@yujian/schema'
 import { computed } from 'vue'
+import ArtistSection from '../components/home/ArtistSection.vue'
+import EventSection from '../components/home/EventSection.vue'
 import HeroShowcase from '../components/home/HeroShowcase.vue'
+import MomentSection from '../components/home/MomentSection.vue'
 import MusicSection from '../components/home/MusicSection.vue'
+import VideoSection from '../components/home/VideoSection.vue'
 import LocaleNotice from '../components/site/LocaleNotice.vue'
+import SiteFooter from '../components/site/SiteFooter.vue'
 import SiteHeader from '../components/site/SiteHeader.vue'
 import { useAudioPlayer } from '../composables/useAudioPlayer'
 import { useContentSnapshot } from '../composables/useContentSnapshot'
 import { useLocale } from '../composables/useLocale'
 import { resolveLocalized } from '../utils/localized'
+import { resolveHomepageSections } from '../utils/sections'
 
 const snapshot = useContentSnapshot()
 const { locale, selectLocale } = useLocale()
 const player = useAudioPlayer()
-const heroSection = snapshot.homepage.sections.find(
-  (section): section is HeroSection => section.type === 'hero',
-)
-const heroSlides = computed(() => {
-  const ids = new Set(heroSection?.itemIds ?? [])
-  return snapshot.heroSlides.filter(slide => ids.has(slide.id))
-})
-const musicSection = snapshot.homepage.sections.find(
-  (section): section is MusicSectionConfig => section.type === 'music' && section.enabled,
-)
+const sections = computed(() => resolveHomepageSections(snapshot, locale.value))
 const brand = computed(() => resolveLocalized(snapshot.site.brand, locale.value))
 const artistName = computed(() => resolveLocalized(snapshot.site.artistName, locale.value))
 
@@ -38,31 +34,79 @@ function toggleLocale() {
     :locale="locale"
     @toggle-locale="toggleLocale"
   />
-  <HeroShowcase
-    :slides="heroSlides"
-    :assets="snapshot.assets"
-    :locale="locale"
-    :brand="brand"
-    :artist-name="artistName"
-  />
-  <div
-    class="next-section-edge"
-    aria-hidden="true"
+  <template
+    v-for="section in sections"
+    :key="section.id"
   >
-    <span />
-    <span />
-    <span />
-  </div>
-  <MusicSection
-    v-if="musicSection"
-    :section="musicSection"
-    :releases="snapshot.releases"
-    :tracks="snapshot.tracks"
-    :assets="snapshot.assets"
+    <template v-if="section.type === 'hero'">
+      <HeroShowcase
+        data-home-section="hero"
+        :slides="section.items"
+        :assets="snapshot.assets"
+        :locale="locale"
+        :brand="brand"
+        :artist-name="artistName"
+      />
+      <div
+        class="next-section-edge"
+        aria-hidden="true"
+      >
+        <span />
+        <span />
+        <span />
+      </div>
+    </template>
+
+    <MusicSection
+      v-else-if="section.type === 'music'"
+      data-home-section="music"
+      :section="section"
+      :releases="snapshot.releases"
+      :tracks="snapshot.tracks"
+      :assets="snapshot.assets"
+      :locale="locale"
+      :active-track-id="player.current.value?.id ?? null"
+      :player-status="player.status.value"
+      @preview="player.toggle"
+    />
+
+    <VideoSection
+      v-else-if="section.type === 'video'"
+      data-home-section="video"
+      :items="section.items"
+      :assets="snapshot.assets"
+      :locale="locale"
+    />
+
+    <EventSection
+      v-else-if="section.type === 'event'"
+      data-home-section="event"
+      :items="section.items"
+      :locale="locale"
+    />
+
+    <MomentSection
+      v-else-if="section.type === 'moment'"
+      data-home-section="moment"
+      :items="section.items"
+      :assets="snapshot.assets"
+      :locale="locale"
+    />
+
+    <ArtistSection
+      v-else-if="section.type === 'artist' && section.items[0]"
+      data-home-section="artist"
+      :artist="section.items[0]"
+      :assets="snapshot.assets"
+      :locale="locale"
+    />
+  </template>
+
+  <SiteFooter
+    :brand="brand"
+    :canonical-url="snapshot.site.canonicalUrl"
+    :social-links="snapshot.site.socialLinks"
     :locale="locale"
-    :active-track-id="player.current.value?.id ?? null"
-    :player-status="player.status.value"
-    @preview="player.toggle"
   />
   <LocaleNotice />
 </template>

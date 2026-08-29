@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { PlatformLink } from '@yujian/schema'
 import {
+  Clapperboard,
   Disc3,
   Ellipsis,
   ExternalLink,
   Music2,
+  Radio,
+  Video,
 } from '@lucide/vue'
 import { computed } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
@@ -12,6 +15,7 @@ import type { SupportedLocale } from '../../utils/localized'
 const props = defineProps<{
   links: PlatformLink[]
   locale: SupportedLocale
+  menuAlign?: 'start' | 'end'
 }>()
 
 const providerMeta = {
@@ -24,6 +28,21 @@ const providerMeta = {
     icon: Disc3,
     label: { 'zh-CN': '网易云音乐', en: 'NetEase Cloud Music' },
     mark: '163',
+  },
+  'weibo': {
+    icon: Radio,
+    label: { 'zh-CN': '微博', en: 'Weibo' },
+    mark: 'W',
+  },
+  'bilibili': {
+    icon: Video,
+    label: { 'zh-CN': '哔哩哔哩', en: 'Bilibili' },
+    mark: 'B',
+  },
+  'douyin': {
+    icon: Clapperboard,
+    label: { 'zh-CN': '抖音', en: 'Douyin' },
+    mark: 'D',
   },
   'website': {
     icon: ExternalLink,
@@ -110,6 +129,7 @@ function labelFor(link: PlatformLink) {
       <details
         v-if="safeLinks.length > 1"
         class="platform-more"
+        :class="{ 'platform-more--start': menuAlign === 'start' }"
         data-testid="platform-more"
       >
         <summary :aria-label="labels.more">
@@ -246,6 +266,11 @@ function labelFor(link: PlatformLink) {
   border-radius: var(--radius-tool);
   background: var(--color-surface-raised);
   box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.32);
+}
+
+.platform-more--start .platform-more__menu {
+  right: auto;
+  left: 0;
 }
 
 .platform-more__menu a {

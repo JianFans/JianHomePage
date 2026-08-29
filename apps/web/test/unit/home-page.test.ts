@@ -18,4 +18,21 @@ describe('公开首页', () => {
     expect(wrapper.find('#music').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid="music-card"]')).toHaveLength(5)
   })
+
+  it('按后台顺序渲染所有有内容的启用板块', async () => {
+    const wrapper = await mountSuspended(HomePage)
+
+    expect(wrapper.findAll('[data-home-section]').map(section => (
+      section.attributes('data-home-section')
+    ))).toEqual(['hero', 'music', 'video', 'event', 'moment', 'artist'])
+  })
+
+  it('在页尾保留品牌域名和官方平台入口', async () => {
+    const wrapper = await mountSuspended(HomePage)
+    const footer = wrapper.get('footer')
+
+    expect(footer.text()).toContain('yujian.me')
+    expect(footer.find('[href="https://yujian.me"]').exists()).toBe(true)
+    expect(footer.find('[aria-label="微博"], [aria-label="Weibo"]').exists()).toBe(true)
+  })
 })

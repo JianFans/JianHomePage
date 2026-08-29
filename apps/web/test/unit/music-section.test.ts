@@ -69,6 +69,21 @@ describe('MusicSection', () => {
 })
 
 describe('PlatformLinks', () => {
+  it('允许靠左的平台组让移动菜单向右展开', () => {
+    const wrapper = mount(PlatformLinks, {
+      props: {
+        locale: 'zh-CN',
+        menuAlign: 'start',
+        links: [
+          { provider: 'weibo', url: 'https://weibo.com/example' },
+          { provider: 'bilibili', url: 'https://space.bilibili.com/example' },
+        ],
+      },
+    })
+
+    expect(wrapper.get('[data-testid="platform-more"]').classes()).toContain('platform-more--start')
+  })
+
   it('忽略非 HTTPS 平台链接', () => {
     const wrapper = mount(PlatformLinks, {
       props: {
