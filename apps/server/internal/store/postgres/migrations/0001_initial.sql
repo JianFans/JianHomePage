@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS assets (
 CREATE TABLE IF NOT EXISTS publish_jobs (
   id text PRIMARY KEY,
   idempotency_key text NOT NULL UNIQUE,
+  operation text NOT NULL CHECK (operation IN ('publish','rollback')),
   version_id text NOT NULL REFERENCES content_versions(id),
+  release_id text NOT NULL,
   snapshot_key text NOT NULL,
   snapshot_checksum text NOT NULL,
   build_id text,

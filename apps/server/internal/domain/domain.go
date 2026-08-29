@@ -89,17 +89,24 @@ type AssetRecord struct {
 
 type PublishStatus string
 
+type PublishOperation string
+
 const (
 	PublishPending   PublishStatus = "pending"
 	PublishBuilding  PublishStatus = "building"
 	PublishSucceeded PublishStatus = "succeeded"
 	PublishFailed    PublishStatus = "failed"
+
+	PublishOperationPublish  PublishOperation = "publish"
+	PublishOperationRollback PublishOperation = "rollback"
 )
 
 type PublishJob struct {
 	ID               string
 	IdempotencyKey   string
+	Operation        PublishOperation
 	VersionID        string
+	ReleaseID        string
 	SnapshotKey      string
 	SnapshotChecksum string
 	BuildID          string

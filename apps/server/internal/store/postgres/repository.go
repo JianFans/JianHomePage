@@ -211,11 +211,11 @@ WHERE id = $8 AND revision = $9`,
 func (repository *PublishRepository) CreatePublishJob(ctx context.Context, job domain.PublishJob) error {
 	_, err := repository.exec.ExecContext(ctx, `
 INSERT INTO publish_jobs
-  (id, idempotency_key, version_id, snapshot_key, snapshot_checksum, build_id, status, error_message, requested_by, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, NULLIF($8, ''), $9, $10, $11)`,
-		job.ID, job.IdempotencyKey, job.VersionID, job.SnapshotKey, job.SnapshotChecksum,
+  (id, idempotency_key, operation, version_id, release_id, snapshot_key, snapshot_checksum, build_id, status, error_message, requested_by, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), $9, NULLIF($10, ''), $11, $12, $13)`,
+		job.ID, job.IdempotencyKey, job.Operation, job.VersionID, job.ReleaseID, job.SnapshotKey, job.SnapshotChecksum,
 		job.BuildID, job.Status, job.ErrorMessage, job.RequestedBy, job.CreatedAt, job.UpdatedAt)
-	return err
+	return mapConstraintError(err)
 }
 
 func (repository *PublishRepository) GetPublishJob(ctx context.Context, id string) (domain.PublishJob, error) {
@@ -233,11 +233,11 @@ func (repository *PublishRepository) GetSuccessfulPublishByVersion(ctx context.C
 func (repository *PublishRepository) UpdatePublishJob(ctx context.Context, job domain.PublishJob) error {
 	result, err := repository.exec.ExecContext(ctx, `
 UPDATE publish_jobs
-SET idempotency_key = $1, version_id = $2, snapshot_key = $3, snapshot_checksum = $4,
-    build_id = NULLIF($5, ''), status = $6, error_message = NULLIF($7, ''),
-    requested_by = $8, updated_at = $9
-WHERE id = $10`,
-		job.IdempotencyKey, job.VersionID, job.SnapshotKey, job.SnapshotChecksum,
+SET idempotency_key = $1, operation = $2, version_id = $3, release_id = $4,
+    snapshot_key = $5, snapshot_checksum = $6, build_id = NULLIF($7, ''),
+    status = $8, error_message = NULLIF($9, ''), requested_by = $10, updated_at = $11
+WHERE id = $12`,
+		job.IdempotencyKey, job.Operation, job.VersionID, job.ReleaseID, job.SnapshotKey, job.SnapshotChecksum,
 		job.BuildID, job.Status, job.ErrorMessage, job.RequestedBy, job.UpdatedAt, job.ID)
 	if err != nil {
 		return err
@@ -289,7 +289,7 @@ VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
 }
 
 const publishJobQuery = `
-SELECT id, idempotency_key, version_id, snapshot_key, snapshot_checksum,
+SELECT id, idempotency_key, operation, version_id, release_id, snapshot_key, snapshot_checksum,
        COALESCE(build_id, ''), status, COALESCE(error_message, ''),
        requested_by, created_at, updated_at
 FROM publish_jobs`
@@ -360,8 +360,8 @@ func scanAsset(row Row) (domain.AssetRecord, error) {
 
 func scanPublishJob(row Row) (domain.PublishJob, error) {
 	var job domain.PublishJob
-	var status string
-	err := row.Scan(&job.ID, &job.IdempotencyKey, &job.VersionID, &job.SnapshotKey, &job.SnapshotChecksum,
+	var operation, status string
+	err := row.Scan(&job.ID, &job.IdempotencyKey, &operation, &job.VersionID, &job.ReleaseID, &job.SnapshotKey, &job.SnapshotChecksum,
 		&job.BuildID, &status, &job.ErrorMessage, &job.RequestedBy, &job.CreatedAt, &job.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.PublishJob{}, domain.ErrNotFound
@@ -369,8 +369,24 @@ func scanPublishJob(row Row) (domain.PublishJob, error) {
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
+	job.Operation = domain.PublishOperation(operation)
 	job.Status = domain.PublishStatus(status)
 	return job, nil
+}
+
+type sqlStateError interface {
+	SQLState() string
+}
+
+func mapConstraintError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var state sqlStateError
+	if errors.As(err, &state) && state.SQLState() == "23505" {
+		return errors.Join(domain.ErrConflict, err)
+	}
+	return err
 }
 
 var _ content.Repository = (*ContentRepository)(nil)

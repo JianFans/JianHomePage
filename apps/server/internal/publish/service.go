@@ -106,10 +106,10 @@ func (service *Service) Publish(
 	if idempotencyKey == "" {
 		return domain.PublishJob{}, domain.ErrInvalidInput
 	}
-	if existing, err := service.repository.GetPublishJobByIdempotencyKey(ctx, idempotencyKey); err == nil {
-		return existing, nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
+	if existing, found, err := service.existingJob(ctx, actor, domain.PublishOperationPublish, versionID, idempotencyKey); err != nil {
 		return domain.PublishJob{}, err
+	} else if found {
+		return service.resumeExisting(ctx, existing)
 	}
 
 	version, err := service.repository.GetVersion(ctx, versionID)
@@ -131,10 +131,14 @@ func (service *Service) Publish(
 		return domain.PublishJob{}, err
 	}
 
-	job := service.newJob(actor, versionID, idempotencyKey, snapshotKey, canonical.Checksum)
+	job := service.newJob(actor, domain.PublishOperationPublish, versionID, canonical.ReleaseID, idempotencyKey, snapshotKey, canonical.Checksum)
 	if err := service.createJob(ctx, actor, &job, "publish.requested"); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
-			return service.repository.GetPublishJobByIdempotencyKey(ctx, idempotencyKey)
+			if existing, found, lookupErr := service.existingJob(ctx, actor, domain.PublishOperationPublish, versionID, idempotencyKey); lookupErr != nil {
+				return domain.PublishJob{}, lookupErr
+			} else if found {
+				return service.resumeExisting(ctx, existing)
+			}
 		}
 		return domain.PublishJob{}, err
 	}
@@ -154,10 +158,10 @@ func (service *Service) Rollback(
 	if idempotencyKey == "" {
 		return domain.PublishJob{}, domain.ErrInvalidInput
 	}
-	if existing, err := service.repository.GetPublishJobByIdempotencyKey(ctx, idempotencyKey); err == nil {
-		return existing, nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
+	if existing, found, err := service.existingJob(ctx, actor, domain.PublishOperationRollback, versionID, idempotencyKey); err != nil {
 		return domain.PublishJob{}, err
+	} else if found {
+		return service.resumeExisting(ctx, existing)
 	}
 
 	version, err := service.repository.GetVersion(ctx, versionID)
@@ -181,14 +185,20 @@ func (service *Service) Rollback(
 
 	job := service.newJob(
 		actor,
+		domain.PublishOperationRollback,
 		versionID,
+		canonical.ReleaseID,
 		idempotencyKey,
 		historical.SnapshotKey,
 		historical.SnapshotChecksum,
 	)
 	if err := service.createJob(ctx, actor, &job, "rollback.requested"); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
-			return service.repository.GetPublishJobByIdempotencyKey(ctx, idempotencyKey)
+			if existing, found, lookupErr := service.existingJob(ctx, actor, domain.PublishOperationRollback, versionID, idempotencyKey); lookupErr != nil {
+				return domain.PublishJob{}, lookupErr
+			} else if found {
+				return service.resumeExisting(ctx, existing)
+			}
 		}
 		return domain.PublishJob{}, err
 	}
@@ -336,31 +346,41 @@ func (service *Service) trigger(
 	releaseID string,
 ) (domain.PublishJob, error) {
 	run, err := service.buildTrigger.Trigger(ctx, ports.BuildRequest{
+		IdempotencyKey:   job.IdempotencyKey,
 		ReleaseID:        releaseID,
 		SnapshotKey:      job.SnapshotKey,
 		SnapshotChecksum: job.SnapshotChecksum,
 	})
 	job.UpdatedAt = service.now().UTC()
 	if err != nil {
-		job.Status = domain.PublishFailed
+		job.Status = domain.PublishPending
 		job.ErrorMessage = err.Error()
 		if updateErr := service.repository.UpdatePublishJob(ctx, job); updateErr != nil {
 			return domain.PublishJob{}, errors.Join(err, updateErr)
 		}
-		service.notify(ctx, job, domain.PublishPointer{}, false)
 		return job, err
 	}
 	job.BuildID = run.ID
 	job.Status = domain.PublishBuilding
+	job.ErrorMessage = ""
 	if err := service.repository.UpdatePublishJob(ctx, job); err != nil {
 		return domain.PublishJob{}, err
 	}
 	return job, nil
 }
 
+func (service *Service) resumeExisting(ctx context.Context, job domain.PublishJob) (domain.PublishJob, error) {
+	if job.Status != domain.PublishPending {
+		return job, nil
+	}
+	return service.trigger(ctx, job, job.ReleaseID)
+}
+
 func (service *Service) newJob(
 	actor domain.Principal,
+	operation domain.PublishOperation,
 	versionID string,
+	releaseID string,
 	idempotencyKey string,
 	snapshotKey string,
 	snapshotChecksum string,
@@ -369,7 +389,9 @@ func (service *Service) newJob(
 	return domain.PublishJob{
 		ID:               service.newID("pub_"),
 		IdempotencyKey:   idempotencyKey,
+		Operation:        operation,
 		VersionID:        versionID,
+		ReleaseID:        releaseID,
 		SnapshotKey:      snapshotKey,
 		SnapshotChecksum: snapshotChecksum,
 		Status:           domain.PublishPending,
@@ -377,6 +399,26 @@ func (service *Service) newJob(
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
+}
+
+func (service *Service) existingJob(
+	ctx context.Context,
+	actor domain.Principal,
+	operation domain.PublishOperation,
+	versionID string,
+	idempotencyKey string,
+) (domain.PublishJob, bool, error) {
+	existing, err := service.repository.GetPublishJobByIdempotencyKey(ctx, idempotencyKey)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.PublishJob{}, false, nil
+	}
+	if err != nil {
+		return domain.PublishJob{}, false, err
+	}
+	if existing.Operation != operation || existing.VersionID != versionID || existing.RequestedBy != actor.Subject {
+		return domain.PublishJob{}, false, domain.ErrConflict
+	}
+	return existing, true, nil
 }
 
 func (service *Service) notify(

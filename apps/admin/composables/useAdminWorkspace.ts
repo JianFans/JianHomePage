@@ -6,6 +6,7 @@ import {
   type AdminVersion,
 } from '../utils/admin-api'
 import { idleWorkflow, workflowError, workflowSuccess, type WorkflowState } from '../utils/admin-workflow'
+import { createOperationKeyStore } from '../utils/idempotency'
 
 export function useAdminWorkspace() {
   const runtime = useRuntimeConfig()
@@ -17,6 +18,7 @@ export function useAdminWorkspace() {
   const editorText = ref('{}')
   const rejectReason = ref('')
   const workflow = ref<WorkflowState>(idleWorkflow())
+  const operationKeys = createOperationKeyStore()
 
   const parsedEditor = computed(() => parseSnapshotJSON(editorText.value))
   const busy = computed(() => ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
@@ -94,7 +96,9 @@ export function useAdminWorkspace() {
 
   async function publish() {
     if (!version.value) return
-    const result = await run('publishing', () => api().publish(version.value!.id), '发布任务已创建')
+    const current = version.value
+    const key = operationKeys.get('publish', current.id)
+    const result = await run('publishing', () => api().publish(current.id, key), '发布任务已创建')
     if (result) publishJob.value = result
   }
 
@@ -106,7 +110,9 @@ export function useAdminWorkspace() {
 
   async function rollback() {
     if (!version.value) return
-    const result = await run('publishing', () => api().rollback(version.value!.id), '回滚任务已创建')
+    const current = version.value
+    const key = operationKeys.get('rollback', current.id)
+    const result = await run('publishing', () => api().rollback(current.id, key), '回滚任务已创建')
     if (result) publishJob.value = result
   }
 

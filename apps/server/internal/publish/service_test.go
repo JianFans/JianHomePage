@@ -19,6 +19,8 @@ type memoryRepository struct {
 	pointers            map[string]domain.PublishPointer
 	audits              []domain.AuditEntry
 	successfulByVersion map[string]string
+	updateErr           error
+	updateFailures      int
 }
 
 func newMemoryRepository() *memoryRepository {
@@ -89,6 +91,10 @@ func (repository *memoryRepository) GetSuccessfulPublishByVersion(_ context.Cont
 }
 
 func (repository *memoryRepository) UpdatePublishJob(_ context.Context, job domain.PublishJob) error {
+	if repository.updateFailures > 0 {
+		repository.updateFailures--
+		return repository.updateErr
+	}
 	if _, exists := repository.jobs[job.ID]; !exists {
 		return domain.ErrNotFound
 	}
@@ -159,10 +165,12 @@ type buildTriggerFake struct {
 	triggerCalls int
 	triggerErr   error
 	statuses     map[string]ports.BuildRun
+	requests     []ports.BuildRequest
 }
 
 func (trigger *buildTriggerFake) Trigger(_ context.Context, request ports.BuildRequest) (ports.BuildRun, error) {
 	trigger.triggerCalls++
+	trigger.requests = append(trigger.requests, request)
 	if trigger.triggerErr != nil {
 		return ports.BuildRun{}, trigger.triggerErr
 	}
@@ -248,7 +256,61 @@ func TestPublishIsIdempotentAndWritesImmutableSnapshotOnce(t *testing.T) {
 	}
 }
 
-func TestBuildFailureKeepsCurrentPointer(t *testing.T) {
+func TestPublishRejectsIdempotencyKeyReusedForDifferentRequest(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.versions["ver_one"] = approvedVersion("ver_one", "rel_one")
+	repository.versions["ver_two"] = approvedVersion("ver_two", "rel_two")
+	blobs := newBlobStoreFake()
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, blobs, trigger)
+
+	if _, err := service.Publish(context.Background(), publisher(), "ver_one", "idem-shared"); err != nil {
+		t.Fatalf("first publish: %v", err)
+	}
+	if _, err := service.Publish(context.Background(), publisher(), "ver_two", "idem-shared"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected version conflict, got %v", err)
+	}
+	other := domain.Principal{Subject: "publisher-2", Roles: []domain.Role{domain.RolePublisher}}
+	if _, err := service.Publish(context.Background(), other, "ver_one", "idem-shared"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected actor conflict, got %v", err)
+	}
+	if _, err := service.Rollback(context.Background(), publisher(), "ver_one", "idem-shared"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected operation conflict, got %v", err)
+	}
+	if trigger.triggerCalls != 1 {
+		t.Fatalf("mismatched retries triggered %d builds", trigger.triggerCalls)
+	}
+}
+
+func TestPublishRetriesPendingTriggerWithProviderIdempotencyKey(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.versions["ver_new"] = approvedVersion("ver_new", "rel_retry")
+	repository.updateErr = errors.New("database write unavailable")
+	repository.updateFailures = 1
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+
+	if _, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-retry"); err == nil {
+		t.Fatal("expected first publish to report the state write failure")
+	}
+	retried, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-retry")
+	if err != nil {
+		t.Fatalf("retry publish: %v", err)
+	}
+	if retried.Status != domain.PublishBuilding || retried.BuildID != "build-1" {
+		t.Fatalf("pending publish was not resumed: %#v", retried)
+	}
+	if trigger.triggerCalls != 2 {
+		t.Fatalf("expected two provider calls with one logical operation, got %d", trigger.triggerCalls)
+	}
+	for _, request := range trigger.requests {
+		if request.IdempotencyKey != "idem-retry" {
+			t.Fatalf("provider request lost idempotency key: %#v", request)
+		}
+	}
+}
+
+func TestAmbiguousTriggerFailureStaysRetryableAndKeepsCurrentPointer(t *testing.T) {
 	repository := newMemoryRepository()
 	repository.versions["ver_new"] = approvedVersion("ver_new", "rel_test")
 	repository.pointers["production"] = domain.PublishPointer{Slot: "production", VersionID: "ver_old"}
@@ -260,11 +322,16 @@ func TestBuildFailureKeepsCurrentPointer(t *testing.T) {
 	service := publishServiceForTest(repository, blobs, trigger)
 
 	job, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-fail")
-	if err == nil || job.Status != domain.PublishFailed {
-		t.Fatalf("expected failed job and error, job=%#v err=%v", job, err)
+	if err == nil || job.Status != domain.PublishPending {
+		t.Fatalf("expected retryable pending job and error, job=%#v err=%v", job, err)
 	}
 	if repository.pointers["production"].VersionID != "ver_old" {
 		t.Fatal("failed build changed production pointer")
+	}
+	trigger.triggerErr = nil
+	retried, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-fail")
+	if err != nil || retried.Status != domain.PublishBuilding || retried.ErrorMessage != "" {
+		t.Fatalf("retry trigger: job=%#v err=%v", retried, err)
 	}
 }
 

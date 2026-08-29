@@ -77,7 +77,7 @@ func (client *Client) Trigger(ctx context.Context, request ports.BuildRequest) (
 	if err != nil {
 		return ports.BuildRun{}, err
 	}
-	response, err := client.do(ctx, http.MethodPost, client.triggerURL, body)
+	response, err := client.do(ctx, http.MethodPost, client.triggerURL, body, request.IdempotencyKey)
 	if err != nil {
 		return ports.BuildRun{}, err
 	}
@@ -91,14 +91,14 @@ func (client *Client) Status(ctx context.Context, buildID string) (ports.BuildRu
 	endpoint := *client.statusURL
 	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/" + url.PathEscape(buildID)
 	endpoint.RawPath = strings.TrimRight(endpoint.RawPath, "/") + "/" + url.PathEscape(buildID)
-	response, err := client.do(ctx, http.MethodGet, &endpoint, nil)
+	response, err := client.do(ctx, http.MethodGet, &endpoint, nil, "")
 	if err != nil {
 		return ports.BuildRun{}, err
 	}
 	return decodeBuildRun(response)
 }
 
-func (client *Client) do(ctx context.Context, method string, endpoint *url.URL, body []byte) ([]byte, error) {
+func (client *Client) do(ctx context.Context, method string, endpoint *url.URL, body []byte, idempotencyKey string) ([]byte, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -113,6 +113,9 @@ func (client *Client) do(ctx context.Context, method string, endpoint *url.URL, 
 	}
 	if client.token != "" {
 		request.Header.Set("Authorization", "Bearer "+client.token)
+	}
+	if idempotencyKey != "" {
+		request.Header.Set("Idempotency-Key", idempotencyKey)
 	}
 	response, err := client.httpClient.Do(request)
 	if err != nil {

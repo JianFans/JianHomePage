@@ -1,3 +1,5 @@
+import { createIdempotencyKey } from './idempotency'
+
 export interface AdminVersion {
   id: string
   status: 'draft' | 'in_review' | 'published' | 'archived'
@@ -49,13 +51,6 @@ export interface AdminApiOptions {
 
 export function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, '')
-}
-
-export function createIdempotencyKey(prefix = 'publish'): string {
-  const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  return `${prefix}-${random}`
 }
 
 export function parseSnapshotJSON(value: string): { snapshot: Record<string, unknown> | null; error: string | null } {

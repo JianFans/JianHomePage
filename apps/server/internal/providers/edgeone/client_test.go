@@ -31,6 +31,9 @@ func TestTriggerSendsReleaseAndBearerToken(t *testing.T) {
 		if got := request.Header.Get("Authorization"); got != "Bearer secret-token" {
 			t.Fatalf("unexpected authorization header %q", got)
 		}
+		if got := request.Header.Get("Idempotency-Key"); got != "publish-key-1" {
+			t.Fatalf("unexpected idempotency header %q", got)
+		}
 		if err := json.NewDecoder(request.Body).Decode(&received); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
@@ -45,6 +48,7 @@ func TestTriggerSendsReleaseAndBearerToken(t *testing.T) {
 		t.Fatalf("new client: %v", err)
 	}
 	run, err := client.Trigger(context.Background(), ports.BuildRequest{
+		IdempotencyKey:   "publish-key-1",
 		ReleaseID:        "rel_1",
 		SnapshotKey:      "snapshots/rel_1/sha256:test.json",
 		SnapshotChecksum: "sha256:test",

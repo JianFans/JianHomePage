@@ -40,6 +40,7 @@ type BlobStore interface {
 }
 
 type BuildRequest struct {
+	IdempotencyKey   string
 	ReleaseID        string
 	SnapshotKey      string
 	SnapshotChecksum string

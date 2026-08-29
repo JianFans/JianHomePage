@@ -71,12 +71,13 @@ type recordingExecutor struct {
 	rows        Rows
 	result      ExecResult
 	begin       *recordingTx
+	execErr     error
 }
 
 func (executor *recordingExecutor) ExecContext(_ context.Context, query string, args ...any) (ExecResult, error) {
 	executor.execQueries = append(executor.execQueries, query)
 	executor.execArgs = append(executor.execArgs, args)
-	return executor.result, nil
+	return executor.result, executor.execErr
 }
 
 func (executor *recordingExecutor) QueryRowContext(context.Context, string, ...any) Row {
@@ -169,7 +170,7 @@ func TestRepositoryTransactionRollsBackOnCallbackError(t *testing.T) {
 func TestPublishRepositoryReadsHistoricalSuccessfulJob(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"pub_1", "idem-1", "ver_old", "snapshots/rel/sha.json", "sha256:test", "build-1", "succeeded", "", "publisher", now, now,
+		"pub_1", "idem-1", "publish", "ver_old", "rel_old", "snapshots/rel/sha.json", "sha256:test", "build-1", "succeeded", "", "publisher", now, now,
 	}}}
 	job, err := NewPublishRepository(executor).GetSuccessfulPublishByVersion(context.Background(), "ver_old")
 	if err != nil {
@@ -182,3 +183,35 @@ func TestPublishRepositoryReadsHistoricalSuccessfulJob(t *testing.T) {
 		t.Fatalf("query should use QueryRow, got exec calls %#v", executor.execQueries)
 	}
 }
+
+func TestPublishRepositoryPersistsOperationAndReleaseID(t *testing.T) {
+	executor := &recordingExecutor{result: recordingResult{affected: 1}}
+	job := domain.PublishJob{
+		ID: "pub_1", IdempotencyKey: "idem-1", Operation: domain.PublishOperationRollback,
+		VersionID: "ver_1", ReleaseID: "rel_1", SnapshotKey: "snapshots/rel_1/sha.json",
+		SnapshotChecksum: "sha256:test", Status: domain.PublishPending, RequestedBy: "publisher-1",
+	}
+
+	if err := NewPublishRepository(executor).CreatePublishJob(context.Background(), job); err != nil {
+		t.Fatalf("create publish job: %v", err)
+	}
+	if len(executor.execArgs) != 1 || len(executor.execArgs[0]) < 6 {
+		t.Fatalf("unexpected insert args %#v", executor.execArgs)
+	}
+	if executor.execArgs[0][2] != domain.PublishOperationRollback || executor.execArgs[0][4] != "rel_1" {
+		t.Fatalf("operation and release were not persisted: %#v", executor.execArgs[0])
+	}
+}
+
+func TestPublishRepositoryMapsUniqueViolationToConflict(t *testing.T) {
+	executor := &recordingExecutor{execErr: sqlStateTestError{state: "23505"}}
+	err := NewPublishRepository(executor).CreatePublishJob(context.Background(), domain.PublishJob{ID: "pub_1"})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected conflict, got %v", err)
+	}
+}
+
+type sqlStateTestError struct{ state string }
+
+func (err sqlStateTestError) Error() string    { return "postgres error " + err.state }
+func (err sqlStateTestError) SQLState() string { return err.state }
