@@ -1,4 +1,5 @@
 import type { SupportedLocale } from '../utils/localized'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 export const DEFAULT_LOCALE: SupportedLocale = 'zh-CN'
@@ -54,7 +55,13 @@ export function detectLocale({
 }
 
 export function useLocale() {
-  const { locale } = useI18n({ useScope: 'global' })
+  const { locale: i18nLocale } = useI18n({ useScope: 'global' })
+  const locale = computed<SupportedLocale>({
+    get: () => i18nLocale.value === 'en' ? 'en' : DEFAULT_LOCALE,
+    set: (nextLocale) => {
+      i18nLocale.value = nextLocale
+    },
+  })
   const noticeVisible = useState('locale-notice', () => false)
 
   function selectLocale(nextLocale: SupportedLocale) {

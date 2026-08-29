@@ -384,7 +384,7 @@ git commit -m "feat(视觉资源): 添加首页占位媒体"
 - 测试：`apps/web/test/unit/hero-showcase.test.ts`
 - 测试：`apps/web/test/unit/icon-button.test.ts`
 
-- [ ] **步骤 1：编写图标按钮失败测试**
+- [x] **步骤 1：编写图标按钮失败测试**
 
 ```ts
 it('提供可访问名称和悬浮说明', () => {
@@ -394,19 +394,19 @@ it('提供可访问名称和悬浮说明', () => {
 })
 ```
 
-- [ ] **步骤 2：实现最小 `IconButton` 并验证测试通过**
+- [x] **步骤 2：实现最小 `IconButton` 并验证测试通过**
 
 组件使用原生 `button`，稳定尺寸为 `44 × 44 CSS px`，Tooltip 通过 `aria-describedby` 关联；禁用状态不能触发 `click`。
 
-- [ ] **步骤 3：编写大封面失败测试**
+- [x] **步骤 3：编写大封面失败测试**
 
 测试必须覆盖：图片轮播项、视频海报、静音/暂停按钮、当前页进度、`prefers-reduced-motion` 下不加载自动视频、移动端焦点位置 CSS 变量。
 
-- [ ] **步骤 4：实现 `SiteHeader` 和 `HeroShowcase`**
+- [x] **步骤 4：实现 `SiteHeader` 和 `HeroShowcase`**
 
 首屏只显示品牌、音乐人名、必要的作品名和图标操作。媒体使用 `<picture>` 或 `<video poster>`；视频 `muted`、`playsinline`，不自动请求音频。轮播切换不修改容器高度。
 
-- [ ] **步骤 5：实现低饱和全局设计 Token**
+- [x] **步骤 5：实现低饱和全局设计 Token**
 
 ```css
 :root {
@@ -423,7 +423,7 @@ it('提供可访问名称和悬浮说明', () => {
 }
 ```
 
-- [ ] **步骤 6：验证组件、类型和页面静态渲染**
+- [x] **步骤 6：验证组件、类型和页面静态渲染**
 
 运行：
 
@@ -435,7 +435,7 @@ pnpm --filter @yujian/web generate
 
 预期：测试通过，`.output/public/index.html` 包含「遇健我」和「王子健」。
 
-- [ ] **步骤 7：提交**
+- [x] **步骤 7：提交**
 
 ```bash
 git add apps/web
