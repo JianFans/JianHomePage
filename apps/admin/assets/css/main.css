@@ -1,0 +1,61 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0d0e;
+  --surface: #121617;
+  --surface-raised: #1a2021;
+  --surface-soft: #202728;
+  --text: #e5e8e4;
+  --muted: #8b9696;
+  --accent: #a5b5b5;
+  --warm: #ae9886;
+  --border: #2d3637;
+  --danger: #c18d82;
+  --focus: #d7e0de;
+  font-family: Inter, "Noto Sans SC", "Segoe UI", sans-serif;
+  font-synthesis: none;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#__nuxt {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 20rem;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--warm);
+  color: var(--bg);
+}

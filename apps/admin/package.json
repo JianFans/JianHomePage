@@ -1,0 +1,23 @@
+{
+  "name": "@yujian/admin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "nuxt": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@vue/test-utils": "latest",
+    "happy-dom": "latest",
+    "vitest": "latest",
+    "vue-tsc": "^3.3.11"
+  }
+}
