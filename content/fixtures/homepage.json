@@ -77,7 +77,11 @@
           "release_04",
           "release_05"
         ],
-        "limit": 5
+        "limit": 5,
+        "moreLink": {
+          "provider": "qq-music",
+          "url": "https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB"
+        }
       },
       {
         "id": "section_video",
@@ -370,6 +374,8 @@
         "en": "Sample Track 03"
       },
       "durationSeconds": 194,
+      "previewAssetId": "asset_preview_sample",
+      "previewDurationSeconds": 3,
       "platformLinks": [
         {
           "provider": "qq-music",
@@ -426,6 +432,8 @@
         "en": "Sample Track 05"
       },
       "durationSeconds": 231,
+      "previewAssetId": "asset_preview_sample",
+      "previewDurationSeconds": 3,
       "platformLinks": [
         {
           "provider": "qq-music",

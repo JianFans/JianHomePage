@@ -4,6 +4,7 @@ import { Images } from '@lucide/vue'
 import { computed } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
+import FallbackImage from '../ui/FallbackImage.vue'
 
 const props = defineProps<{
   items: Moment[]
@@ -37,13 +38,13 @@ const heading = computed(() => props.locale === 'en' ? 'Moments' : '片段')
         :key="item.moment.id"
         data-testid="moment-item"
       >
-        <img
+        <FallbackImage
           :src="item.asset.src"
           :alt="resolveLocalized(item.asset.alt, locale)"
           :width="item.asset.width"
           :height="item.asset.height"
           loading="lazy"
-        >
+        />
         <figcaption v-if="item.moment.caption">
           {{ resolveLocalized(item.moment.caption, locale) }}
         </figcaption>

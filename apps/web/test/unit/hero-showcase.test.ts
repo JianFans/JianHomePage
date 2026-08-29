@@ -84,6 +84,38 @@ describe('HeroShowcase', () => {
     expect(wrapper.findAll('[data-hero-progress]')[1]!.attributes('aria-current')).toBe('true')
   })
 
+  it('为配置的移动媒体输出响应式 source', () => {
+    stubReducedMotion(false)
+    const assets = [
+      ...imageAssets,
+      {
+        ...imageAssets[0],
+        id: 'asset_hero_mobile',
+        src: '/media/hero-mobile.webp',
+        width: 900,
+        height: 1200,
+      },
+    ] as Asset[]
+    const slides = [{
+      ...imageSlides[0],
+      mobileAssetId: 'asset_hero_mobile',
+    }] as HeroSlide[]
+
+    const wrapper = mount(HeroShowcase, {
+      props: {
+        slides,
+        assets,
+        locale: 'zh-CN',
+        brand: '遇健我',
+        artistName: '王子健',
+      },
+    })
+
+    expect(wrapper.get('picture source').attributes('media')).toBe('(max-width: 42rem)')
+    expect(wrapper.get('picture source').attributes('srcset')).toBe('/media/hero-mobile.webp')
+    expect(wrapper.get('picture img').attributes('src')).toBe('/media/hero-studio.webp')
+  })
+
   it('视频提供静音和暂停控制', () => {
     stubReducedMotion(false)
     const assets = [
@@ -158,5 +190,45 @@ describe('HeroShowcase', () => {
 
     expect(wrapper.find('video').exists()).toBe(false)
     expect(wrapper.get('img').attributes('src')).toBe('/media/hero-studio.webp')
+  })
+
+  it('视频加载失败时回退海报并隐藏失效控制', async () => {
+    stubReducedMotion(false)
+    const assets = [
+      ...imageAssets,
+      {
+        ...imageAssets[0],
+        id: 'asset_video',
+        kind: 'video',
+        src: '/media/hero.mp4',
+        mimeType: 'video/mp4',
+        posterAssetId: 'asset_hero_01',
+        durationSeconds: 12,
+      },
+    ] as Asset[]
+    const slides = [{
+      ...imageSlides[0],
+      id: 'hero_video',
+      mediaKind: 'video',
+      assetId: 'asset_video',
+      posterAssetId: 'asset_hero_01',
+      autoplay: true,
+    }] as HeroSlide[]
+    const wrapper = mount(HeroShowcase, {
+      props: {
+        slides,
+        assets,
+        locale: 'zh-CN',
+        brand: '遇健我',
+        artistName: '王子健',
+      },
+    })
+
+    await wrapper.get('video').trigger('error')
+
+    expect(wrapper.find('video').exists()).toBe(false)
+    expect(wrapper.get('img').attributes('src')).toBe('/media/hero-studio.webp')
+    expect(wrapper.find('[aria-label="暂停视频"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="开启声音"]').exists()).toBe(false)
   })
 })

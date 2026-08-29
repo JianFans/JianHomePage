@@ -1,8 +1,17 @@
 <script setup lang="ts">
-import { AlertCircle, LoaderCircle, Pause, Play, X } from '@lucide/vue'
+import {
+  AlertCircle,
+  LoaderCircle,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  X,
+} from '@lucide/vue'
 import { computed } from 'vue'
 import type { AudioPlayerController } from '../../composables/useAudioPlayer'
 import type { SupportedLocale } from '../../utils/localized'
+import FallbackImage from '../ui/FallbackImage.vue'
 import IconButton from '../ui/IconButton.vue'
 import PlatformLinks from '../ui/PlatformLinks.vue'
 
@@ -20,6 +29,8 @@ const labels = computed(() => props.locale === 'en'
       pause: 'Pause preview',
       resume: 'Resume preview',
       close: 'Close player',
+      previous: 'Previous track',
+      next: 'Next track',
       progress: 'Preview progress',
       error: 'Preview unavailable. Open on a music platform.',
     }
@@ -27,6 +38,8 @@ const labels = computed(() => props.locale === 'en'
       pause: '暂停试听',
       resume: '继续试听',
       close: '关闭播放器',
+      previous: '上一首',
+      next: '下一首',
       progress: '试听进度',
       error: '试听暂不可用，请前往音乐平台。',
     })
@@ -44,14 +57,14 @@ function updateProgress(event: Event) {
       data-testid="audio-dock"
       :aria-label="current.title"
     >
-      <img
+      <FallbackImage
         v-if="current.coverSrc"
         class="audio-dock__cover"
         :src="current.coverSrc"
         alt=""
         width="56"
         height="56"
-      >
+      />
 
       <div class="audio-dock__track">
         <strong>{{ current.title }}</strong>
@@ -85,6 +98,14 @@ function updateProgress(event: Event) {
         />
 
         <IconButton
+          :label="labels.previous"
+          :disabled="!player.canPrevious.value"
+          @click="player.previous"
+        >
+          <SkipBack aria-hidden="true" />
+        </IconButton>
+
+        <IconButton
           v-if="status !== 'error'"
           :label="status === 'playing' ? labels.pause : labels.resume"
           :pressed="status === 'playing'"
@@ -103,6 +124,14 @@ function updateProgress(event: Event) {
             v-else
             aria-hidden="true"
           />
+        </IconButton>
+
+        <IconButton
+          :label="labels.next"
+          :disabled="!player.canNext.value"
+          @click="player.next"
+        >
+          <SkipForward aria-hidden="true" />
         </IconButton>
 
         <IconButton

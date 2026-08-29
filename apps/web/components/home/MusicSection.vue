@@ -5,7 +5,7 @@ import type {
   Release,
   Track,
 } from '@yujian/schema'
-import { Headphones, LoaderCircle, Pause, Play } from '@lucide/vue'
+import { ArrowUpRight, Headphones, LoaderCircle, Pause, Play } from '@lucide/vue'
 import { computed } from 'vue'
 import type {
   AudioPlayerStatus,
@@ -13,6 +13,7 @@ import type {
 } from '../../composables/useAudioPlayer'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
+import FallbackImage from '../ui/FallbackImage.vue'
 import PlatformLinks from '../ui/PlatformLinks.vue'
 
 const props = defineProps<{
@@ -26,15 +27,15 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  preview: [track: AudioPlayerTrack]
+  preview: [track: AudioPlayerTrack, queue: AudioPlayerTrack[]]
 }>()
 
 const releaseById = computed(() => new Map(props.releases.map(release => [release.id, release])))
 const trackById = computed(() => new Map(props.tracks.map(track => [track.id, track])))
 const assetById = computed(() => new Map(props.assets.map(asset => [asset.id, asset])))
 const labels = computed(() => props.locale === 'en'
-  ? { heading: 'Music', preview: 'Preview' }
-  : { heading: '音乐', preview: '试听' })
+  ? { heading: 'Music', preview: 'Preview', all: 'View all music' }
+  : { heading: '音乐', preview: '试听', all: '查看全部音乐' })
 
 const cards = computed(() => props.section.itemIds
   .slice(0, props.section.limit)
@@ -62,6 +63,18 @@ const cards = computed(() => props.section.itemIds
     return { release, cover, playable }
   })
   .filter((card): card is NonNullable<typeof card> => Boolean(card)))
+const playableQueue = computed(() => cards.value.flatMap(card => (
+  card.playable ? [card.playable] : []
+)))
+const moreHref = computed(() => {
+  try {
+    return props.section.moreLink && new URL(props.section.moreLink.url).protocol === 'https:'
+      ? props.section.moreLink.url
+      : null
+  } catch {
+    return null
+  }
+})
 
 function previewLabel(track: AudioPlayerTrack) {
   return `${labels.value.preview}${track.title}`
@@ -69,6 +82,10 @@ function previewLabel(track: AudioPlayerTrack) {
 
 function isActive(track: AudioPlayerTrack) {
   return props.activeTrackId === track.id
+}
+
+function preview(track: AudioPlayerTrack) {
+  emit('preview', track, playableQueue.value)
 }
 </script>
 
@@ -83,6 +100,18 @@ function isActive(track: AudioPlayerTrack) {
       <h2 :id="`${section.id}-title`">
         {{ labels.heading }}
       </h2>
+      <a
+        v-if="moreHref"
+        class="section-more"
+        data-testid="music-more"
+        :href="moreHref"
+        target="_blank"
+        rel="noopener noreferrer"
+        :aria-label="labels.all"
+        :title="labels.all"
+      >
+        <ArrowUpRight aria-hidden="true" />
+      </a>
     </div>
 
     <div class="music-grid">
@@ -102,16 +131,16 @@ function isActive(track: AudioPlayerTrack) {
             data-testid="preview-trigger"
             :aria-label="previewLabel(card.playable)"
             :aria-pressed="isActive(card.playable) && playerStatus === 'playing'"
-            @click="emit('preview', card.playable)"
+            @click="preview(card.playable)"
           >
-            <img
+            <FallbackImage
               v-if="card.cover"
               :src="card.cover.src"
               :alt="resolveLocalized(card.cover.alt, locale)"
               width="720"
               height="720"
               loading="lazy"
-            >
+            />
             <span class="music-cover-state">
               <LoaderCircle
                 v-if="isActive(card.playable) && playerStatus === 'loading'"
@@ -127,14 +156,14 @@ function isActive(track: AudioPlayerTrack) {
               />
             </span>
           </button>
-          <img
+          <FallbackImage
             v-else-if="card.cover"
             :src="card.cover.src"
             :alt="resolveLocalized(card.cover.alt, locale)"
             width="720"
             height="720"
             loading="lazy"
-          >
+          />
         </div>
 
         <div class="music-meta">
@@ -179,6 +208,29 @@ function isActive(track: AudioPlayerTrack) {
   font-size: 0.95rem;
   font-weight: 580;
   letter-spacing: 0;
+}
+
+.section-more {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-left: auto;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tool);
+  color: var(--color-muted);
+}
+
+.section-more:hover,
+.section-more:focus-visible {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.section-more svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  stroke-width: 1.6;
 }
 
 .music-grid {

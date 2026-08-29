@@ -6,6 +6,10 @@ import IconButton from '../ui/IconButton.vue'
 
 const { t } = useI18n({ useScope: 'global' })
 const { noticeVisible } = useLocale()
+
+defineProps<{
+  raised?: boolean
+}>()
 </script>
 
 <template>
@@ -13,6 +17,7 @@ const { noticeVisible } = useLocale()
     <div
       v-if="noticeVisible"
       class="locale-notice"
+      :class="{ 'locale-notice--raised': raised }"
       role="status"
       aria-live="polite"
     >
@@ -46,6 +51,15 @@ const { noticeVisible } = useLocale()
   box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.3);
   color: var(--color-text);
   font-size: 0.8rem;
+  pointer-events: none;
+}
+
+.locale-notice--raised {
+  bottom: 6.5rem;
+}
+
+.locale-notice :deep(.icon-button-shell) {
+  pointer-events: auto;
 }
 
 .locale-notice > svg {

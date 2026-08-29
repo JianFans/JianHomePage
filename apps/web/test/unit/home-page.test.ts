@@ -17,6 +17,11 @@ describe('公开首页', () => {
 
     expect(wrapper.find('#music').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid="music-card"]')).toHaveLength(5)
+    const more = wrapper.get('[data-testid="music-more"]')
+    expect(more.attributes('aria-label')).toMatch(/查看全部音乐|View all music/)
+    expect(more.attributes('href')).toBe(
+      'https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB',
+    )
   })
 
   it('按后台顺序渲染所有有内容的启用板块', async () => {
@@ -32,6 +37,7 @@ describe('公开首页', () => {
     const footer = wrapper.get('footer')
 
     expect(footer.text()).toContain('yujian.me')
+    expect(footer.text()).toContain('© 2026')
     expect(footer.find('[href="https://yujian.me"]').exists()).toBe(true)
     expect(footer.find('[aria-label="微博"], [aria-label="Weibo"]').exists()).toBe(true)
   })

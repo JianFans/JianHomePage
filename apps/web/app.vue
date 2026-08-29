@@ -8,7 +8,7 @@ const { locale } = useLocale()
 </script>
 
 <template>
-  <main>
+  <main :class="{ 'main--audio-active': player.current.value }">
     <NuxtPage />
   </main>
   <div data-testid="audio-dock-host">
@@ -18,3 +18,9 @@ const { locale } = useLocale()
     />
   </div>
 </template>
+
+<style>
+.main--audio-active {
+  padding-bottom: 6.5rem;
+}
+</style>

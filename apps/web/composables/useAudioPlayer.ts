@@ -1,6 +1,6 @@
 import type { PlatformLink } from '@yujian/schema'
 import { useNuxtApp } from '#app'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 export type AudioPlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error'
 
@@ -67,6 +67,15 @@ export function createAudioPlayerController({
   const state = createAudioPlayerState()
   const currentTime = ref(0)
   const duration = ref(0)
+  const queue = ref<AudioPlayerTrack[]>([])
+  const currentQueueIndex = computed(() => queue.value.findIndex(
+    track => track.id === state.current.value?.id,
+  ))
+  const canPrevious = computed(() => currentQueueIndex.value > 0)
+  const canNext = computed(() => (
+    currentQueueIndex.value >= 0
+    && currentQueueIndex.value < queue.value.length - 1
+  ))
   let media: AudioMedia | null = null
 
   const handlePlay = () => {
@@ -109,6 +118,9 @@ export function createAudioPlayerController({
   }
 
   async function play(track: AudioPlayerTrack) {
+    if (!queue.value.some(item => item.id === track.id)) {
+      queue.value = [track]
+    }
     const activeMedia = getMedia()
     if (state.current.value && state.current.value.id !== track.id) {
       activeMedia.pause()
@@ -144,7 +156,12 @@ export function createAudioPlayerController({
     }
   }
 
-  async function toggle(track: AudioPlayerTrack) {
+  async function toggle(track: AudioPlayerTrack, nextQueue?: AudioPlayerTrack[]) {
+    if (nextQueue?.length) {
+      queue.value = nextQueue.filter((item, index, items) => (
+        items.findIndex(candidate => candidate.id === item.id) === index
+      ))
+    }
     if (state.current.value?.id !== track.id) {
       await play(track)
       return
@@ -154,6 +171,20 @@ export function createAudioPlayerController({
       return
     }
     await resume()
+  }
+
+  async function previous() {
+    if (!canPrevious.value) {
+      return
+    }
+    await play(queue.value[currentQueueIndex.value - 1]!)
+  }
+
+  async function next() {
+    if (!canNext.value) {
+      return
+    }
+    await play(queue.value[currentQueueIndex.value + 1]!)
   }
 
   function seek(nextTime: number) {
@@ -179,6 +210,7 @@ export function createAudioPlayerController({
       media = null
     }
     state.close()
+    queue.value = []
     currentTime.value = 0
     duration.value = 0
   }
@@ -187,10 +219,15 @@ export function createAudioPlayerController({
     ...state,
     currentTime,
     duration,
+    queue,
+    canPrevious,
+    canNext,
     play,
     pause,
     resume,
     toggle,
+    previous,
+    next,
     seek,
     close,
   }

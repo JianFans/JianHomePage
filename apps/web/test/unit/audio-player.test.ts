@@ -206,4 +206,35 @@ describe('音频播放器控制器', () => {
     expect(player.currentTime.value).toBe(0)
     expect(media.currentTime).toBe(0)
   })
+
+  it('在试听队列中提供上一首和下一首导航', async () => {
+    const media = new FakeAudio()
+    const player = createAudioPlayerController({ createAudio: () => media })
+
+    await player.toggle(trackA, [trackA, trackB])
+
+    expect(player.canPrevious.value).toBe(false)
+    expect(player.canNext.value).toBe(true)
+
+    await player.next()
+    expect(player.current.value?.id).toBe(trackB.id)
+    expect(player.canPrevious.value).toBe(true)
+    expect(player.canNext.value).toBe(false)
+
+    await player.previous()
+    expect(player.current.value?.id).toBe(trackA.id)
+  })
+
+  it('队列边界不会循环或替换当前曲目', async () => {
+    const media = new FakeAudio()
+    const player = createAudioPlayerController({ createAudio: () => media })
+
+    await player.toggle(trackA, [trackA, trackB])
+    await player.previous()
+    expect(player.current.value?.id).toBe(trackA.id)
+
+    await player.next()
+    await player.next()
+    expect(player.current.value?.id).toBe(trackB.id)
+  })
 })

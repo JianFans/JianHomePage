@@ -4,6 +4,7 @@ import { ArrowUpRight, Film } from '@lucide/vue'
 import { computed } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
+import FallbackImage from '../ui/FallbackImage.vue'
 
 const props = defineProps<{
   items: Video[]
@@ -58,13 +59,13 @@ function durationLabel(seconds: number) {
         rel="noopener noreferrer"
         :aria-label="`${labels.open}: ${resolveLocalized(card.video.title, locale)}`"
       >
-        <img
+        <FallbackImage
           :src="card.poster.src"
           :alt="resolveLocalized(card.poster.alt, locale)"
           width="1600"
           height="900"
           loading="lazy"
-        >
+        />
         <span class="video-scrim" />
         <span class="video-meta">
           <strong>{{ resolveLocalized(card.video.title, locale) }}</strong>

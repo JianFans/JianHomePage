@@ -10,6 +10,7 @@ const props = defineProps<{
   canonicalUrl: string
   socialLinks: PlatformLink[]
   locale: SupportedLocale
+  copyrightYear: number
 }>()
 
 const hostname = computed(() => {
@@ -31,7 +32,7 @@ const backLabel = computed(() => props.locale === 'en' ? 'Back to top' : '返回
         :aria-label="brand"
       >
         <strong>{{ brand }}</strong>
-        <small>{{ hostname }}</small>
+        <small>{{ hostname }} · © {{ copyrightYear }}</small>
       </a>
 
       <PlatformLinks
@@ -72,6 +73,7 @@ const backLabel = computed(() => props.locale === 'en' ? 'Back to top' : '返回
 .site-footer__identity {
   display: inline-flex;
   width: fit-content;
+  min-height: 2.75rem;
   align-items: baseline;
   gap: 0.65rem;
   text-decoration: none;

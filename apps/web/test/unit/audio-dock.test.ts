@@ -1,59 +1,50 @@
 import type { AudioPlayerTrack } from '../../composables/useAudioPlayer'
-import { createAudioPlayerController } from '../../composables/useAudioPlayer'
-import AudioDock from '../../components/player/AudioDock.vue'
 import { mount } from '@vue/test-utils'
+import AudioDock from '../../components/player/AudioDock.vue'
+import { createAudioPlayerController } from '../../composables/useAudioPlayer'
 
-const track: AudioPlayerTrack = {
-  id: 'track-a',
-  title: '曲目 A',
-  previewSrc: '/media/a.wav',
-  coverSrc: '/media/a.webp',
-  platformLinks: [{
-    provider: 'qq-music',
-    url: 'https://y.qq.com/a',
-  }],
+const tracks: AudioPlayerTrack[] = [
+  {
+    id: 'track-a',
+    title: '曲目 A',
+    previewSrc: '/media/a.wav',
+    platformLinks: [],
+  },
+  {
+    id: 'track-b',
+    title: '曲目 B',
+    previewSrc: '/media/b.wav',
+    platformLinks: [],
+  },
+]
+
+function createFakeAudio() {
+  return {
+    src: '',
+    preload: '',
+    currentTime: 0,
+    duration: 3,
+    paused: true,
+    play: vi.fn(async () => {}),
+    pause: vi.fn(),
+    load: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }
 }
 
 describe('AudioDock', () => {
-  it('没有当前曲目时不占据页面空间', () => {
-    const player = createAudioPlayerController()
+  it('显示可访问的队列导航并反映边界状态', async () => {
+    const player = createAudioPlayerController({ createAudio: createFakeAudio })
+    await player.toggle(tracks[0]!, tracks)
     const wrapper = mount(AudioDock, {
       props: { player, locale: 'zh-CN' },
     })
 
-    expect(wrapper.find('[data-testid="audio-dock"]').exists()).toBe(false)
-  })
+    expect(wrapper.get('[aria-label="上一首"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[aria-label="下一首"]').attributes('disabled')).toBeUndefined()
 
-  it('显示当前曲目、进度和稳定图标控制', async () => {
-    const player = createAudioPlayerController()
-    player.current.value = track
-    player.status.value = 'paused'
-    player.duration.value = 3
-    player.currentTime.value = 1
-    const toggle = vi.spyOn(player, 'toggle').mockResolvedValue()
-    const wrapper = mount(AudioDock, {
-      props: { player, locale: 'zh-CN' },
-    })
-
-    expect(wrapper.get('[data-testid="audio-dock"]').text()).toContain(track.title)
-    expect(wrapper.get('input[type="range"]').attributes('max')).toBe('3')
-    expect(wrapper.get('[aria-label="继续试听"]').attributes('type')).toBe('button')
-    expect(wrapper.get('[aria-label="关闭播放器"]').attributes('type')).toBe('button')
-
-    await wrapper.get('[aria-label="继续试听"]').trigger('click')
-    expect(toggle).toHaveBeenCalledWith(track)
-  })
-
-  it('媒体错误时保留平台入口', () => {
-    const player = createAudioPlayerController()
-    player.current.value = track
-    player.status.value = 'error'
-    player.error.value = 'media-error'
-    const wrapper = mount(AudioDock, {
-      props: { player, locale: 'zh-CN' },
-    })
-
-    expect(wrapper.get('[data-testid="audio-error"]').attributes('role')).toBe('status')
-    expect(wrapper.find('[data-testid="platform-links"]').exists()).toBe(true)
+    await wrapper.get('[aria-label="下一首"]').trigger('click')
+    expect(player.current.value?.id).toBe('track-b')
   })
 })

@@ -3,6 +3,7 @@ import type { ArtistProfile, Asset } from '@yujian/schema'
 import { computed } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
+import FallbackImage from '../ui/FallbackImage.vue'
 import PlatformLinks from '../ui/PlatformLinks.vue'
 
 const props = defineProps<{
@@ -20,7 +21,7 @@ const portrait = computed(() => props.assets.find(asset => asset.id === props.ar
     class="artist-section"
     :aria-labelledby="`${artist.id}-name`"
   >
-    <img
+    <FallbackImage
       v-if="portrait"
       class="artist-texture"
       :src="portrait.src"
@@ -28,7 +29,7 @@ const portrait = computed(() => props.assets.find(asset => asset.id === props.ar
       :width="portrait.width"
       :height="portrait.height"
       loading="lazy"
-    >
+    />
     <div class="artist-scrim" />
     <div class="artist-inner">
       <h2 :id="`${artist.id}-name`">

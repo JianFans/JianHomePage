@@ -13,6 +13,7 @@ import type { CSSProperties } from 'vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
+import FallbackImage from '../ui/FallbackImage.vue'
 import IconButton from '../ui/IconButton.vue'
 
 const props = defineProps<{
@@ -27,6 +28,7 @@ const activeIndex = ref(0)
 const video = ref<HTMLVideoElement | null>(null)
 const muted = ref(true)
 const paused = ref(false)
+const videoFailed = ref(false)
 const mediaQuery = import.meta.client
   ? window.matchMedia('(prefers-reduced-motion: reduce)')
   : null
@@ -38,6 +40,11 @@ const activeAsset = computed(() => {
   const slide = activeSlide.value
   return slide ? assetsById.value.get(slide.assetId) : undefined
 })
+const mobileAsset = computed(() => {
+  const id = activeSlide.value?.mobileAssetId
+  const asset = id ? assetsById.value.get(id) : undefined
+  return asset && (asset.kind === 'image' || asset.kind === 'gif') ? asset : undefined
+})
 const posterAsset = computed(() => {
   const slide = activeSlide.value
   const asset = activeAsset.value
@@ -46,7 +53,7 @@ const posterAsset = computed(() => {
 })
 const imageAsset = computed(() => {
   if (activeSlide.value?.mediaKind === 'video') {
-    return reducedMotion.value ? posterAsset.value : undefined
+    return reducedMotion.value || videoFailed.value ? posterAsset.value : undefined
   }
   return activeAsset.value
 })
@@ -54,6 +61,7 @@ const videoEnabled = computed(() => (
   activeSlide.value?.mediaKind === 'video'
   && activeAsset.value?.kind === 'video'
   && !reducedMotion.value
+  && !videoFailed.value
 ))
 const targetHref = computed(() => {
   const target = activeSlide.value?.target
@@ -99,6 +107,7 @@ function goTo(index: number) {
   activeIndex.value = index
   muted.value = true
   paused.value = false
+  videoFailed.value = false
 }
 
 function previous() {
@@ -135,14 +144,20 @@ async function togglePlayback() {
       data-testid="hero-media"
       :style="focalStyle"
     >
-      <img
-        v-if="imageAsset"
-        :src="imageAsset.src"
-        :alt="resolveLocalized(imageAsset.alt, locale)"
-        width="1920"
-        height="1200"
-        fetchpriority="high"
-      >
+      <picture v-if="imageAsset">
+        <source
+          v-if="mobileAsset"
+          media="(max-width: 42rem)"
+          :srcset="mobileAsset.src"
+        >
+        <FallbackImage
+          :src="imageAsset.src"
+          :alt="resolveLocalized(imageAsset.alt, locale)"
+          width="1920"
+          height="1200"
+          fetchpriority="high"
+        />
+      </picture>
       <video
         v-else-if="videoEnabled && activeAsset"
         ref="video"
@@ -155,6 +170,7 @@ async function togglePlayback() {
         preload="metadata"
         @play="paused = false"
         @pause="paused = true"
+        @error="videoFailed = true"
       />
     </div>
 
@@ -260,6 +276,7 @@ async function togglePlayback() {
 }
 
 .hero-media,
+.hero-media picture,
 .hero-media img,
 .hero-media video,
 .hero-scrim {
@@ -267,6 +284,10 @@ async function togglePlayback() {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+.hero-media picture {
+  display: block;
 }
 
 .hero-media img,
@@ -355,24 +376,36 @@ async function togglePlayback() {
 .hero-progress {
   position: absolute;
   z-index: 3;
-  bottom: 3.4rem;
+  bottom: 1.35rem;
   left: max(1.25rem, calc((100vw - var(--content-max)) / 2));
   display: flex;
-  gap: 0.45rem;
+  gap: 0.15rem;
 }
 
 .hero-progress button {
-  width: 2rem;
-  height: 0.25rem;
+  position: relative;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   border: 0;
   border-radius: 0;
-  background: var(--color-muted);
+  background: transparent;
   cursor: pointer;
+}
+
+.hero-progress button::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2rem;
+  height: 0.25rem;
+  transform: translate(-50%, -50%);
+  background: var(--color-muted);
+  content: "";
   opacity: 0.4;
 }
 
-.hero-progress button[aria-current="true"] {
+.hero-progress button[aria-current="true"]::before {
   background: var(--color-text);
   opacity: 1;
 }
@@ -408,7 +441,7 @@ async function togglePlayback() {
 
   .hero-progress {
     left: 1.25rem;
-    bottom: 2.6rem;
+    bottom: 0.75rem;
   }
 }
 </style>

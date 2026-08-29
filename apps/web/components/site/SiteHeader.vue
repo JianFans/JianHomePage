@@ -96,7 +96,9 @@ const labels = computed(() => props.locale === 'en'
 
 .site-identity {
   display: flex;
+  min-height: 2.75rem;
   align-items: baseline;
+  justify-content: center;
   gap: 0.7rem;
   text-decoration: none;
 }

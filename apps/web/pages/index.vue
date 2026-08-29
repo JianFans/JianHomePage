@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useHead } from '#imports'
 import { computed } from 'vue'
 import ArtistSection from '../components/home/ArtistSection.vue'
 import EventSection from '../components/home/EventSection.vue'
@@ -14,6 +15,10 @@ import { useContentSnapshot } from '../composables/useContentSnapshot'
 import { useLocale } from '../composables/useLocale'
 import { resolveLocalized } from '../utils/localized'
 import { resolveHomepageSections } from '../utils/sections'
+import {
+  buildStructuredData,
+  serializeStructuredData,
+} from '../utils/structured-data'
 
 const snapshot = useContentSnapshot()
 const { locale, selectLocale } = useLocale()
@@ -21,6 +26,19 @@ const player = useAudioPlayer()
 const sections = computed(() => resolveHomepageSections(snapshot, locale.value))
 const brand = computed(() => resolveLocalized(snapshot.site.brand, locale.value))
 const artistName = computed(() => resolveLocalized(snapshot.site.artistName, locale.value))
+const copyrightYear = new Date(snapshot.generatedAt).getUTCFullYear()
+const structuredData = serializeStructuredData(buildStructuredData(snapshot, 'zh-CN'))
+
+useHead(() => ({
+  htmlAttrs: {
+    lang: locale.value,
+  },
+  script: [{
+    key: 'homepage-structured-data',
+    type: 'application/ld+json',
+    innerHTML: structuredData,
+  }],
+}))
 
 function toggleLocale() {
   selectLocale(locale.value === 'zh-CN' ? 'en' : 'zh-CN')
@@ -107,8 +125,9 @@ function toggleLocale() {
     :canonical-url="snapshot.site.canonicalUrl"
     :social-links="snapshot.site.socialLinks"
     :locale="locale"
+    :copyright-year="copyrightYear"
   />
-  <LocaleNotice />
+  <LocaleNotice :raised="Boolean(player.current.value)" />
 </template>
 
 <style scoped>
