@@ -2,13 +2,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
 	"yujian.me/server/internal/config"
+	"yujian.me/server/internal/ports"
+	"yujian.me/server/internal/providers/edgeone"
+	"yujian.me/server/internal/providers/local"
+	providerS3 "yujian.me/server/internal/providers/s3"
+	"yujian.me/server/internal/store/postgres"
 )
 
 func TestHealthHandler(t *testing.T) {
@@ -94,6 +101,125 @@ func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 	handler.ServeHTTP(publish, publishRequest)
 	if publish.Code != http.StatusAccepted {
 		t.Fatalf("publish: status=%d body=%s", publish.Code, publish.Body.String())
+	}
+}
+
+func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.T) {
+	database := &productionDatabaseFake{}
+	factory := productionFactory{
+		openDatabase:    func(context.Context, string) (productionDatabase, error) { return database, nil },
+		newBlobStore:    func(providerS3.Config) (ports.BlobStore, error) { return local.NewBlobStore(), nil },
+		newBuildTrigger: func(edgeone.Config) (ports.BuildTrigger, error) { return local.NewBuildTrigger(), nil },
+	}
+	dependencies, closeResources, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
+	if err != nil {
+		t.Fatalf("build production dependencies: %v", err)
+	}
+	if dependencies.Content == nil || dependencies.Assets == nil || dependencies.Publish == nil {
+		t.Fatalf("incomplete production dependencies %#v", dependencies)
+	}
+	if database.beginCalls != 1 || database.tx == nil || !database.tx.committed {
+		t.Fatalf("migrations did not commit in a database transaction: %#v", database)
+	}
+	if err := closeResources(); err != nil {
+		t.Fatalf("close resources: %v", err)
+	}
+	if !database.closed {
+		t.Fatal("database was not closed")
+	}
+}
+
+func TestBuildProductionDependenciesClosesDatabaseOnProviderFailure(t *testing.T) {
+	database := &productionDatabaseFake{}
+	sentinel := errors.New("object storage unavailable")
+	factory := productionFactory{
+		openDatabase:    func(context.Context, string) (productionDatabase, error) { return database, nil },
+		newBlobStore:    func(providerS3.Config) (ports.BlobStore, error) { return nil, sentinel },
+		newBuildTrigger: func(edgeone.Config) (ports.BuildTrigger, error) { return local.NewBuildTrigger(), nil },
+	}
+	_, _, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected provider error, got %v", err)
+	}
+	if !database.closed {
+		t.Fatal("database was not closed after provider failure")
+	}
+}
+
+type productionDatabaseFake struct {
+	tx         *productionTxFake
+	beginCalls int
+	closed     bool
+}
+
+func (*productionDatabaseFake) ExecContext(context.Context, string, ...any) (postgres.ExecResult, error) {
+	return productionResultFake(1), nil
+}
+func (*productionDatabaseFake) QueryRowContext(context.Context, string, ...any) postgres.Row {
+	return productionRowFake{}
+}
+func (*productionDatabaseFake) QueryContext(context.Context, string, ...any) (postgres.Rows, error) {
+	return &productionRowsFake{}, nil
+}
+func (database *productionDatabaseFake) BeginTx(context.Context) (postgres.Tx, error) {
+	database.beginCalls++
+	database.tx = &productionTxFake{}
+	return database.tx, nil
+}
+func (database *productionDatabaseFake) Close() error {
+	database.closed = true
+	return nil
+}
+
+type productionTxFake struct {
+	committed bool
+}
+
+func (*productionTxFake) ExecContext(context.Context, string, ...any) (postgres.ExecResult, error) {
+	return productionResultFake(1), nil
+}
+func (*productionTxFake) QueryRowContext(context.Context, string, ...any) postgres.Row {
+	return productionRowFake{}
+}
+func (*productionTxFake) QueryContext(context.Context, string, ...any) (postgres.Rows, error) {
+	return &productionRowsFake{}, nil
+}
+func (*productionTxFake) BeginTx(context.Context) (postgres.Tx, error) {
+	return nil, errors.New("nested transaction")
+}
+func (tx *productionTxFake) Commit(context.Context) error { tx.committed = true; return nil }
+func (*productionTxFake) Rollback(context.Context) error  { return nil }
+
+type productionResultFake int64
+
+func (result productionResultFake) RowsAffected() (int64, error) { return int64(result), nil }
+
+type productionRowFake struct{}
+
+func (productionRowFake) Scan(...any) error { return errors.New("no rows") }
+
+type productionRowsFake struct{}
+
+func (*productionRowsFake) Next() bool        { return false }
+func (*productionRowsFake) Scan(...any) error { return errors.New("no rows") }
+func (*productionRowsFake) Err() error        { return nil }
+func (*productionRowsFake) Close() error      { return nil }
+
+func productionSettings() config.Config {
+	return config.Config{
+		Environment:         "production",
+		DatabaseURL:         "postgres://example",
+		OIDCIssuer:          "https://id.example.test",
+		OIDCAudience:        "admin",
+		AllowedAdminOrigins: []string{"https://admin.yujian.me"},
+		S3Endpoint:          "https://cos.example.test",
+		S3Region:            "ap-singapore",
+		S3Bucket:            "media",
+		S3AccessKeyID:       "access",
+		S3SecretAccessKey:   "secret",
+		EdgeOneTriggerURL:   "https://edgeone.example.test/trigger",
+		EdgeOneStatusURL:    "https://edgeone.example.test/status",
+		EdgeOneToken:        "token",
 	}
 }
 

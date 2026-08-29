@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,9 +19,12 @@ import (
 	"yujian.me/server/internal/contract"
 	"yujian.me/server/internal/httpapi"
 	"yujian.me/server/internal/ports"
+	"yujian.me/server/internal/providers/edgeone"
 	"yujian.me/server/internal/providers/local"
+	providerS3 "yujian.me/server/internal/providers/s3"
 	"yujian.me/server/internal/publish"
 	"yujian.me/server/internal/store/memory"
+	"yujian.me/server/internal/store/postgres"
 )
 
 func main() {
@@ -40,8 +44,18 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, settings config.Config, logger *slog.Logger) error {
-	handler, err := buildHandler(settings, ServiceDependencies{})
+func run(ctx context.Context, settings config.Config, logger *slog.Logger) (returnErr error) {
+	dependencies := ServiceDependencies{}
+	closeResources := func() error { return nil }
+	if settings.Environment == "production" {
+		var err error
+		dependencies, closeResources, err = buildProductionDependencies(ctx, settings, defaultProductionFactory())
+		if err != nil {
+			return err
+		}
+		defer func() { returnErr = errors.Join(returnErr, closeResources()) }()
+	}
+	handler, err := buildHandler(settings, dependencies)
 	if err != nil {
 		return err
 	}
@@ -52,6 +66,84 @@ type ServiceDependencies struct {
 	Content httpapi.ContentService
 	Assets  httpapi.AssetService
 	Publish httpapi.PublishService
+}
+
+type productionDatabase interface {
+	postgres.Executor
+	Close() error
+}
+
+type productionFactory struct {
+	openDatabase    func(context.Context, string) (productionDatabase, error)
+	newBlobStore    func(providerS3.Config) (ports.BlobStore, error)
+	newBuildTrigger func(edgeone.Config) (ports.BuildTrigger, error)
+}
+
+func defaultProductionFactory() productionFactory {
+	return productionFactory{
+		openDatabase: func(ctx context.Context, databaseURL string) (productionDatabase, error) {
+			return postgres.Open(ctx, databaseURL)
+		},
+		newBlobStore: func(settings providerS3.Config) (ports.BlobStore, error) {
+			return providerS3.NewBlobStore(settings)
+		},
+		newBuildTrigger: func(settings edgeone.Config) (ports.BuildTrigger, error) {
+			return edgeone.NewClient(settings)
+		},
+	}
+}
+
+func buildProductionDependencies(
+	ctx context.Context,
+	settings config.Config,
+	factory productionFactory,
+) (ServiceDependencies, func() error, error) {
+	if settings.Environment != "production" {
+		return ServiceDependencies{}, nil, errors.New("production environment is required")
+	}
+	database, err := factory.openDatabase(ctx, settings.DatabaseURL)
+	if err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("open production database: %w", err)
+	}
+	closeOnError := true
+	defer func() {
+		if closeOnError {
+			_ = database.Close()
+		}
+	}()
+	if err := postgres.Migrate(ctx, database); err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("migrate production database: %w", err)
+	}
+	blobs, err := factory.newBlobStore(providerS3.Config{
+		Endpoint: settings.S3Endpoint, Region: settings.S3Region, Bucket: settings.S3Bucket,
+		AccessKeyID: settings.S3AccessKeyID, SecretAccessKey: settings.S3SecretAccessKey,
+		SessionToken: settings.S3SessionToken, UsePathStyle: settings.S3UsePathStyle, RequireHTTPS: true,
+	})
+	if err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("configure production object storage: %w", err)
+	}
+	trigger, err := factory.newBuildTrigger(edgeone.Config{
+		TriggerURL: settings.EdgeOneTriggerURL, StatusURL: settings.EdgeOneStatusURL,
+		Token: settings.EdgeOneToken, RequireHTTPS: true,
+	})
+	if err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("configure EdgeOne build trigger: %w", err)
+	}
+	validator := contract.NewValidator()
+	dependencies := ServiceDependencies{
+		Content: content.NewService(content.ServiceOptions{
+			Store: postgres.NewContentRepository(database), Validator: validator,
+		}),
+		Assets: assets.NewService(assets.ServiceOptions{
+			Repository: postgres.NewAssetRepository(database), BlobStore: blobs,
+		}),
+		Publish: publish.NewService(publish.ServiceOptions{
+			Repository: postgres.NewPublishRepository(database), BlobStore: blobs,
+			BuildTrigger: trigger, Validator: validator,
+		}),
+	}
+	closeOnError = false
+	return dependencies, database.Close, nil
 }
 
 func buildHandler(settings config.Config, dependencies ServiceDependencies) (http.Handler, error) {

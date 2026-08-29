@@ -9,35 +9,30 @@ import (
 	"sort"
 )
 
-// Execer is deliberately smaller than a concrete database driver. A pgx
-// pool, a transaction wrapper, or a deterministic test fake can implement it.
-type Execer interface {
-	ExecContext(context.Context, string, ...any) error
-}
-
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
 // Migrate executes all embedded migrations in filename order in one database
 // transaction. The advisory lock prevents two application instances from
 // applying the same schema concurrently.
-func Migrate(ctx context.Context, db Execer) error {
+func Migrate(ctx context.Context, db Executor) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if db == nil {
 		return errors.New("migration database is required")
 	}
-	if err := db.ExecContext(ctx, "BEGIN"); err != nil {
+	tx, err := db.BeginTx(ctx)
+	if err != nil {
 		return fmt.Errorf("begin migration transaction: %w", err)
 	}
 	committed := false
 	defer func() {
 		if !committed {
-			_ = db.ExecContext(context.Background(), "ROLLBACK")
+			_ = tx.Rollback(context.Background())
 		}
 	}()
-	if err := db.ExecContext(ctx, "SELECT pg_advisory_xact_lock(865734219)"); err != nil {
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(865734219)"); err != nil {
 		return fmt.Errorf("acquire migration lock: %w", err)
 	}
 	entries, err := fs.ReadDir(migrationFiles, "migrations")
@@ -56,11 +51,11 @@ func Migrate(ctx context.Context, db Execer) error {
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
-		if err := db.ExecContext(ctx, string(statement)); err != nil {
+		if _, err := tx.ExecContext(ctx, string(statement)); err != nil {
 			return fmt.Errorf("execute migration %s: %w", name, err)
 		}
 	}
-	if err := db.ExecContext(ctx, "COMMIT"); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit migrations: %w", err)
 	}
 	committed = true
