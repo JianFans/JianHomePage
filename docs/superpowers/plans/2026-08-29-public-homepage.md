@@ -136,7 +136,7 @@ pnpm lint
 
 预期：全部通过且没有警告。
 
-- [x] **步骤 7：提交**
+- [ ] **步骤 7：提交**
 
 ```bash
 git add AGENTS.md package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json eslint.config.mjs apps/web
@@ -592,15 +592,15 @@ git commit -m "feat(首页): 补全影像现场与人物板块"
 - 创建：`apps/web/test/e2e/home.spec.ts`
 - 创建：`apps/web/test/e2e/accessibility.spec.ts`
 
-- [ ] **步骤 1：编写桌面与移动端失败测试**
+- [x] **步骤 1：编写桌面与移动端失败测试**
 
 `home.spec.ts` 使用 `1440 × 1000` 和 `390 × 844` 两个视口，验证：品牌和人物首屏可见、每个启用板块出现、语言不改 URL、偏好写入 `localStorage`、有试听曲目显示 Dock、无试听曲目只显示平台入口、移动端没有依赖悬浮的操作。
 
-- [ ] **步骤 2：编写可访问性失败测试**
+- [x] **步骤 2：编写可访问性失败测试**
 
 `accessibility.spec.ts` 使用 axe-core 扫描首页，键盘依次访问导航、播放、平台和语言按钮；断言视频存在暂停控制，所有图标按钮具有可访问名称。
 
-- [ ] **步骤 3：运行端到端测试并记录失败**
+- [x] **步骤 3：运行端到端测试并记录失败**
 
 运行：
 
@@ -611,15 +611,15 @@ pnpm --filter @yujian/web test:e2e
 
 预期：首次运行因响应式、结构化数据或可访问细节缺失而失败，失败信息与测试意图一致。
 
-- [ ] **步骤 4：实现 SEO 和响应式细节**
+- [x] **步骤 4：实现 SEO 和响应式细节**
 
 添加规范 URL、中文 Open Graph、`robots.txt`、站点地图和 `MusicGroup`、`MusicRecording`、`VideoObject`、`MusicEvent` JSON-LD。CSS 确保触控目标至少 `44 × 44 CSS px`，没有水平滚动，所有固定格式区域有 `aspect-ratio`，`prefers-reduced-motion` 禁用自动切换和非必要过渡。
 
-- [ ] **步骤 5：执行截图和画布像素检查**
+- [x] **步骤 5：执行截图和画布像素检查**
 
 端到端测试保存桌面和移动端全页截图，并检查英雄媒体区域的像素方差不为零，证明视觉资源成功渲染。人工检查文字不重叠、下一板块在首屏底部可见、Dock 不遮挡页脚操作。
 
-- [ ] **步骤 6：运行完整前端验证**
+- [x] **步骤 6：运行完整前端验证**
 
 运行：
 
@@ -633,7 +633,7 @@ pnpm --filter @yujian/web test:e2e
 
 预期：全部通过且无控制台错误。
 
-- [ ] **步骤 7：提交**
+- [x] **步骤 7：提交**
 
 ```bash
 git add apps/web
@@ -650,15 +650,15 @@ git commit -m "test(首页): 完成响应式与可访问性验收"
 - 修改：`README.md`
 - 测试：`scripts/verify-static-output.test.mjs`
 
-- [ ] **步骤 1：编写静态产物校验失败测试**
+- [x] **步骤 1：编写静态产物校验失败测试**
 
 测试创建最小临时产物，断言校验器拒绝缺少 `index.html`、缺少静态资源、HTML 中存在运行时内容 API 标记和超过预算的初始脚本。
 
-- [ ] **步骤 2：实现产物校验器**
+- [x] **步骤 2：实现产物校验器**
 
 校验器接收输出目录，检查 `index.html`、`robots.txt`、站点地图、资源引用、内容 API 标记和初始 JavaScript 预算。失败时输出具体文件和阈值。
 
-- [ ] **步骤 3：记录 EdgeOne Pages 参数**
+- [x] **步骤 3：记录 EdgeOne Pages 参数**
 
 `EDGEONE.md` 固定以下控制台配置：
 
@@ -672,7 +672,7 @@ Node.js: 22
 
 同时说明 `CONTENT_SNAPSHOT_PATH`、缓存头、SPA 回退必须关闭、部署后 `/`、`/robots.txt` 和 `/sitemap.xml` 的冒烟检查。
 
-- [ ] **步骤 4：运行发布前验证**
+- [x] **步骤 4：运行发布前验证**
 
 运行：
 
@@ -696,7 +696,22 @@ git commit -m "docs(部署): 添加 EdgeOne Pages 构建基线"
 
 - 修改：`docs/superpowers/plans/2026-08-29-public-homepage.md`
 
-- [ ] **步骤 1：逐项核对设计规格第 4 至 7、12 至 15、17.2 和 18 节**
+### 审计记录（2026-08-29）
+
+| 规格 | 状态 | 直接证据与边界 |
+| --- | --- | --- |
+| 第 4 节：视觉方向 | 公开首页通过；正式素材待替换 | `apps/web/assets/css/main.css` 固定低饱和深色 Token、焦点和减少动态效果；`HeroShowcase.vue`、各媒体板块使用自由构图；Playwright 桌面/移动截图通过。当前媒体均在 `content/fixtures` 标明程序化测试素材，不声称为官方人物或作品事实。 |
+| 第 5 节：首页信息架构 | 通过 | `pages/index.vue` 按快照顺序编排 6 个板块；`sections.test.ts` 覆盖启用、隐藏、排序、数量上限和空现场；音乐板块的 `moreLink` 提供可配置全部作品入口；页脚包含品牌、域名、快照年份和官方平台。 |
+| 第 6 节：播放体验 | 通过；CDN Range 留待部署验证 | `useAudioPlayer.ts` 保持单一惰性音频实例、队列边界、进度、关闭和错误状态；`AudioDock.vue` 提供上一首、下一首、播放/暂停、进度、平台降级和关闭；单元测试及 Playwright 真实音频流程通过。HTTP Range 与 CDN 响应头在 EdgeOne 发布计划验收。 |
+| 第 7 节：国际化 | 通过 | `useLocale.ts` 与客户端插件实现 `localStorage → navigator.languages → zh-CN`；`localized.test.ts` 覆盖内容回退；Playwright 验证一次性非阻断提示、动态 `html.lang`、偏好持久化且 URL 不变。 |
+| 第 12 节：错误与降级 | 公开站通过；发布幂等留待服务端 | `FallbackImage.vue` 使用内嵌低饱和占位并保留尺寸；视频错误回退海报并隐藏失效控制；试听错误保留平台入口；Schema 与组件双层拒绝非 HTTPS 链接；静态站不依赖 Go。发布幂等属于后续 Go 计划。 |
+| 第 13 节：响应式与可访问性 | 通过 | 稳定 `aspect-ratio`、移动端常显操作和 44 px 目标由 CSS 与 Playwright 像素检查覆盖；axe 零违规、键盘导航、Tooltip、ARIA、语义结构和 `prefers-reduced-motion` 均有自动化证据。 |
+| 第 14 节：性能目标 | 本地构建通过；生产指标待部署 | 非首屏媒体懒加载，音频实例首次意图后创建，视频先用海报；`verify-static-output.mjs` 拒绝运行时内容 API、缺失资源和超过 320 KiB 的首屏脚本，当前产物为 288 KiB。正式授权资源的 AVIF/兼容格式流水线及真实 75 分位 LCP/CLS 需在资源服务和 EdgeOne 环境验证。 |
+| 第 15 节：SEO 与 Agent 友好 | 公开站通过；OpenAPI 留待 Go 服务 | 静态 HTML 包含 canonical、Open Graph、Twitter Card 和 4 类 JSON-LD；`robots.txt`、`sitemap.xml`、稳定 ID、JSON Schema、生成类型与 `AGENTS.md` 已纳入仓库。OpenAPI 在 Go 内容服务计划生成。 |
+| 第 17.2 节：公开站验证 | 通过 | Vitest 覆盖国际化、播放器、板块、媒体降级和结构化数据；Playwright 11/11 覆盖桌面、移动、截图、真实音频、键盘与 axe；静态校验器证明输出不含运行时内容 API，并验证所有首页本地资源。 |
+| 第 18 节：验收标准 | 公开首页子集通过；全站目标未完成 | 首页展示、配置化板块、媒体降级、语言和试听已有上述证据。上一版本保留、EdgeOne 动态代理、服务商适配与 Go 测试尚未完成，明确由后续三个独立计划验收，不能据此结束总目标。 |
+
+- [x] **步骤 1：逐项核对设计规格第 4 至 7、12 至 15、17.2 和 18 节**
 
 为每条要求记录对应代码、测试或构建产物。缺少直接证据的项目不得标记完成。
 
