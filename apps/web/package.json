@@ -1,0 +1,33 @@
+{
+  "name": "@yujian/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:watch": "vitest",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@lucide/vue": "latest",
+    "@nuxt/image": "latest",
+    "nuxt": "latest",
+    "vue": "latest",
+    "vue-i18n": "latest",
+    "vue-router": "latest"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "latest",
+    "@nuxt/test-utils": "latest",
+    "@playwright/test": "latest",
+    "@types/node": "latest",
+    "@vue/test-utils": "latest",
+    "happy-dom": "latest",
+    "vitest": "latest",
+    "vue-tsc": "^3.3.11"
+  }
+}

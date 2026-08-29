@@ -6,7 +6,7 @@
 
 **架构：** `packages/schema` 提供 JSON Schema、生成类型和双语 fixture；`apps/web` 使用 Nuxt 静态生成模式读取构建时快照。首页组件只消费规范化内容，不调用运行时内容 API；国际化、播放器和媒体降级通过小型 composable 隔离并单独测试。
 
-**技术栈：** pnpm workspace、Nuxt、Vue 3、TypeScript、Vue I18n、Lucide Vue、AJV、Vitest、Vue Test Utils、Playwright、axe-core。
+**技术栈：** pnpm workspace、Nuxt、Vue 3、TypeScript、Vue I18n、`@lucide/vue`、AJV、Vitest、Vue Test Utils、Playwright、axe-core。
 
 ---
 
@@ -72,11 +72,11 @@ apps/web/EDGEONE.md                             Pages 构建参数与发布说�
 - 创建：`apps/web/test/setup.ts`
 - 测试：`apps/web/test/unit/app-shell.test.ts`
 
-- [ ] **步骤 1：创建 workspace 配置和依赖清单**
+- [x] **步骤 1：创建 workspace 配置和依赖清单**
 
 根 `package.json` 固定 `pnpm@11.23.0`，提供 `dev`、`test`、`lint`、`typecheck`、`generate` 和 `verify` 脚本。`apps/web/package.json` 声明 Nuxt、Vue、Vue I18n、Lucide、Vitest、Vue Test Utils、Playwright 和 axe-core。
 
-- [ ] **步骤 2：安装依赖**
+- [x] **步骤 2：安装依赖**
 
 运行：
 
@@ -86,7 +86,7 @@ pnpm install
 
 预期：生成 `pnpm-lock.yaml`，命令退出码为 `0`。
 
-- [ ] **步骤 3：编写失败的应用壳测试**
+- [x] **步骤 3：编写失败的应用壳测试**
 
 ```ts
 // apps/web/test/unit/app-shell.test.ts
@@ -96,13 +96,13 @@ import App from '../../app.vue'
 describe('应用壳', () => {
   it('提供主内容区域和全局播放器挂载点', async () => {
     const wrapper = await mountSuspended(App)
-    expect(wrapper.get('main').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="audio-dock-host"]').exists()).toBe(true)
+    expect(wrapper.find('main').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="audio-dock-host"]').exists()).toBe(true)
   })
 })
 ```
 
-- [ ] **步骤 4：运行测试并确认因应用壳缺失而失败**
+- [x] **步骤 4：运行测试并确认因应用壳缺失而失败**
 
 运行：
 
@@ -112,7 +112,7 @@ pnpm --filter @yujian/web test -- app-shell.test.ts
 
 预期：FAIL，提示无法解析 `apps/web/app.vue`。
 
-- [ ] **步骤 5：实现最小应用壳**
+- [x] **步骤 5：实现最小应用壳**
 
 ```vue
 <!-- apps/web/app.vue -->
@@ -124,7 +124,7 @@ pnpm --filter @yujian/web test -- app-shell.test.ts
 </template>
 ```
 
-- [ ] **步骤 6：验证测试、类型和静态检查**
+- [x] **步骤 6：验证测试、类型和静态检查**
 
 运行：
 
@@ -136,7 +136,7 @@ pnpm lint
 
 预期：全部通过且没有警告。
 
-- [ ] **步骤 7：提交**
+- [x] **步骤 7：提交**
 
 ```bash
 git add AGENTS.md package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json eslint.config.mjs apps/web
@@ -724,4 +724,3 @@ git commit -m "docs(计划): 完成公开首页实现审计"
 1. `2026-08-29-go-content-service.md`：PostgreSQL、OIDC/RBAC、内容版本、资源适配和发布编排。
 2. `2026-08-29-admin-console.md`：Vue 管理端、草稿、预览、审核、发布和回滚。
 3. `2026-08-29-edgeone-publishing.md`：不可变快照、构建触发器、EdgeOne 状态回传与端到端发布测试。
-

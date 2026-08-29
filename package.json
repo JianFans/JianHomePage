@@ -1,0 +1,22 @@
+{
+  "name": "yujian-me",
+  "private": true,
+  "packageManager": "pnpm@11.23.0",
+  "scripts": {
+    "dev": "pnpm --filter @yujian/web dev",
+    "generate": "pnpm -r --if-present generate",
+    "lint": "eslint .",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm generate"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "eslint": "latest",
+    "eslint-plugin-vue": "latest",
+    "globals": "latest",
+    "typescript": "6.0.3",
+    "typescript-eslint": "latest",
+    "vue-eslint-parser": "latest"
+  }
+}
