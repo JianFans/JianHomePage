@@ -454,7 +454,7 @@ git commit -m "feat(首页): 实现品牌导航与媒体首屏"
 - 测试：`apps/web/test/unit/audio-player.test.ts`
 - 测试：`apps/web/test/unit/music-section.test.ts`
 
-- [ ] **步骤 1：编写播放器状态失败测试**
+- [x] **步骤 1：编写播放器状态失败测试**
 
 ```ts
 it('同一时间只保留一个当前曲目', () => {
@@ -474,7 +474,7 @@ it('失败后保留平台链接并清除播放状态', () => {
 })
 ```
 
-- [ ] **步骤 2：运行测试并确认状态工厂缺失**
+- [x] **步骤 2：运行测试并确认状态工厂缺失**
 
 运行：
 
@@ -484,19 +484,19 @@ pnpm --filter @yujian/web test -- audio-player.test.ts
 
 预期：FAIL，提示 `createAudioPlayerState` 未定义。
 
-- [ ] **步骤 3：实现最小播放器状态和 `AudioDock`**
+- [x] **步骤 3：实现最小播放器状态和 `AudioDock`**
 
 状态包含 `idle`、`loading`、`playing`、`paused` 和 `error`。真实 `HTMLAudioElement` 只在首次播放后创建；切换曲目先暂停旧实例。Dock 仅在 `current` 存在时渲染，关闭后释放资源。
 
-- [ ] **步骤 4：编写音乐板块失败测试**
+- [x] **步骤 4：编写音乐板块失败测试**
 
 覆盖：有试听时封面显示播放；无试听时没有播放按钮；平台按钮在右侧；窄屏只显示主平台和更多菜单；封面始终保留稳定正方形比例。
 
-- [ ] **步骤 5：实现 `MusicSection` 和 `PlatformLinks`**
+- [x] **步骤 5：实现 `MusicSection` 和 `PlatformLinks`**
 
 平台图标来自固定平台注册表，不接受任意 HTML。外部链接只允许 HTTPS，使用 `target="_blank" rel="noopener noreferrer"`。
 
-- [ ] **步骤 6：验证测试和全部回归**
+- [x] **步骤 6：验证测试和全部回归**
 
 运行：
 
@@ -508,7 +508,7 @@ pnpm --filter @yujian/web typecheck
 
 预期：全部通过且输出无警告。
 
-- [ ] **步骤 7：提交**
+- [x] **步骤 7：提交**
 
 ```bash
 git add apps/web

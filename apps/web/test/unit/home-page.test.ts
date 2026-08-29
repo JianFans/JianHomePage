@@ -11,4 +11,11 @@ describe('公开首页', () => {
       '/media/hero-studio.webp',
     )
   })
+
+  it('按首页配置渲染最新音乐作品', async () => {
+    const wrapper = await mountSuspended(HomePage)
+
+    expect(wrapper.find('#music').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="music-card"]')).toHaveLength(5)
+  })
 })
