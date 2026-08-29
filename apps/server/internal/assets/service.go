@@ -249,6 +249,10 @@ func validateUploadInput(input CreateUploadInput) (string, error) {
 	if !allowed || input.Size <= 0 || input.Size > rule.limit {
 		return "", domain.ErrInvalidInput
 	}
+	var rights map[string]json.RawMessage
+	if len(input.Rights) == 0 || json.Unmarshal(input.Rights, &rights) != nil || rights == nil {
+		return "", domain.ErrInvalidInput
+	}
 	extension := strings.ToLower(filepath.Ext(filepath.Base(input.FileName)))
 	if input.ContentType == "image/jpeg" && extension == ".jpeg" {
 		extension = ".jpg"

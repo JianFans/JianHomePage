@@ -159,6 +159,22 @@ func TestCreateUploadRejectsMismatchAndOversizeBeforeBlobCall(t *testing.T) {
 	}
 }
 
+func TestCreateUploadRejectsMissingOrNonObjectRightsBeforeBlobCall(t *testing.T) {
+	for _, rights := range []json.RawMessage{nil, json.RawMessage(`null`), json.RawMessage(`[]`)} {
+		blobs := &blobStoreFake{}
+		service := assetServiceForTest(newMemoryRepository(), blobs)
+		_, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+			FileName: "cover.webp", ContentType: "image/webp", Size: 1024, Rights: rights,
+		})
+		if !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("rights %s: expected invalid input, got %v", rights, err)
+		}
+		if len(blobs.uploads) != 0 {
+			t.Fatalf("rights %s called blob store", rights)
+		}
+	}
+}
+
 func TestCompleteUploadChecksActualMetadata(t *testing.T) {
 	repository := newMemoryRepository()
 	blobs := &blobStoreFake{}

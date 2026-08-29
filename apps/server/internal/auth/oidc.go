@@ -43,6 +43,7 @@ type OIDCProvider struct {
 	now          func() time.Time
 	clockSkew    time.Duration
 	maxTokenSize int
+	requireHTTPS bool
 
 	mu          sync.Mutex
 	jwksURL     string
@@ -106,6 +107,7 @@ func NewOIDCProvider(config OIDCConfig) (*OIDCProvider, error) {
 		now:          now,
 		clockSkew:    clockSkew,
 		maxTokenSize: maxTokenSize,
+		requireHTTPS: config.RequireHTTPS,
 		keys:         make(map[string]*rsa.PublicKey),
 	}, nil
 }
@@ -217,8 +219,11 @@ func (provider *OIDCProvider) refreshKeysLocked(ctx context.Context) error {
 		return errors.New("invalid OIDC discovery document")
 	}
 	parsed, err := url.Parse(discovery.JWKSURI)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return errors.New("invalid OIDC JWKS URL")
+	}
+	if provider.requireHTTPS && parsed.Scheme != "https" {
+		return errors.New("OIDC JWKS URL must use HTTPS")
 	}
 	body, err = provider.fetch(ctx, discovery.JWKSURI)
 	if err != nil {

@@ -10,8 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/ports"
 )
 
 type contentServiceStub struct {
@@ -70,6 +72,33 @@ type publishServiceStub struct {
 	getFn      func(context.Context, domain.Principal, string) (domain.PublishJob, error)
 	refreshFn  func(context.Context, domain.Principal, string) (domain.PublishJob, error)
 	rollbackFn func(context.Context, domain.Principal, string, string) (domain.PublishJob, error)
+}
+
+type assetServiceStub struct {
+	createFn   func(context.Context, domain.Principal, assets.CreateUploadInput) (assets.CreateUploadResult, error)
+	completeFn func(context.Context, domain.Principal, string) (domain.AssetRecord, error)
+	deleteFn   func(context.Context, domain.Principal, string) error
+}
+
+func (stub *assetServiceStub) CreateUpload(ctx context.Context, actor domain.Principal, input assets.CreateUploadInput) (assets.CreateUploadResult, error) {
+	if stub.createFn == nil {
+		return assets.CreateUploadResult{}, nil
+	}
+	return stub.createFn(ctx, actor, input)
+}
+
+func (stub *assetServiceStub) CompleteUpload(ctx context.Context, actor domain.Principal, id string) (domain.AssetRecord, error) {
+	if stub.completeFn == nil {
+		return domain.AssetRecord{}, nil
+	}
+	return stub.completeFn(ctx, actor, id)
+}
+
+func (stub *assetServiceStub) Delete(ctx context.Context, actor domain.Principal, id string) error {
+	if stub.deleteFn == nil {
+		return nil
+	}
+	return stub.deleteFn(ctx, actor, id)
 }
 
 func (stub *publishServiceStub) Publish(ctx context.Context, actor domain.Principal, versionID, key string) (domain.PublishJob, error) {
@@ -163,6 +192,75 @@ func TestRouterHealthzDoesNotRequireAuthentication(t *testing.T) {
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+}
+
+func TestRouterHandlesAllowedCORSPreflightBeforeAuthentication(t *testing.T) {
+	router := NewRouter(RouterOptions{
+		Content:        &contentServiceStub{},
+		Publish:        &publishServiceStub{},
+		AllowedOrigins: []string{"https://admin.yujian.me"},
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/versions", nil)
+	request.Header.Set("Origin", "https://admin.yujian.me")
+	request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	request.Header.Set("Access-Control-Request-Headers", "authorization, content-type")
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if recorder.Header().Get("Access-Control-Allow-Origin") != "https://admin.yujian.me" {
+		t.Fatalf("unexpected allow origin %q", recorder.Header().Get("Access-Control-Allow-Origin"))
+	}
+	if !strings.Contains(strings.ToLower(recorder.Header().Get("Access-Control-Allow-Headers")), "authorization") {
+		t.Fatalf("authorization header was not allowed: %q", recorder.Header().Get("Access-Control-Allow-Headers"))
+	}
+}
+
+func TestRouterRejectsUnknownCORSOrigin(t *testing.T) {
+	router := NewRouter(RouterOptions{
+		Content:        &contentServiceStub{},
+		Publish:        &publishServiceStub{},
+		AllowedOrigins: []string{"https://admin.yujian.me"},
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/versions", nil)
+	request.Header.Set("Origin", "https://evil.example")
+	request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", recorder.Code)
+	}
+}
+
+func TestCreateAssetUploadRequiresRightsObject(t *testing.T) {
+	called := false
+	middleware, err := auth.NewMiddleware(auth.MiddlewareOptions{AllowDevIdentity: true})
+	if err != nil {
+		t.Fatalf("create auth middleware: %v", err)
+	}
+	router := NewRouter(RouterOptions{
+		Assets: &assetServiceStub{createFn: func(context.Context, domain.Principal, assets.CreateUploadInput) (assets.CreateUploadResult, error) {
+			called = true
+			return assets.CreateUploadResult{Upload: ports.SignedUpload{}}, nil
+		}},
+		Middleware: middleware,
+	})
+	recorder := httptest.NewRecorder()
+	request := authenticatedRequest(http.MethodPost, "/api/v1/assets/uploads", `{"fileName":"cover.webp","contentType":"image/webp","size":100}`, "editor")
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if called {
+		t.Fatal("asset service must not be called without a rights object")
 	}
 }
 

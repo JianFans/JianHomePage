@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,13 +16,14 @@ var (
 )
 
 type Config struct {
-	Environment      string
-	Address          string
-	DatabaseURL      string
-	OIDCIssuer       string
-	OIDCAudience     string
-	AllowDevIdentity bool
-	ShutdownTimeout  time.Duration
+	Environment         string
+	Address             string
+	DatabaseURL         string
+	OIDCIssuer          string
+	OIDCAudience        string
+	AllowedAdminOrigins []string
+	AllowDevIdentity    bool
+	ShutdownTimeout     time.Duration
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -33,6 +35,15 @@ func Load(getenv func(string) string) (Config, error) {
 		OIDCAudience:    strings.TrimSpace(getenv("OIDC_AUDIENCE")),
 		ShutdownTimeout: 10 * time.Second,
 	}
+	if !isEnvironment(config.Environment) {
+		return Config{}, fmt.Errorf("%w: APP_ENV must be development, test, or production", ErrInvalidConfig)
+	}
+
+	origins, err := parseOrigins(getenv("ADMIN_ALLOWED_ORIGINS"), config.Environment == "production")
+	if err != nil {
+		return Config{}, err
+	}
+	config.AllowedAdminOrigins = origins
 
 	if raw := strings.TrimSpace(getenv("ALLOW_DEV_IDENTITY")); raw != "" {
 		allowed, err := strconv.ParseBool(raw)
@@ -67,4 +78,39 @@ func valueOrDefault(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func isEnvironment(value string) bool {
+	switch value {
+	case "development", "test", "production":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseOrigins(raw string, requireHTTPS bool) ([]string, error) {
+	seen := make(map[string]struct{})
+	origins := make([]string, 0)
+	for _, candidate := range strings.Split(raw, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		parsed, err := url.Parse(candidate)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+			parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return nil, fmt.Errorf("%w: ADMIN_ALLOWED_ORIGINS contains an invalid origin", ErrInvalidConfig)
+		}
+		if requireHTTPS && parsed.Scheme != "https" {
+			return nil, fmt.Errorf("%w: production admin origins must use HTTPS", ErrInvalidConfig)
+		}
+		origin := parsed.Scheme + "://" + parsed.Host
+		if _, exists := seen[origin]; exists {
+			continue
+		}
+		seen[origin] = struct{}{}
+		origins = append(origins, origin)
+	}
+	return origins, nil
 }

@@ -47,12 +47,13 @@ type PublishService interface {
 }
 
 type RouterOptions struct {
-	Content      ContentService
-	Assets       AssetService
-	Publish      PublishService
-	Middleware   *auth.Middleware
-	MaxBodyBytes int64
-	RequestID    func(*http.Request) string
+	Content        ContentService
+	Assets         AssetService
+	Publish        PublishService
+	Middleware     *auth.Middleware
+	AllowedOrigins []string
+	MaxBodyBytes   int64
+	RequestID      func(*http.Request) string
 }
 
 type Handler struct {
@@ -175,7 +176,7 @@ func NewRouter(options RouterOptions) http.Handler {
 			return fmt.Sprintf("req-%d", sequence.Add(1))
 		}
 	}
-	return requestIDMiddleware(root, requestID)
+	return requestIDMiddleware(corsMiddleware(root, options.AllowedOrigins), requestID)
 }
 
 func (handler *Handler) withBodyLimit(next http.Handler) http.Handler {
@@ -324,6 +325,10 @@ func (handler *Handler) rejectReview(writer http.ResponseWriter, request *http.R
 func (handler *Handler) createAssetUpload(writer http.ResponseWriter, request *http.Request) {
 	var input assetUploadRequest
 	if !decodeJSON(writer, request, &input) {
+		return
+	}
+	if !isJSONObject(input.Rights) {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Request data is invalid.")
 		return
 	}
 	actor, ok := principal(writer, request)
@@ -491,6 +496,11 @@ func decodeJSON(writer http.ResponseWriter, request *http.Request, destination a
 func isBodyTooLarge(err error) bool {
 	var maxErr *http.MaxBytesError
 	return errors.As(err, &maxErr)
+}
+
+func isJSONObject(value json.RawMessage) bool {
+	var object map[string]json.RawMessage
+	return len(value) > 0 && json.Unmarshal(value, &object) == nil && object != nil
 }
 
 func parseETag(value string) (int64, bool) {

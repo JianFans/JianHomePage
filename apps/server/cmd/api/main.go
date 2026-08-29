@@ -82,10 +82,11 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 		return nil, err
 	}
 	return httpapi.NewRouter(httpapi.RouterOptions{
-		Content:    dependencies.Content,
-		Assets:     dependencies.Assets,
-		Publish:    dependencies.Publish,
-		Middleware: middleware,
+		Content:        dependencies.Content,
+		Assets:         dependencies.Assets,
+		Publish:        dependencies.Publish,
+		Middleware:     middleware,
+		AllowedOrigins: settings.AllowedAdminOrigins,
 	}), nil
 }
 
