@@ -40,6 +40,8 @@ func (row recordingRow) Scan(dest ...any) error {
 			*target = append((*target)[:0], row.values[index].([]byte)...)
 		case *time.Time:
 			*target = row.values[index].(time.Time)
+		case *sql.NullTime:
+			*target = row.values[index].(sql.NullTime)
 		default:
 			return errors.New("unsupported scan target")
 		}
@@ -153,6 +155,35 @@ func TestContentRepositoryPreservesLookupErrorsAfterZeroRowsUpdate(t *testing.T)
 	}
 }
 
+func TestAssetRepositoryUpdateUsesStatusCompareAndSwap(t *testing.T) {
+	executor := &recordingExecutor{result: recordingResult{affected: 1}}
+	asset := domain.AssetRecord{ID: "asset_1", Status: domain.AssetReady, Metadata: []byte(`{}`), Rights: []byte(`{}`)}
+	if err := NewAssetRepository(executor).UpdateAsset(context.Background(), asset, domain.AssetPending); err != nil {
+		t.Fatalf("update asset: %v", err)
+	}
+	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "WHERE id = $6 AND status = $7") {
+		t.Fatalf("expected status compare-and-swap query, got %#v", executor.execQueries)
+	}
+	if executor.execArgs[0][6] != domain.AssetPending {
+		t.Fatalf("unexpected expected status %#v", executor.execArgs[0])
+	}
+}
+
+func TestAssetRepositoryMapsStaleStatusToConflict(t *testing.T) {
+	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	executor := &recordingExecutor{
+		result: recordingResult{affected: 0},
+		row: recordingRow{values: []any{
+			"asset_1", "assets/asset_1/source.webp", "deleted", []byte(`{}`), []byte(`{}`),
+			"editor-1", now, sql.NullTime{},
+		}},
+	}
+	asset := domain.AssetRecord{ID: "asset_1", Status: domain.AssetReady, Metadata: []byte(`{}`), Rights: []byte(`{}`)}
+	if err := NewAssetRepository(executor).UpdateAsset(context.Background(), asset, domain.AssetPending); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected stale status conflict, got %v", err)
+	}
+}
+
 func TestRepositoryTransactionRollsBackOnCallbackError(t *testing.T) {
 	executor := &recordingExecutor{}
 	sentinel := errors.New("callback failed")
@@ -208,6 +239,19 @@ func TestPublishRepositoryMapsUniqueViolationToConflict(t *testing.T) {
 	err := NewPublishRepository(executor).CreatePublishJob(context.Background(), domain.PublishJob{ID: "pub_1"})
 	if !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected conflict, got %v", err)
+	}
+}
+
+func TestPublishRepositoryLocksSlotWithinTransaction(t *testing.T) {
+	executor := &recordingExecutor{result: recordingResult{affected: 1}}
+	if err := NewPublishRepository(executor).LockPublishSlot(context.Background(), "production"); err != nil {
+		t.Fatalf("lock publish slot: %v", err)
+	}
+	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "pg_advisory_xact_lock") {
+		t.Fatalf("expected advisory lock query, got %#v", executor.execQueries)
+	}
+	if len(executor.execArgs) != 1 || len(executor.execArgs[0]) != 1 || executor.execArgs[0][0] != "production" {
+		t.Fatalf("unexpected lock args %#v", executor.execArgs)
 	}
 }
 

@@ -78,7 +78,7 @@ type Repository interface {
 	UpdateVersion(context.Context, domain.ContentVersion, int64) error
 	CreateAsset(context.Context, domain.AssetRecord) error
 	GetAsset(context.Context, string) (domain.AssetRecord, error)
-	UpdateAsset(context.Context, domain.AssetRecord) error
+	UpdateAsset(context.Context, domain.AssetRecord, domain.AssetStatus) error
 	CreatePublishJob(context.Context, domain.PublishJob) error
 	GetPublishJob(context.Context, string) (domain.PublishJob, error)
 	GetPublishJobByIdempotencyKey(context.Context, string) (domain.PublishJob, error)

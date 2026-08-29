@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useAdminWorkspace } from '../composables/useAdminWorkspace'
+import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
 
 const workspace = reactive(useAdminWorkspace())
 const locale = ref<'zh-CN' | 'en'>('zh-CN')
@@ -69,16 +70,11 @@ const previewText = computed(() => workspace.parsedEditor.snapshot
 
 function toggleLocale() {
   locale.value = locale.value === 'zh-CN' ? 'en' : 'zh-CN'
-  if (import.meta.client) localStorage.setItem('yujian:admin-locale', locale.value)
+  if (import.meta.client) persistAdminLocale(locale.value)
 }
 
 onMounted(() => {
-  const stored = localStorage.getItem('yujian:admin-locale')
-  if (stored === 'en' || stored === 'zh-CN') {
-    locale.value = stored
-  } else if (navigator.language.toLowerCase().startsWith('en')) {
-    locale.value = 'en'
-  }
+  locale.value = resolveAdminLocale(undefined, navigator.language)
 })
 </script>
 
@@ -134,7 +130,7 @@ onMounted(() => {
           class="site-link"
           href="https://yujian.me"
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
         >yujian.me ↗</a>
       </header>
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"yujian.me/server/internal/domain"
@@ -16,6 +17,34 @@ import (
 func TestNewClientRejectsMissingTriggerURL(t *testing.T) {
 	if _, err := NewClient(Config{StatusURL: "https://status.example.test"}); err == nil {
 		t.Fatal("expected missing trigger URL error")
+	}
+}
+
+func TestClientRejectsHTTPSDowngradeRedirectBeforeSendingToken(t *testing.T) {
+	var insecureCalls atomic.Int32
+	insecure := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		insecureCalls.Add(1)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":"build-1","status":"building"}`))
+	}))
+	defer insecure.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, insecure.URL, http.StatusTemporaryRedirect)
+	}))
+	defer secure.Close()
+	client, err := NewClient(Config{
+		TriggerURL: secure.URL + "/trigger", StatusURL: secure.URL + "/status",
+		Token: "secret-token", HTTPClient: secure.Client(), RequireHTTPS: true,
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	if _, err := client.Trigger(context.Background(), ports.BuildRequest{ReleaseID: "rel_1"}); err == nil {
+		t.Fatal("expected HTTPS downgrade rejection")
+	}
+	if insecureCalls.Load() != 0 {
+		t.Fatalf("insecure redirect target received %d requests", insecureCalls.Load())
 	}
 }
 

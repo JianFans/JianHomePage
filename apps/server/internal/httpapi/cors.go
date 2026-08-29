@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 )
@@ -21,7 +20,7 @@ func corsMiddleware(next http.Handler, allowedOrigins []string) http.Handler {
 			return
 		}
 
-		originAllowed := slices.Contains(allowed, origin) || isSameHostOrigin(origin, request.Host)
+		originAllowed := slices.Contains(allowed, origin)
 		if !originAllowed {
 			http.Error(writer, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
@@ -41,9 +40,4 @@ func corsMiddleware(next http.Handler, allowedOrigins []string) http.Handler {
 
 		next.ServeHTTP(writer, request)
 	})
-}
-
-func isSameHostOrigin(origin, requestHost string) bool {
-	parsed, err := url.Parse(origin)
-	return err == nil && parsed.Host != "" && strings.EqualFold(parsed.Host, requestHost)
 }

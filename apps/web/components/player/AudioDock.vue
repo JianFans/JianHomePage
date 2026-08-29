@@ -11,6 +11,7 @@ import {
 import { computed } from 'vue'
 import type { AudioPlayerController } from '../../composables/useAudioPlayer'
 import type { SupportedLocale } from '../../utils/localized'
+import { resolveLocalized } from '../../utils/localized'
 import FallbackImage from '../ui/FallbackImage.vue'
 import IconButton from '../ui/IconButton.vue'
 import PlatformLinks from '../ui/PlatformLinks.vue'
@@ -21,6 +22,9 @@ const props = defineProps<{
 }>()
 
 const current = computed(() => props.player.current.value)
+const currentTitle = computed(() => current.value
+  ? resolveLocalized(current.value.title, props.locale)
+  : '')
 const status = computed(() => props.player.status.value)
 const currentTime = computed(() => props.player.currentTime.value)
 const duration = computed(() => props.player.duration.value)
@@ -55,7 +59,7 @@ function updateProgress(event: Event) {
       v-if="current"
       class="audio-dock"
       data-testid="audio-dock"
-      :aria-label="current.title"
+      :aria-label="currentTitle"
     >
       <FallbackImage
         v-if="current.coverSrc"
@@ -67,7 +71,7 @@ function updateProgress(event: Event) {
       />
 
       <div class="audio-dock__track">
-        <strong>{{ current.title }}</strong>
+        <strong>{{ currentTitle }}</strong>
         <input
           type="range"
           min="0"

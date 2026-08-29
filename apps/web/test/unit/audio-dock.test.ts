@@ -6,13 +6,19 @@ import { createAudioPlayerController } from '../../composables/useAudioPlayer'
 const tracks: AudioPlayerTrack[] = [
   {
     id: 'track-a',
-    title: '曲目 A',
+    title: {
+      'zh-CN': '曲目 A',
+      en: 'Track A',
+    },
     previewSrc: '/media/a.wav',
     platformLinks: [],
   },
   {
     id: 'track-b',
-    title: '曲目 B',
+    title: {
+      'zh-CN': '曲目 B',
+      en: 'Track B',
+    },
     previewSrc: '/media/b.wav',
     platformLinks: [],
   },
@@ -46,5 +52,21 @@ describe('AudioDock', () => {
 
     await wrapper.get('[aria-label="下一首"]').trigger('click')
     expect(player.current.value?.id).toBe('track-b')
+  })
+
+  it('切换语言后同步更新当前曲目标题', async () => {
+    const player = createAudioPlayerController({ createAudio: createFakeAudio })
+    await player.toggle(tracks[0]!, tracks)
+    const wrapper = mount(AudioDock, {
+      props: { player, locale: 'zh-CN' },
+    })
+
+    expect(wrapper.get('[data-testid="audio-dock"]').attributes('aria-label')).toBe('曲目 A')
+    expect(wrapper.get('.audio-dock__track strong').text()).toBe('曲目 A')
+
+    await wrapper.setProps({ locale: 'en' })
+
+    expect(wrapper.get('[data-testid="audio-dock"]').attributes('aria-label')).toBe('Track A')
+    expect(wrapper.get('.audio-dock__track strong').text()).toBe('Track A')
   })
 })

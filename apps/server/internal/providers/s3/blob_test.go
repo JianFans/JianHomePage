@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -115,6 +116,33 @@ func TestBlobStoreMapsMissingObject(t *testing.T) {
 	}
 	if _, err := store.Stat(context.Background(), "missing"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestBlobStoreRejectsHTTPSDowngradeRedirectBeforeSendingSignedRequest(t *testing.T) {
+	var insecureCalls atomic.Int32
+	insecure := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		insecureCalls.Add(1)
+		writer.WriteHeader(http.StatusNotFound)
+	}))
+	defer insecure.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, insecure.URL, http.StatusTemporaryRedirect)
+	}))
+	defer secure.Close()
+	store, err := NewBlobStore(Config{
+		Endpoint: secure.URL, Region: "test", Bucket: "media", AccessKeyID: "access",
+		SecretAccessKey: "secret", UsePathStyle: true, HTTPClient: secure.Client(), RequireHTTPS: true,
+	})
+	if err != nil {
+		t.Fatalf("new blob store: %v", err)
+	}
+
+	if _, err := store.Stat(context.Background(), "assets/cover.webp"); err == nil {
+		t.Fatal("expected HTTPS downgrade rejection")
+	}
+	if insecureCalls.Load() != 0 {
+		t.Fatalf("insecure redirect target received %d requests", insecureCalls.Load())
 	}
 }
 

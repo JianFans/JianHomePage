@@ -9,14 +9,14 @@ const section = snapshot.homepage.sections.find(
   (item): item is MusicSectionConfig => item.type === 'music',
 )!
 
-function mountMusicSection() {
+function mountMusicSection(locale: 'zh-CN' | 'en' = 'zh-CN') {
   return mount(MusicSection, {
     props: {
       section,
       releases: snapshot.releases,
       tracks: snapshot.tracks,
       assets: snapshot.assets,
-      locale: 'zh-CN',
+      locale,
       activeTrackId: null,
       playerStatus: 'idle',
     },
@@ -46,6 +46,13 @@ describe('MusicSection', () => {
       id: 'track_01',
       previewSrc: '/media/preview-sample.wav',
     })
+  })
+
+  it('英文试听按钮名称使用可读的单词间隔', () => {
+    const wrapper = mountMusicSection('en')
+
+    expect(wrapper.get('[data-testid="preview-trigger"]').attributes('aria-label'))
+      .toBe('Preview Sample Track 01')
   })
 
   it('将平台入口放在卡片操作区并使用安全外链属性', () => {

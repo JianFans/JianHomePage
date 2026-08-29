@@ -63,6 +63,7 @@ func NewClient(config Config) (*Client, error) {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 20 * time.Second}
 	}
+	httpClient = edgeOneHTTPClient(httpClient, config.RequireHTTPS)
 	return &Client{
 		triggerURL:       triggerURL,
 		statusURL:        statusURL,
@@ -70,6 +71,24 @@ func NewClient(config Config) (*Client, error) {
 		httpClient:       httpClient,
 		maxResponseBytes: maxResponseBytes,
 	}, nil
+}
+
+func edgeOneHTTPClient(client *http.Client, requireHTTPS bool) *http.Client {
+	if !requireHTTPS {
+		return client
+	}
+	secured := *client
+	checkRedirect := client.CheckRedirect
+	secured.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if request.URL.Scheme != "https" {
+			return errors.New("EdgeOne redirect must use HTTPS")
+		}
+		if checkRedirect != nil {
+			return checkRedirect(request, via)
+		}
+		return nil
+	}
+	return &secured
 }
 
 func (client *Client) Trigger(ctx context.Context, request ports.BuildRequest) (ports.BuildRun, error) {

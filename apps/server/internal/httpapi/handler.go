@@ -389,9 +389,9 @@ func (handler *Handler) deleteAsset(writer http.ResponseWriter, request *http.Re
 }
 
 func (handler *Handler) createPublish(writer http.ResponseWriter, request *http.Request) {
-	key := strings.TrimSpace(request.Header.Get("Idempotency-Key"))
-	if key == "" {
-		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Idempotency-Key header is required.")
+	key, validKey := domain.NormalizeIdempotencyKey(request.Header.Get("Idempotency-Key"))
+	if !validKey {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Idempotency-Key header is invalid.")
 		return
 	}
 	var input publishRequest
@@ -446,9 +446,9 @@ func (handler *Handler) refreshPublish(writer http.ResponseWriter, request *http
 }
 
 func (handler *Handler) createRollback(writer http.ResponseWriter, request *http.Request) {
-	key := strings.TrimSpace(request.Header.Get("Idempotency-Key"))
-	if key == "" {
-		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Idempotency-Key header is required.")
+	key, validKey := domain.NormalizeIdempotencyKey(request.Header.Get("Idempotency-Key"))
+	if !validKey {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Idempotency-Key header is invalid.")
 		return
 	}
 	var input publishRequest

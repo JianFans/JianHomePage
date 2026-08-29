@@ -139,23 +139,36 @@ SELECT id, blob_key, status, metadata, rights, created_by, created_at, deleted_a
 FROM assets WHERE id = $1`, id))
 }
 
-func (repository *AssetRepository) UpdateAsset(ctx context.Context, asset domain.AssetRecord) error {
+func (repository *AssetRepository) UpdateAsset(ctx context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	result, err := repository.exec.ExecContext(ctx, `
 UPDATE assets
 SET blob_key = $1, status = $2, metadata = $3::jsonb, rights = $4::jsonb, deleted_at = $5
-WHERE id = $6`,
-		asset.BlobKey, asset.Status, []byte(asset.Metadata), []byte(asset.Rights), asset.DeletedAt, asset.ID)
+WHERE id = $6 AND status = $7`,
+		asset.BlobKey, asset.Status, []byte(asset.Metadata), []byte(asset.Rights), asset.DeletedAt, asset.ID, expectedStatus)
 	if err != nil {
 		return err
 	}
+	return compareAndSwapAssetResult(ctx, repository.exec, result, asset.ID)
+}
+
+func compareAndSwapAssetResult(ctx context.Context, exec Executor, result ExecResult, id string) error {
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	if affected == 0 {
+	if affected > 0 {
+		return nil
+	}
+	_, err = scanAsset(exec.QueryRowContext(ctx, `
+SELECT id, blob_key, status, metadata, rights, created_by, created_at, deleted_at
+FROM assets WHERE id = $1`, id))
+	if errors.Is(err, domain.ErrNotFound) {
 		return domain.ErrNotFound
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	return domain.ErrConflict
 }
 
 func (repository *AssetRepository) AppendAudit(ctx context.Context, entry domain.AuditEntry) error {
@@ -250,6 +263,11 @@ WHERE id = $12`,
 		return domain.ErrNotFound
 	}
 	return nil
+}
+
+func (repository *PublishRepository) LockPublishSlot(ctx context.Context, slot string) error {
+	_, err := repository.exec.ExecContext(ctx, `SELECT pg_advisory_xact_lock(865734220, hashtext($1))`, slot)
+	return err
 }
 
 func (repository *PublishRepository) GetPublishPointer(ctx context.Context, slot string) (domain.PublishPointer, error) {

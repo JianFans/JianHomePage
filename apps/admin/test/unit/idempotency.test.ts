@@ -20,4 +20,15 @@ describe('admin operation idempotency', () => {
     store.reset('publish', 'ver_1')
     expect(store.get('publish', 'ver_1')).toBe('publish-2')
   })
+
+  it('rotates a key only after the publish task reaches a terminal state', () => {
+    const values = ['rollback-1', 'rollback-2']
+    const store = createOperationKeyStore(() => values.shift()!)
+
+    expect(store.get('rollback', 'ver_1')).toBe('rollback-1')
+    store.settle('rollback', 'ver_1', 'building')
+    expect(store.get('rollback', 'ver_1')).toBe('rollback-1')
+    store.settle('rollback', 'ver_1', 'succeeded')
+    expect(store.get('rollback', 'ver_1')).toBe('rollback-2')
+  })
 })

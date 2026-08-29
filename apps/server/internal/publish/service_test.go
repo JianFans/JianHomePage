@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,8 @@ type memoryRepository struct {
 	successfulByVersion map[string]string
 	updateErr           error
 	updateFailures      int
+	lockCalls           int
+	lockHook            func(*memoryRepository)
 }
 
 func newMemoryRepository() *memoryRepository {
@@ -115,6 +118,15 @@ func (repository *memoryRepository) GetPublishPointer(_ context.Context, slot st
 
 func (repository *memoryRepository) SetPublishPointer(_ context.Context, pointer domain.PublishPointer) error {
 	repository.pointers[pointer.Slot] = pointer
+	return nil
+}
+
+func (repository *memoryRepository) LockPublishSlot(context.Context, string) error {
+	repository.lockCalls++
+	if repository.lockHook != nil {
+		repository.lockHook(repository)
+		repository.lockHook = nil
+	}
 	return nil
 }
 
@@ -236,11 +248,11 @@ func TestPublishIsIdempotentAndWritesImmutableSnapshotOnce(t *testing.T) {
 	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
 	service := publishServiceForTest(repository, blobs, trigger)
 
-	first, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-1")
+	first, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-0001")
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	second, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-1")
+	second, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-0001")
 	if err != nil {
 		t.Fatalf("repeat publish: %v", err)
 	}
@@ -253,6 +265,21 @@ func TestPublishIsIdempotentAndWritesImmutableSnapshotOnce(t *testing.T) {
 	}
 	if first.SnapshotKey == "" || first.SnapshotChecksum == "" {
 		t.Fatalf("missing immutable snapshot data %#v", first)
+	}
+}
+
+func TestPublishRejectsIdempotencyKeyOutsideContractLength(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.versions["ver_new"] = approvedVersion("ver_new", "rel_test")
+	service := publishServiceForTest(repository, newBlobStoreFake(), &buildTriggerFake{statuses: make(map[string]ports.BuildRun)})
+
+	for _, key := range []string{"1234567", strings.Repeat("x", 129)} {
+		if _, err := service.Publish(context.Background(), publisher(), "ver_new", key); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("expected invalid input for key length %d, got %v", len(key), err)
+		}
+	}
+	if len(repository.jobs) != 0 {
+		t.Fatalf("invalid keys created jobs %#v", repository.jobs)
 	}
 }
 
@@ -368,6 +395,48 @@ func TestRefreshSuccessAtomicallySwitchesPointerAndArchivesOldVersion(t *testing
 	if repository.versions[newVersion.ID].Status != domain.StatusPublished {
 		t.Fatal("new version was not published")
 	}
+	if repository.lockCalls != 1 {
+		t.Fatalf("expected publish slot lock, got %d calls", repository.lockCalls)
+	}
+}
+
+func TestRefreshSuccessRechecksJobAfterWaitingForPublishSlotLock(t *testing.T) {
+	repository := newMemoryRepository()
+	target := approvedVersion("ver_new", "rel_new")
+	repository.versions[target.ID] = target
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+	job, err := service.Publish(context.Background(), publisher(), target.ID, "idem-concurrent-refresh")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	trigger.statuses[job.BuildID] = ports.BuildRun{ID: job.BuildID, Status: domain.PublishSucceeded}
+	repository.lockHook = func(repository *memoryRepository) {
+		persisted := repository.jobs[job.ID]
+		persisted.Status = domain.PublishSucceeded
+		repository.jobs[job.ID] = persisted
+		published := repository.versions[target.ID]
+		published.Status = domain.StatusPublished
+		published.Revision++
+		repository.versions[target.ID] = published
+		repository.pointers[productionSlot] = domain.PublishPointer{Slot: productionSlot, VersionID: target.ID}
+	}
+	expectedRevision := target.Revision + 1
+	expectedAudits := len(repository.audits)
+
+	completed, err := service.RefreshStatus(context.Background(), publisher(), job.ID)
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if completed.Status != domain.PublishSucceeded {
+		t.Fatalf("unexpected job status %q", completed.Status)
+	}
+	if repository.versions[target.ID].Revision != expectedRevision {
+		t.Fatalf("completed publish was applied twice: %#v", repository.versions[target.ID])
+	}
+	if len(repository.audits) != expectedAudits {
+		t.Fatalf("completed publish wrote duplicate audit entries: %#v", repository.audits)
+	}
 }
 
 func TestRollbackReusesHistoricalSnapshotWithoutBlobRewrite(t *testing.T) {
@@ -397,6 +466,38 @@ func TestRollbackReusesHistoricalSnapshotWithoutBlobRewrite(t *testing.T) {
 	}
 	if trigger.triggerCalls != 1 {
 		t.Fatalf("expected one build trigger, got %d", trigger.triggerCalls)
+	}
+}
+
+func TestRollbackSuccessWritesRollbackAudit(t *testing.T) {
+	repository := newMemoryRepository()
+	target := approvedVersion("ver_old", "rel_old")
+	target.Status = domain.StatusArchived
+	repository.versions[target.ID] = target
+	historical := domain.PublishJob{
+		ID:               "pub_history",
+		VersionID:        target.ID,
+		SnapshotKey:      "snapshots/rel_old/sha256-old.json",
+		SnapshotChecksum: "sha256:old",
+		Status:           domain.PublishSucceeded,
+	}
+	repository.jobs[historical.ID] = historical
+	repository.successfulByVersion[target.ID] = historical.ID
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+
+	job, err := service.Rollback(context.Background(), publisher(), target.ID, "idem-rollback-audit")
+	if err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	trigger.statuses[job.BuildID] = ports.BuildRun{ID: job.BuildID, Status: domain.PublishSucceeded}
+	if _, err := service.RefreshStatus(context.Background(), publisher(), job.ID); err != nil {
+		t.Fatalf("refresh rollback: %v", err)
+	}
+
+	lastAudit := repository.audits[len(repository.audits)-1]
+	if lastAudit.Action != "rollback.succeeded" {
+		t.Fatalf("expected rollback success audit, got %q", lastAudit.Action)
 	}
 }
 

@@ -6,7 +6,7 @@ import {
   type AdminVersion,
 } from '../utils/admin-api'
 import { idleWorkflow, workflowError, workflowSuccess, type WorkflowState } from '../utils/admin-workflow'
-import { createOperationKeyStore } from '../utils/idempotency'
+import { createOperationKeyStore, type PublishOperation } from '../utils/idempotency'
 
 export function useAdminWorkspace() {
   const runtime = useRuntimeConfig()
@@ -15,6 +15,7 @@ export function useAdminWorkspace() {
   const versionId = ref('')
   const version = ref<AdminVersion | null>(null)
   const publishJob = ref<AdminPublishJob | null>(null)
+  const publishOperation = ref<PublishOperation | null>(null)
   const editorText = ref('{}')
   const rejectReason = ref('')
   const workflow = ref<WorkflowState>(idleWorkflow())
@@ -99,13 +100,18 @@ export function useAdminWorkspace() {
     const current = version.value
     const key = operationKeys.get('publish', current.id)
     const result = await run('publishing', () => api().publish(current.id, key), '发布任务已创建')
-    if (result) publishJob.value = result
+    if (result) setPublishJob('publish', result)
   }
 
   async function refreshPublish() {
     if (!publishJob.value) return
     const result = await run('publishing', () => api().refreshPublish(publishJob.value!.id), '发布状态已刷新')
-    if (result) publishJob.value = result
+    if (result) {
+      publishJob.value = result
+      if (publishOperation.value) {
+        operationKeys.settle(publishOperation.value, result.versionId, result.status)
+      }
+    }
   }
 
   async function rollback() {
@@ -113,7 +119,13 @@ export function useAdminWorkspace() {
     const current = version.value
     const key = operationKeys.get('rollback', current.id)
     const result = await run('publishing', () => api().rollback(current.id, key), '回滚任务已创建')
-    if (result) publishJob.value = result
+    if (result) setPublishJob('rollback', result)
+  }
+
+  function setPublishJob(operation: PublishOperation, job: AdminPublishJob) {
+    publishOperation.value = operation
+    publishJob.value = job
+    operationKeys.settle(operation, job.versionId, job.status)
   }
 
   return {

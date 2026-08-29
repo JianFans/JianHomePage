@@ -1,4 +1,5 @@
 export type PublishOperation = 'publish' | 'rollback'
+export type PublishTaskStatus = 'pending' | 'building' | 'succeeded' | 'failed'
 
 export function createIdempotencyKey(prefix: PublishOperation = 'publish'): string {
   const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -24,6 +25,11 @@ export function createOperationKeyStore(
     },
     reset(operation: PublishOperation, versionId: string) {
       keys.delete(identity(operation, versionId))
+    },
+    settle(operation: PublishOperation, versionId: string, status: PublishTaskStatus) {
+      if (status === 'succeeded' || status === 'failed') {
+        keys.delete(identity(operation, versionId))
+      }
     },
   }
 }

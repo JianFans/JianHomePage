@@ -1,4 +1,4 @@
-import type { PlatformLink } from '@yujian/schema'
+import type { LocalizedText, PlatformLink } from '@yujian/schema'
 import { useNuxtApp } from '#app'
 import { computed, ref } from 'vue'
 
@@ -6,7 +6,7 @@ export type AudioPlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'err
 
 export interface AudioPlayerTrack {
   id: string
-  title: string
+  title: LocalizedText
   previewSrc: string
   coverSrc?: string
   platformLinks: PlatformLink[]

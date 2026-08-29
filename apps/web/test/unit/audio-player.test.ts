@@ -6,7 +6,10 @@ import {
 
 const trackA: AudioPlayerTrack = {
   id: 'track-a',
-  title: '曲目 A',
+  title: {
+    'zh-CN': '曲目 A',
+    en: 'Track A',
+  },
   previewSrc: '/media/a.wav',
   platformLinks: [{
     provider: 'qq-music',
@@ -16,7 +19,10 @@ const trackA: AudioPlayerTrack = {
 
 const trackB: AudioPlayerTrack = {
   id: 'track-b',
-  title: '曲目 B',
+  title: {
+    'zh-CN': '曲目 B',
+    en: 'Track B',
+  },
   previewSrc: '/media/b.wav',
   platformLinks: [{
     provider: 'netease-music',

@@ -74,6 +74,9 @@ func TestMigrateLocksTransactionAndRunsInitialSchema(t *testing.T) {
 	if !strings.Contains(strings.Join(fake.tx.calls, "\n"), "CREATE TABLE IF NOT EXISTS content_versions") {
 		t.Fatal("initial migration did not create content_versions")
 	}
+	if !strings.Contains(strings.Join(fake.tx.calls, "\n"), "conrelid = 'publish_jobs'::regclass") {
+		t.Fatal("publish job constraint lookup is not scoped to publish_jobs")
+	}
 	if !fake.tx.committed || fake.tx.rolledBack {
 		t.Fatalf("expected committed transaction, got %#v", fake.tx)
 	}

@@ -241,6 +241,21 @@ func TestRouterRejectsUnknownCORSOrigin(t *testing.T) {
 	}
 }
 
+func TestRouterDoesNotBypassCORSAllowlistForMatchingHost(t *testing.T) {
+	router := NewRouter(RouterOptions{AllowedOrigins: []string{"https://admin.yujian.me"}})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/versions", nil)
+	request.Host = "api.yujian.me"
+	request.Header.Set("Origin", "http://api.yujian.me")
+	request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for origin outside allowlist, got %d", recorder.Code)
+	}
+}
+
 func TestCreateAssetUploadRequiresRightsObject(t *testing.T) {
 	called := false
 	middleware, err := auth.NewMiddleware(auth.MiddlewareOptions{AllowDevIdentity: true})
@@ -352,6 +367,31 @@ func TestPublishRequiresIdempotencyKey(t *testing.T) {
 	}
 	if value := decodeError(t, recorder); value["code"] != "invalid_request" {
 		t.Fatalf("unexpected error %#v", value)
+	}
+}
+
+func TestPublishRejectsIdempotencyKeyOutsideContractLength(t *testing.T) {
+	for _, key := range []string{"1234567", strings.Repeat("x", 129)} {
+		t.Run(key[:1], func(t *testing.T) {
+			called := false
+			publish := &publishServiceStub{publishFn: func(context.Context, domain.Principal, string, string) (domain.PublishJob, error) {
+				called = true
+				return testJob(), nil
+			}}
+			router := testRouter(t, &contentServiceStub{}, publish)
+			recorder := httptest.NewRecorder()
+			request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_1"}`, "publisher")
+			request.Header.Set("Idempotency-Key", key)
+
+			router.ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", recorder.Code)
+			}
+			if called {
+				t.Fatal("publish service must not receive an invalid idempotency key")
+			}
+		})
 	}
 }
 

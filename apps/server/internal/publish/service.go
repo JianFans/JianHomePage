@@ -31,6 +31,7 @@ type Repository interface {
 	GetPublishJobByIdempotencyKey(context.Context, string) (domain.PublishJob, error)
 	GetSuccessfulPublishByVersion(context.Context, string) (domain.PublishJob, error)
 	UpdatePublishJob(context.Context, domain.PublishJob) error
+	LockPublishSlot(context.Context, string) error
 	GetPublishPointer(context.Context, string) (domain.PublishPointer, error)
 	SetPublishPointer(context.Context, domain.PublishPointer) error
 	AppendAudit(context.Context, domain.AuditEntry) error
@@ -103,7 +104,9 @@ func (service *Service) Publish(
 	if !hasPermission(actor, auth.PermissionPublish) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
-	if idempotencyKey == "" {
+	var validKey bool
+	idempotencyKey, validKey = domain.NormalizeIdempotencyKey(idempotencyKey)
+	if !validKey {
 		return domain.PublishJob{}, domain.ErrInvalidInput
 	}
 	if existing, found, err := service.existingJob(ctx, actor, domain.PublishOperationPublish, versionID, idempotencyKey); err != nil {
@@ -155,7 +158,9 @@ func (service *Service) Rollback(
 	if !hasPermission(actor, auth.PermissionRollback) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
-	if idempotencyKey == "" {
+	var validKey bool
+	idempotencyKey, validKey = domain.NormalizeIdempotencyKey(idempotencyKey)
+	if !validKey {
 		return domain.PublishJob{}, domain.ErrInvalidInput
 	}
 	if existing, found, err := service.existingJob(ctx, actor, domain.PublishOperationRollback, versionID, idempotencyKey); err != nil {
@@ -239,7 +244,20 @@ func (service *Service) RefreshStatus(
 	}
 
 	var pointer domain.PublishPointer
+	alreadyFinalized := false
 	err = service.repository.WithinTransaction(ctx, func(repository Repository) error {
+		if err := repository.LockPublishSlot(ctx, productionSlot); err != nil {
+			return err
+		}
+		persisted, err := repository.GetPublishJob(ctx, job.ID)
+		if err != nil {
+			return err
+		}
+		job = persisted
+		if job.Status != domain.PublishBuilding {
+			alreadyFinalized = true
+			return nil
+		}
 		target, err := repository.GetVersion(ctx, job.VersionID)
 		if err != nil {
 			return err
@@ -295,10 +313,17 @@ func (service *Service) RefreshStatus(
 		if err := repository.UpdatePublishJob(ctx, job); err != nil {
 			return err
 		}
-		return repository.AppendAudit(ctx, publishAudit(actor, "publish.succeeded", job.ID, service.now().UTC()))
+		action := "publish.succeeded"
+		if job.Operation == domain.PublishOperationRollback {
+			action = "rollback.succeeded"
+		}
+		return repository.AppendAudit(ctx, publishAudit(actor, action, job.ID, service.now().UTC()))
 	})
 	if err != nil {
 		return domain.PublishJob{}, err
+	}
+	if alreadyFinalized {
+		return job, nil
 	}
 	service.notify(ctx, job, pointer, true)
 	return job, nil

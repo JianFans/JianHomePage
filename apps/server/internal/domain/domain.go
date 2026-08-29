@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -100,6 +101,11 @@ const (
 	PublishOperationPublish  PublishOperation = "publish"
 	PublishOperationRollback PublishOperation = "rollback"
 )
+
+func NormalizeIdempotencyKey(value string) (string, bool) {
+	normalized := strings.TrimSpace(value)
+	return normalized, len(normalized) >= 8 && len(normalized) <= 128
+}
 
 type PublishJob struct {
 	ID               string

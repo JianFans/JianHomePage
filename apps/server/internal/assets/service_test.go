@@ -17,6 +17,7 @@ type memoryRepository struct {
 	assets    map[string]domain.AssetRecord
 	audits    []domain.AuditEntry
 	updateErr error
+	beforeUpdate func(*memoryRepository)
 }
 
 func newMemoryRepository() *memoryRepository {
@@ -40,12 +41,20 @@ func (repository *memoryRepository) GetAsset(_ context.Context, id string) (doma
 	return asset, nil
 }
 
-func (repository *memoryRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord) error {
+func (repository *memoryRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	if repository.updateErr != nil {
 		return repository.updateErr
 	}
-	if _, exists := repository.assets[asset.ID]; !exists {
+	if repository.beforeUpdate != nil {
+		repository.beforeUpdate(repository)
+		repository.beforeUpdate = nil
+	}
+	current, exists := repository.assets[asset.ID]
+	if !exists {
 		return domain.ErrNotFound
+	}
+	if current.Status != expectedStatus {
+		return domain.ErrConflict
 	}
 	repository.assets[asset.ID] = asset
 	return nil
@@ -291,5 +300,30 @@ func TestDeleteAssetCanRetryBlobCleanupAfterProviderFailure(t *testing.T) {
 	}
 	if len(blobs.deletedKeys) != 1 {
 		t.Fatalf("expected one successful cleanup, got %#v", blobs.deletedKeys)
+	}
+}
+
+func TestCompleteUploadDoesNotRestoreConcurrentlyDeletedAsset(t *testing.T) {
+	repository := newMemoryRepository()
+	blobs := &blobStoreFake{}
+	service := assetServiceForTest(repository, blobs)
+	created, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+		FileName: "cover.webp", ContentType: "image/webp", Size: 10, Rights: json.RawMessage(`{"owner":"team"}`),
+	})
+	if err != nil {
+		t.Fatalf("create upload: %v", err)
+	}
+	blobs.metadata = ports.BlobMetadata{ContentType: "image/webp", Size: 10, Checksum: "sha256:test"}
+	repository.beforeUpdate = func(repository *memoryRepository) {
+		asset := repository.assets[created.Asset.ID]
+		asset.Status = domain.AssetDeleted
+		repository.assets[asset.ID] = asset
+	}
+
+	if _, err := service.CompleteUpload(context.Background(), editor(), created.Asset.ID); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected concurrent state conflict, got %v", err)
+	}
+	if repository.assets[created.Asset.ID].Status != domain.AssetDeleted {
+		t.Fatalf("concurrent delete was overwritten: %#v", repository.assets[created.Asset.ID])
 	}
 }

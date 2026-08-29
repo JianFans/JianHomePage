@@ -139,10 +139,14 @@ func (repository *AssetRepository) GetAsset(_ context.Context, id string) (domai
 	return value, err
 }
 
-func (repository *AssetRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord) error {
+func (repository *AssetRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	return repository.withWrite(func() error {
-		if _, exists := repository.state.assets[asset.ID]; !exists {
+		current, exists := repository.state.assets[asset.ID]
+		if !exists {
 			return domain.ErrNotFound
+		}
+		if current.Status != expectedStatus {
+			return domain.ErrConflict
 		}
 		repository.state.assets[asset.ID] = cloneAsset(asset)
 		return nil
@@ -265,6 +269,10 @@ func (repository *PublishRepository) UpdatePublishJob(_ context.Context, job dom
 		}
 		return nil
 	})
+}
+
+func (repository *PublishRepository) LockPublishSlot(_ context.Context, _ string) error {
+	return nil
 }
 
 func (repository *PublishRepository) GetPublishPointer(_ context.Context, slot string) (domain.PublishPointer, error) {

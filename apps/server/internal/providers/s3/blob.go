@@ -51,8 +51,9 @@ func NewBlobStore(config Config) (*BlobStore, error) {
 			config.AccessKeyID, config.SecretAccessKey, config.SessionToken,
 		)),
 	}
-	if config.HTTPClient != nil {
-		loadOptions = append(loadOptions, awsconfig.WithHTTPClient(config.HTTPClient))
+	httpClient := s3HTTPClient(config.HTTPClient, config.RequireHTTPS)
+	if httpClient != nil {
+		loadOptions = append(loadOptions, awsconfig.WithHTTPClient(httpClient))
 	}
 	awsConfig, err := awsconfig.LoadDefaultConfig(context.Background(), loadOptions...)
 	if err != nil {
@@ -68,6 +69,30 @@ func NewBlobStore(config Config) (*BlobStore, error) {
 		presigner: awss3.NewPresignClient(client),
 		now:       time.Now,
 	}, nil
+}
+
+func s3HTTPClient(client *http.Client, requireHTTPS bool) *http.Client {
+	if client == nil {
+		if !requireHTTPS {
+			return nil
+		}
+		client = http.DefaultClient
+	}
+	if !requireHTTPS {
+		return client
+	}
+	secured := *client
+	checkRedirect := client.CheckRedirect
+	secured.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if request.URL.Scheme != "https" {
+			return errors.New("S3 redirect must use HTTPS")
+		}
+		if checkRedirect != nil {
+			return checkRedirect(request, via)
+		}
+		return nil
+	}
+	return &secured
 }
 
 func (store *BlobStore) CreateUpload(ctx context.Context, request ports.UploadRequest) (ports.SignedUpload, error) {

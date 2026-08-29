@@ -85,6 +85,7 @@ func NewOIDCProvider(config OIDCConfig) (*OIDCProvider, error) {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 10 * time.Second}
 	}
+	httpClient = oidcHTTPClient(httpClient, config.RequireHTTPS)
 	now := config.Now
 	if now == nil {
 		now = time.Now
@@ -110,6 +111,24 @@ func NewOIDCProvider(config OIDCConfig) (*OIDCProvider, error) {
 		requireHTTPS: config.RequireHTTPS,
 		keys:         make(map[string]*rsa.PublicKey),
 	}, nil
+}
+
+func oidcHTTPClient(client *http.Client, requireHTTPS bool) *http.Client {
+	if !requireHTTPS {
+		return client
+	}
+	secured := *client
+	checkRedirect := client.CheckRedirect
+	secured.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if request.URL.Scheme != "https" {
+			return errors.New("OIDC redirect must use HTTPS")
+		}
+		if checkRedirect != nil {
+			return checkRedirect(request, via)
+		}
+		return nil
+	}
+	return &secured
 }
 
 func (provider *OIDCProvider) Authenticate(ctx context.Context, token string) (domain.Principal, error) {
@@ -235,7 +254,8 @@ func (provider *OIDCProvider) refreshKeysLocked(ctx context.Context) error {
 	}
 	keys := make(map[string]*rsa.PublicKey, len(document.Keys))
 	for _, value := range document.Keys {
-		if value.KTY != "RSA" || value.Kid == "" || value.N == "" || value.E == "" {
+		if value.KTY != "RSA" || value.Kid == "" || value.N == "" || value.E == "" ||
+			(value.Use != "" && value.Use != "sig") || (value.Alg != "" && value.Alg != "RS256") {
 			continue
 		}
 		modulus, err := base64.RawURLEncoding.DecodeString(value.N)

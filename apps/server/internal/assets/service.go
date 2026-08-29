@@ -26,7 +26,7 @@ type Repository interface {
 	WithinTransaction(context.Context, func(Repository) error) error
 	CreateAsset(context.Context, domain.AssetRecord) error
 	GetAsset(context.Context, string) (domain.AssetRecord, error)
-	UpdateAsset(context.Context, domain.AssetRecord) error
+	UpdateAsset(context.Context, domain.AssetRecord, domain.AssetStatus) error
 	AppendAudit(context.Context, domain.AuditEntry) error
 }
 
@@ -208,7 +208,7 @@ func (service *Service) CompleteUpload(
 		if current.Status != domain.AssetPending {
 			return domain.ErrInvalidTransition
 		}
-		if err := repository.UpdateAsset(ctx, asset); err != nil {
+		if err := repository.UpdateAsset(ctx, asset, current.Status); err != nil {
 			return err
 		}
 		return repository.AppendAudit(ctx, assetAudit(actor, "asset.complete_upload", asset.ID, now))
@@ -240,7 +240,7 @@ func (service *Service) Delete(ctx context.Context, actor domain.Principal, id s
 			}
 			asset.Status = domain.AssetDeleted
 			asset.DeletedAt = &now
-			if err := repository.UpdateAsset(ctx, asset); err != nil {
+			if err := repository.UpdateAsset(ctx, asset, current.Status); err != nil {
 				return err
 			}
 			return repository.AppendAudit(ctx, assetAudit(actor, "asset.delete", asset.ID, now))

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -108,6 +109,41 @@ func TestOIDCProviderCanRequireHTTPS(t *testing.T) {
 	}
 }
 
+func TestOIDCProviderRejectsHTTPSDowngradeRedirectBeforeSendingRequest(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	var insecureCalls atomic.Int32
+	insecure := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		insecureCalls.Add(1)
+		writer.WriteHeader(http.StatusBadGateway)
+	}))
+	defer insecure.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, insecure.URL, http.StatusTemporaryRedirect)
+	}))
+	defer secure.Close()
+	provider, err := auth.NewOIDCProvider(auth.OIDCConfig{
+		Issuer: secure.URL, Audience: "yujian-admin", HTTPClient: secure.Client(),
+		Now: func() time.Time { return time.Unix(1_700_000_000, 0) }, RequireHTTPS: true,
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	token := signJWT(t, key, map[string]any{
+		"iss": secure.URL, "sub": "editor-1", "aud": "yujian-admin",
+		"exp": 1_700_000_300, "roles": []string{"editor"},
+	})
+
+	if _, err := provider.Authenticate(context.Background(), token); err == nil {
+		t.Fatal("expected HTTPS downgrade rejection")
+	}
+	if insecureCalls.Load() != 0 {
+		t.Fatalf("insecure redirect target received %d requests", insecureCalls.Load())
+	}
+}
+
 func TestOIDCProviderRequiresHTTPSForDiscoveredJWKS(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -150,6 +186,46 @@ func TestOIDCProviderRequiresHTTPSForDiscoveredJWKS(t *testing.T) {
 
 	if _, err := provider.Authenticate(context.Background(), token); err == nil {
 		t.Fatal("expected insecure JWKS URL rejection")
+	}
+}
+
+func TestOIDCProviderRejectsKeysDeclaredForAnotherUseOrAlgorithm(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(writer).Encode(map[string]string{
+				"issuer": requestHost(request), "jwks_uri": requestHost(request) + "/jwks",
+			})
+		case "/jwks":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"keys": []map[string]string{{
+				"kty": "RSA", "kid": "test-key", "use": "enc", "alg": "RS512",
+				"n": base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
+				"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
+			}}})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	provider, err := auth.NewOIDCProvider(auth.OIDCConfig{
+		Issuer: server.URL, Audience: "yujian-admin", HTTPClient: server.Client(),
+		Now: func() time.Time { return time.Unix(1_700_000_000, 0) },
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	token := signJWT(t, key, map[string]any{
+		"iss": server.URL, "sub": "editor-1", "aud": "yujian-admin",
+		"exp": 1_700_000_300, "roles": []string{"editor"},
+	})
+
+	if _, err := provider.Authenticate(context.Background(), token); err == nil {
+		t.Fatal("expected key use and algorithm rejection")
 	}
 }
 

@@ -10,7 +10,10 @@ ALTER TABLE publish_jobs ALTER COLUMN release_id SET NOT NULL;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'publish_jobs_operation_check'
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'publish_jobs_operation_check'
+      AND conrelid = 'publish_jobs'::regclass
   ) THEN
     ALTER TABLE publish_jobs
       ADD CONSTRAINT publish_jobs_operation_check CHECK (operation IN ('publish','rollback'));

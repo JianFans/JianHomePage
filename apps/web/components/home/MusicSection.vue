@@ -54,7 +54,7 @@ const cards = computed(() => props.section.itemIds
     const playable: AudioPlayerTrack | null = track && preview
       ? {
           id: track.id,
-          title: resolveLocalized(track.title, props.locale),
+          title: track.title,
           previewSrc: preview.src,
           coverSrc: cover?.src,
           platformLinks: track.platformLinks.length ? track.platformLinks : release.platformLinks,
@@ -77,7 +77,10 @@ const moreHref = computed(() => {
 })
 
 function previewLabel(track: AudioPlayerTrack) {
-  return `${labels.value.preview}${track.title}`
+  const title = resolveLocalized(track.title, props.locale)
+  return props.locale === 'en'
+    ? `${labels.value.preview} ${title}`
+    : `${labels.value.preview}${title}`
 }
 
 function isActive(track: AudioPlayerTrack) {
