@@ -60,7 +60,7 @@ func validateSnapshotSemantics(value any) error {
 	if err := validateEventReferences(root, events, assets); err != nil {
 		return err
 	}
-	if err := validateMomentReferences(root, moments, assets); err != nil {
+	if err := validateMomentReferences(root, moments, assets, contentIDs); err != nil {
 		return err
 	}
 	if err := validateArtistReferences(root, assets); err != nil {
@@ -231,12 +231,19 @@ func validateEventReferences(root map[string]any, events, assets map[string]map[
 	return nil
 }
 
-func validateMomentReferences(root map[string]any, moments, assets map[string]map[string]any) error {
+func validateMomentReferences(root map[string]any, moments, assets map[string]map[string]any, contentIDs map[string]struct{}) error {
 	list, _ := root["moments"].([]any)
 	for index, raw := range list {
 		record, _ := raw.(map[string]any)
-		if err := requireReference(record["assetId"], "/moments/"+itoa(index)+"/assetId", assets); err != nil {
+		base := "/moments/" + itoa(index)
+		if err := requireReference(record["assetId"], base+"/assetId", assets); err != nil {
 			return err
+		}
+		if target, exists := record["target"].(map[string]any); exists && target["kind"] == "internal" {
+			id, _ := target["contentId"].(string)
+			if _, exists := contentIDs[id]; !exists {
+				return validationFailure(base+"/target/contentId", "references an unknown record")
+			}
 		}
 	}
 	return nil

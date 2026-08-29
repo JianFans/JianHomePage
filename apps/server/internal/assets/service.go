@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -226,22 +227,32 @@ func (service *Service) Delete(ctx context.Context, actor domain.Principal, id s
 	if err != nil {
 		return err
 	}
-	if asset.Status == domain.AssetDeleted {
-		return nil
-	}
-	if err := service.blobStore.Delete(ctx, asset.BlobKey); err != nil {
-		return err
-	}
-
-	now := service.now().UTC()
-	asset.Status = domain.AssetDeleted
-	asset.DeletedAt = &now
-	return service.repository.WithinTransaction(ctx, func(repository Repository) error {
-		if err := repository.UpdateAsset(ctx, asset); err != nil {
+	if asset.Status != domain.AssetDeleted {
+		now := service.now().UTC()
+		err = service.repository.WithinTransaction(ctx, func(repository Repository) error {
+			current, err := repository.GetAsset(ctx, id)
+			if err != nil {
+				return err
+			}
+			asset = current
+			if current.Status == domain.AssetDeleted {
+				return nil
+			}
+			asset.Status = domain.AssetDeleted
+			asset.DeletedAt = &now
+			if err := repository.UpdateAsset(ctx, asset); err != nil {
+				return err
+			}
+			return repository.AppendAudit(ctx, assetAudit(actor, "asset.delete", asset.ID, now))
+		})
+		if err != nil {
 			return err
 		}
-		return repository.AppendAudit(ctx, assetAudit(actor, "asset.delete", asset.ID, now))
-	})
+	}
+	if err := service.blobStore.Delete(ctx, asset.BlobKey); err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+	return nil
 }
 
 func validateUploadInput(input CreateUploadInput) (string, error) {

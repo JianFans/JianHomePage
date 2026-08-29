@@ -9,7 +9,7 @@ import (
 
 const (
 	allowedCORSMethods = "GET, POST, PUT, DELETE, OPTIONS"
-	allowedCORSHeaders = "Authorization, Content-Type, If-Match, Idempotency-Key, X-Request-ID"
+	allowedCORSHeaders = "Authorization, Content-Type, If-Match, Idempotency-Key, X-Request-ID, X-Yujian-Checksum"
 )
 
 func corsMiddleware(next http.Handler, allowedOrigins []string) http.Handler {

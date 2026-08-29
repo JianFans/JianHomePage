@@ -14,8 +14,9 @@ import (
 )
 
 type memoryRepository struct {
-	assets map[string]domain.AssetRecord
-	audits []domain.AuditEntry
+	assets    map[string]domain.AssetRecord
+	audits    []domain.AuditEntry
+	updateErr error
 }
 
 func newMemoryRepository() *memoryRepository {
@@ -40,6 +41,9 @@ func (repository *memoryRepository) GetAsset(_ context.Context, id string) (doma
 }
 
 func (repository *memoryRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord) error {
+	if repository.updateErr != nil {
+		return repository.updateErr
+	}
 	if _, exists := repository.assets[asset.ID]; !exists {
 		return domain.ErrNotFound
 	}
@@ -239,5 +243,53 @@ func TestDeleteAssetRequiresAdminAndWritesAudit(t *testing.T) {
 	}
 	if len(blobs.deletedKeys) != 1 || len(repository.audits) != 2 {
 		t.Fatalf("unexpected delete effects keys=%v audits=%v", blobs.deletedKeys, repository.audits)
+	}
+}
+
+func TestDeleteAssetDoesNotDeleteBlobBeforeDatabaseCommit(t *testing.T) {
+	repository := newMemoryRepository()
+	blobs := &blobStoreFake{}
+	service := assetServiceForTest(repository, blobs)
+	created, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+		FileName: "cover.webp", ContentType: "image/webp", Size: 1024,
+		Rights: json.RawMessage(`{"source":"authorized"}`),
+	})
+	if err != nil {
+		t.Fatalf("create upload: %v", err)
+	}
+	repository.updateErr = errors.New("database unavailable")
+
+	if err := service.Delete(context.Background(), admin(), created.Asset.ID); !errors.Is(err, repository.updateErr) {
+		t.Fatalf("expected database error, got %v", err)
+	}
+	if len(blobs.deletedKeys) != 0 {
+		t.Fatalf("blob was deleted before durable state change: %#v", blobs.deletedKeys)
+	}
+}
+
+func TestDeleteAssetCanRetryBlobCleanupAfterProviderFailure(t *testing.T) {
+	repository := newMemoryRepository()
+	blobs := &blobStoreFake{deleteErr: errors.New("object storage unavailable")}
+	service := assetServiceForTest(repository, blobs)
+	created, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+		FileName: "cover.webp", ContentType: "image/webp", Size: 1024,
+		Rights: json.RawMessage(`{"source":"authorized"}`),
+	})
+	if err != nil {
+		t.Fatalf("create upload: %v", err)
+	}
+
+	if err := service.Delete(context.Background(), admin(), created.Asset.ID); !errors.Is(err, blobs.deleteErr) {
+		t.Fatalf("expected provider error, got %v", err)
+	}
+	if repository.assets[created.Asset.ID].Status != domain.AssetDeleted {
+		t.Fatal("asset must be durably hidden before blob cleanup")
+	}
+	blobs.deleteErr = nil
+	if err := service.Delete(context.Background(), admin(), created.Asset.ID); err != nil {
+		t.Fatalf("retry cleanup: %v", err)
+	}
+	if len(blobs.deletedKeys) != 1 {
+		t.Fatalf("expected one successful cleanup, got %#v", blobs.deletedKeys)
 	}
 }

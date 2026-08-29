@@ -9,7 +9,7 @@
     "generate": "pnpm -r --if-present generate",
     "lint": "eslint .",
     "schema:generate": "pnpm --filter @yujian/schema generate",
-    "test": "pnpm -r --if-present test && node --test scripts/verify-static-output.test.mjs",
+    "test": "pnpm -r --if-present test && node --test scripts/verify-static-output.test.mjs scripts/edgeone-config.test.mjs",
     "test:go": "cd apps/server && go test ./...",
     "test:static": "node --test scripts/verify-static-output.test.mjs",
     "typecheck": "pnpm -r --if-present typecheck",

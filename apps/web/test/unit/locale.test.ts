@@ -1,4 +1,8 @@
-import { detectLocale } from '../../composables/useLocale'
+import {
+	detectLocale,
+	readLocalePreference,
+	writeLocalePreference,
+} from '../../composables/useLocale'
 
 describe('detectLocale', () => {
   it('优先使用已保存的支持语言且不提示', () => {
@@ -42,4 +46,16 @@ describe('detectLocale', () => {
       notify: false,
     })
   })
+})
+
+describe('语言偏好存储降级', () => {
+	it('读取异常时回退为空偏好且不抛错', () => {
+		const storage = { getItem: () => { throw new Error('storage blocked') } }
+		expect(readLocalePreference(storage)).toBeNull()
+	})
+
+	it('写入异常时保留页面交互且不抛错', () => {
+		const storage = { setItem: () => { throw new Error('quota exceeded') } }
+		expect(() => writeLocalePreference(storage, 'en')).not.toThrow()
+	})
 })

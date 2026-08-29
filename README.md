@@ -53,20 +53,13 @@ scripts/           fixture 与静态产物工具
 ## 构建与部署
 
 ```bash
-pnpm generate
-pnpm verify:static
+pnpm verify
 ```
 
 静态输出位于 `apps/web/.output/public`。EdgeOne Pages 的构建参数、缓存策略和冒烟检查见 [apps/web/EDGEONE.md](apps/web/EDGEONE.md)。
 
-静态构建默认读取 `content/fixtures/homepage.json`。发布工作流可设置 `CONTENT_SNAPSHOT_PATH`（相对仓库根目录或绝对路径）注入已经审核的不可变快照；构建会在启动阶段校验文件存在、JSON 语法和对象根节点。
+静态构建默认读取 `content/fixtures/homepage.json`。发布工作流可设置 `CONTENT_SNAPSHOT_PATH`（相对仓库根目录或绝对路径）注入已经审核的不可变快照；构建会在启动阶段执行 canonical JSON Schema 和跨记录引用校验。
 
-## 后续阶段
+## 生产接入
 
-真实生产接入仍需在获得基础设施权限后完成：
-
-1. PostgreSQL 仓储和迁移执行器。
-2. OIDC issuer discovery 与生产密钥配置。
-3. EdgeOne 账号侧构建触发端点、动态回源和部署后冒烟检查。
-
-这些接入不会改变公开首页的静态独立性。
+Go 服务已装配 PostgreSQL、OIDC、S3 兼容对象存储和 EdgeOne HTTPS 触发器。账号侧仍需提供实际数据库、腾讯云 COS/EdgeOne 端点、OIDC 凭据与 `/api/*` 回源规则；完整变量和启动示例见 [apps/server/README.md](apps/server/README.md)。这些动态依赖不会改变公开首页的静态独立性。

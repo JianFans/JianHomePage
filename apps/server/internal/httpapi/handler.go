@@ -54,6 +54,7 @@ type RouterOptions struct {
 	AllowedOrigins []string
 	MaxBodyBytes   int64
 	RequestID      func(*http.Request) string
+	LocalUploads   http.Handler
 }
 
 type Handler struct {
@@ -168,6 +169,9 @@ func NewRouter(options RouterOptions) http.Handler {
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", healthHandler)
+	if options.LocalUploads != nil {
+		root.Handle("/local-upload/", options.LocalUploads)
+	}
 	root.Handle("/api/", middleware.Authenticate(handler.withBodyLimit(api)))
 	requestID := options.RequestID
 	if requestID == nil {

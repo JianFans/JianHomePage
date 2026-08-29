@@ -8,7 +8,7 @@
 | --- | --- |
 | Root directory | `/` |
 | Install command | `pnpm install --frozen-lockfile` |
-| Build command | `pnpm --filter @yujian/web generate` |
+| Build command | `pnpm verify` |
 | Output directory | `apps/web/.output/public` |
 | Node.js | `22` |
 
@@ -25,7 +25,7 @@
 - 回滚时重新构建或恢复指定快照，不读取数据库当前状态。
 - 首页浏览器端不得根据 `CONTENT_SNAPSHOT_PATH` 或服务商 API 动态取数。
 
-构建启动时会读取并解析 `CONTENT_SNAPSHOT_PATH`；文件不存在、JSON 无效或根节点不是对象时直接让构建失败，避免发布错误快照。
+构建启动时会读取并解析 `CONTENT_SNAPSHOT_PATH`；文件不存在、JSON 无效、不符合 canonical JSON Schema、包含非法 URL 或存在悬空内容引用时直接让构建失败，避免发布错误快照。
 
 ## 缓存建议
 
@@ -43,11 +43,10 @@
 在仓库根目录运行：
 
 ```bash
-pnpm generate
-pnpm verify:static
+pnpm verify
 ```
 
-校验器会检查：
+完整门禁会执行 ESLint、TypeScript、单元测试、静态生成与产物校验，并检查：
 
 - `index.html`、`robots.txt` 和 `sitemap.xml` 是否存在。
 - 首页引用的本地资源是否完整。

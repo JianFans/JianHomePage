@@ -40,10 +40,10 @@ type BlobStore interface {
 }
 
 type BuildRequest struct {
-	IdempotencyKey   string
-	ReleaseID        string
-	SnapshotKey      string
-	SnapshotChecksum string
+	IdempotencyKey   string `json:"-"`
+	ReleaseID        string `json:"releaseId"`
+	SnapshotKey      string `json:"snapshotKey"`
+	SnapshotChecksum string `json:"snapshotChecksum"`
 }
 
 type BuildRun struct {

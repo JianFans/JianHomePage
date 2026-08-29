@@ -63,9 +63,10 @@ func run(ctx context.Context, settings config.Config, logger *slog.Logger) (retu
 }
 
 type ServiceDependencies struct {
-	Content httpapi.ContentService
-	Assets  httpapi.AssetService
-	Publish httpapi.PublishService
+	Content      httpapi.ContentService
+	Assets       httpapi.AssetService
+	Publish      httpapi.PublishService
+	LocalUploads http.Handler
 }
 
 type productionDatabase interface {
@@ -179,6 +180,7 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 		Publish:        dependencies.Publish,
 		Middleware:     middleware,
 		AllowedOrigins: settings.AllowedAdminOrigins,
+		LocalUploads:   dependencies.LocalUploads,
 	}), nil
 }
 
@@ -202,6 +204,7 @@ func developmentDependencies() ServiceDependencies {
 			BuildTrigger: trigger,
 			Validator:    validator,
 		}),
+		LocalUploads: blobs,
 	}
 }
 

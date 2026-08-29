@@ -100,3 +100,19 @@ func TestValidatorRejectsBrokenAssetReference(t *testing.T) {
 		t.Fatalf("expected broken asset reference pointer, got %v", err)
 	}
 }
+
+func TestValidatorRejectsBrokenMomentTargetReference(t *testing.T) {
+	var fixture map[string]any
+	if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	moments := fixture["moments"].([]any)
+	moments[0].(map[string]any)["target"] = map[string]any{"kind": "internal", "contentId": "video_missing"}
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/moments/0/target/contentId") {
+		t.Fatalf("expected broken moment target pointer, got %v", err)
+	}
+}

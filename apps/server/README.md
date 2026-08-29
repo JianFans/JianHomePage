@@ -7,9 +7,10 @@
 - `internal/content`：草稿、乐观锁、审核状态和审计。
 - `internal/assets`：图片、音频、视频的 MIME、扩展名、大小和签名上传校验。
 - `internal/publish`：不可变快照、SHA-256、发布幂等、构建状态、原子指针切换和回滚。
-- `internal/store/postgres`：嵌入式迁移、事务锁和可替换 SQL 执行器；可由 pgx 连接池包装，当前不直接绑定驱动。
+- `internal/store/postgres`：pgx 标准库驱动、嵌入式迁移、事务锁和可替换 SQL 执行器。
 - `internal/httpapi`：标准库 `net/http` 管理 API，统一错误体、`ETag`、`If-Match` 和 `Idempotency-Key`。
 - `internal/providers/edgeone`：可配置的 EdgeOne 构建触发 HTTP 适配器。
+- `internal/providers/s3`：S3 兼容对象存储适配器，可配置腾讯云 COS 端点。
 
 公开首页不依赖该服务在线。Nuxt 构建只读取已经审核的静态快照；服务停止时，已发布的 `apps/web/.output/public` 仍可独立分发。
 
@@ -22,8 +23,16 @@
 | `DATABASE_URL` | 空 | 生产环境必填；不得写入日志。 |
 | `OIDC_ISSUER` | 空 | 生产环境必填。 |
 | `OIDC_AUDIENCE` | 空 | 生产环境必填。 |
+| `ADMIN_ALLOWED_ORIGINS` | 空 | 逗号分隔的管理端 Origin；生产环境至少一个且必须为 HTTPS。 |
 | `ALLOW_DEV_IDENTITY` | `false` | 仅非生产环境显式设置为 `true` 时读取 `X-Dev-Subject` 和 `X-Dev-Roles`。 |
 | `SHUTDOWN_TIMEOUT` | `10s` | 优雅关闭等待时间。 |
+| `S3_ENDPOINT` | 空 | S3 兼容 HTTPS 端点，例如腾讯云 COS 地域端点。 |
+| `S3_REGION` | 空 | 对象存储地域，例如 `ap-singapore`。 |
+| `S3_BUCKET` | 空 | 素材与不可变发布快照所在桶。 |
+| `S3_ACCESS_KEY_ID` | 空 | 对象存储访问密钥 ID。 |
+| `S3_SECRET_ACCESS_KEY` | 空 | 对象存储访问密钥；不得写入日志。 |
+| `S3_SESSION_TOKEN` | 空 | 可选临时凭据 Token。 |
+| `S3_USE_PATH_STYLE` | `false` | 服务商要求 path-style URL 时设置为 `true`。 |
 | `EDGEONE_TRIGGER_URL` | 空 | EdgeOne 构建触发端点。 |
 | `EDGEONE_STATUS_URL` | 空 | EdgeOne 构建状态端点，按 `/{buildId}` 查询。 |
 | `EDGEONE_TOKEN` | 空 | 仅通过环境变量提供的 Bearer Token。 |
@@ -50,7 +59,29 @@ $env:ALLOW_DEV_IDENTITY = "true"
 go run ./cmd/api
 ```
 
-服务入口提供 `GET /healthz`。生产环境不会自动降级到内存仓储；必须在应用装配时注入持久化仓储、对象存储、OIDC 和构建触发器。接入真实依赖时，启动顺序应为：加载配置 → 建立数据库连接 → 执行迁移 → 构造服务和适配器 → 注册路由 → 启动 HTTP Server。`internal/store/postgres` 的 `Executor`、`Tx` 和 `Row` 接口用于隔离具体驱动。
+服务入口提供 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 checksum。生产环境不会自动降级到内存仓储；启动时按顺序加载配置、连接并探测 PostgreSQL、在同一事务中执行迁移、构造 S3 与 EdgeOne 适配器、注册路由并启动 HTTP Server。任一步失败都会关闭已打开的数据库并拒绝启动。
+
+生产运行示例：
+
+```powershell
+$env:APP_ENV = "production"
+$env:HTTP_ADDRESS = "0.0.0.0:8080"
+$env:DATABASE_URL = "postgres://..."
+$env:OIDC_ISSUER = "https://id.example.com"
+$env:OIDC_AUDIENCE = "yujian-admin"
+$env:ADMIN_ALLOWED_ORIGINS = "https://admin.yujian.me"
+$env:S3_ENDPOINT = "https://cos.ap-singapore.myqcloud.com"
+$env:S3_REGION = "ap-singapore"
+$env:S3_BUCKET = "yujian-media"
+$env:S3_ACCESS_KEY_ID = "..."
+$env:S3_SECRET_ACCESS_KEY = "..."
+$env:EDGEONE_TRIGGER_URL = "https://gateway.example.com/builds"
+$env:EDGEONE_STATUS_URL = "https://gateway.example.com/builds"
+$env:EDGEONE_TOKEN = "..."
+go run ./cmd/api
+```
+
+EdgeOne 可将 `/api/*` 回源至该进程。管理端跨域请求只接受 `ADMIN_ALLOWED_ORIGINS` 中的精确 Origin；未知来源和非 HTTPS 生产来源会被拒绝。
 
 ## 管理 API 示例
 
@@ -111,6 +142,8 @@ Content-Type: application/json
   "snapshotChecksum": "sha256:..."
 }
 ```
+
+触发请求同时携带 `Idempotency-Key` HTTP 头，值与当前发布任务的键一致。网关或工作流必须按该键去重，并为同一键返回同一个逻辑构建，以便服务端在网络结果不确定时安全恢复。
 
 状态端点返回 `pending`、`building`、`succeeded` 或 `failed`。端点和 Token 可替换，便于接 EdgeOne API 网关、Webhook 或内部发布工作流。
 

@@ -5,6 +5,9 @@ import { useI18n } from 'vue-i18n'
 export const DEFAULT_LOCALE: SupportedLocale = 'zh-CN'
 export const LOCALE_STORAGE_KEY = 'yujian:locale'
 
+type ReadableStorage = Pick<Storage, 'getItem'>
+type WritableStorage = Pick<Storage, 'setItem'>
+
 interface LocaleDetectionInput {
   stored: string | null
   browser: readonly string[]
@@ -54,6 +57,22 @@ export function detectLocale({
   return { locale: DEFAULT_LOCALE, notify: false }
 }
 
+export function readLocalePreference(storage?: ReadableStorage): string | null {
+  try {
+    return (storage ?? window.localStorage).getItem(LOCALE_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function writeLocalePreference(storage: WritableStorage | undefined, locale: SupportedLocale): void {
+  try {
+    (storage ?? window.localStorage).setItem(LOCALE_STORAGE_KEY, locale)
+  } catch {
+    // Storage may be unavailable in privacy modes; the active in-memory locale remains valid.
+  }
+}
+
 export function useLocale() {
   const { locale: i18nLocale } = useI18n({ useScope: 'global' })
   const locale = computed<SupportedLocale>({
@@ -70,7 +89,7 @@ export function useLocale() {
 
     if (import.meta.client) {
       document.documentElement.lang = nextLocale
-      localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale)
+      writeLocalePreference(undefined, nextLocale)
     }
   }
 

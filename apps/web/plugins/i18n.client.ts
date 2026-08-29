@@ -3,7 +3,8 @@ import en from '../locales/en'
 import zhCN from '../locales/zh-CN'
 import {
   detectLocale,
-  LOCALE_STORAGE_KEY,
+  readLocalePreference,
+  writeLocalePreference,
 } from '../composables/useLocale'
 
 export default defineNuxtPlugin((nuxtApp) => {
@@ -22,7 +23,7 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   nuxtApp.hook('app:mounted', () => {
     const detected = detectLocale({
-      stored: localStorage.getItem(LOCALE_STORAGE_KEY),
+      stored: readLocalePreference(),
       browser: navigator.languages.length
         ? navigator.languages
         : [navigator.language],
@@ -30,7 +31,7 @@ export default defineNuxtPlugin((nuxtApp) => {
 
     i18n.global.locale.value = detected.locale
     document.documentElement.lang = detected.locale
-    localStorage.setItem(LOCALE_STORAGE_KEY, detected.locale)
+    writeLocalePreference(undefined, detected.locale)
     noticeVisible.value = detected.notify
   })
 })

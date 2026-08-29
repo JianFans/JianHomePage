@@ -3,6 +3,7 @@ package edgeone
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,7 +35,18 @@ func TestTriggerSendsReleaseAndBearerToken(t *testing.T) {
 		if got := request.Header.Get("Idempotency-Key"); got != "publish-key-1" {
 			t.Fatalf("unexpected idempotency header %q", got)
 		}
-		if err := json.NewDecoder(request.Body).Decode(&received); err != nil {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("read request: %v", err)
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err != nil {
+			t.Fatalf("decode raw request: %v", err)
+		}
+		if _, exists := raw["releaseId"]; !exists || raw["ReleaseID"] != nil || raw["idempotencyKey"] != nil {
+			t.Fatalf("provider contract must use lowerCamelCase keys: %s", body)
+		}
+		if err := json.Unmarshal(body, &received); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
 		writer.Header().Set("Content-Type", "application/json")

@@ -218,6 +218,9 @@ func TestRouterHandlesAllowedCORSPreflightBeforeAuthentication(t *testing.T) {
 	if !strings.Contains(strings.ToLower(recorder.Header().Get("Access-Control-Allow-Headers")), "authorization") {
 		t.Fatalf("authorization header was not allowed: %q", recorder.Header().Get("Access-Control-Allow-Headers"))
 	}
+	if !strings.Contains(strings.ToLower(recorder.Header().Get("Access-Control-Allow-Headers")), "x-yujian-checksum") {
+		t.Fatalf("local upload checksum header was not allowed: %q", recorder.Header().Get("Access-Control-Allow-Headers"))
+	}
 }
 
 func TestRouterRejectsUnknownCORSOrigin(t *testing.T) {

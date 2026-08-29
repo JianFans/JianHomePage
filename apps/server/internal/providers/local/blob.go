@@ -1,10 +1,19 @@
 package local
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,8 +22,10 @@ import (
 )
 
 type BlobStore struct {
-	mu      sync.RWMutex
-	objects map[string]blobObject
+	mu           sync.RWMutex
+	objects      map[string]blobObject
+	reservations map[string]uploadReservation
+	now          func() time.Time
 }
 
 type blobObject struct {
@@ -22,17 +33,105 @@ type blobObject struct {
 	data     []byte
 }
 
-func NewBlobStore() *BlobStore { return &BlobStore{objects: make(map[string]blobObject)} }
+type uploadReservation struct {
+	request   ports.UploadRequest
+	token     string
+	expiresAt time.Time
+}
+
+func NewBlobStore() *BlobStore {
+	return &BlobStore{
+		objects:      make(map[string]blobObject),
+		reservations: make(map[string]uploadReservation),
+		now:          time.Now,
+	}
+}
 
 func (store *BlobStore) CreateUpload(_ context.Context, request ports.UploadRequest) (ports.SignedUpload, error) {
-	if request.BlobKey == "" {
+	if request.BlobKey == "" || request.ContentType == "" || request.Size <= 0 || request.ExpiresIn <= 0 {
 		return ports.SignedUpload{}, domain.ErrInvalidInput
 	}
+	token, err := randomToken()
+	if err != nil {
+		return ports.SignedUpload{}, err
+	}
+	expiresAt := store.now().UTC().Add(request.ExpiresIn)
+	store.mu.Lock()
+	store.reservations[request.BlobKey] = uploadReservation{request: request, token: token, expiresAt: expiresAt}
+	store.mu.Unlock()
+	headers := map[string]string{"Content-Type": request.ContentType}
+	if request.Checksum != "" {
+		headers["X-Yujian-Checksum"] = request.Checksum
+	}
 	return ports.SignedUpload{
-		URL:       "http://127.0.0.1:8080/local-upload/" + url.PathEscape(request.BlobKey),
-		Headers:   map[string]string{"Content-Type": request.ContentType},
-		ExpiresAt: time.Now().UTC().Add(request.ExpiresIn),
+		URL:       "http://127.0.0.1:8080/local-upload/" + escapeKeyPath(request.BlobKey) + "?token=" + url.QueryEscape(token),
+		Headers:   headers,
+		ExpiresAt: expiresAt,
 	}, nil
+}
+
+func (store *BlobStore) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPut {
+		writer.Header().Set("Allow", http.MethodPut)
+		http.Error(writer, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	key := strings.TrimPrefix(request.URL.Path, "/local-upload/")
+	if key == "" || key == request.URL.Path {
+		http.NotFound(writer, request)
+		return
+	}
+	store.mu.RLock()
+	reservation, exists := store.reservations[key]
+	store.mu.RUnlock()
+	if !exists || !secureEqual(reservation.token, request.URL.Query().Get("token")) {
+		http.NotFound(writer, request)
+		return
+	}
+	if !store.now().Before(reservation.expiresAt) {
+		http.Error(writer, http.StatusText(http.StatusGone), http.StatusGone)
+		return
+	}
+	if request.Header.Get("Content-Type") != reservation.request.ContentType {
+		http.Error(writer, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	if request.ContentLength > reservation.request.Size {
+		http.Error(writer, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+		return
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, reservation.request.Size+1)
+	data, err := io.ReadAll(request.Body)
+	if err != nil || int64(len(data)) > reservation.request.Size {
+		http.Error(writer, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+		return
+	}
+	if int64(len(data)) != reservation.request.Size {
+		http.Error(writer, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	checksum := checksumFor(data)
+	if reservation.request.Checksum != "" &&
+		(request.Header.Get("X-Yujian-Checksum") != reservation.request.Checksum || checksum != reservation.request.Checksum) {
+		http.Error(writer, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	if err := store.Put(request.Context(), key, bytes.NewReader(data), ports.BlobMetadata{
+		ContentType: reservation.request.ContentType,
+		Size:        int64(len(data)),
+		Checksum:    checksum,
+	}); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, domain.ErrConflict) {
+			status = http.StatusConflict
+		}
+		http.Error(writer, http.StatusText(status), status)
+		return
+	}
+	store.mu.Lock()
+	delete(store.reservations, key)
+	store.mu.Unlock()
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func (store *BlobStore) Stat(_ context.Context, key string) (ports.BlobMetadata, error) {
@@ -80,3 +179,31 @@ func (store *BlobStore) SignedReadURL(_ context.Context, key string, expiresIn t
 }
 
 var _ ports.BlobStore = (*BlobStore)(nil)
+var _ http.Handler = (*BlobStore)(nil)
+
+func randomToken() (string, error) {
+	buffer := make([]byte, 24)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", fmt.Errorf("create upload token: %w", err)
+	}
+	return hex.EncodeToString(buffer), nil
+}
+
+func escapeKeyPath(key string) string {
+	parts := strings.Split(key, "/")
+	for index := range parts {
+		parts[index] = url.PathEscape(parts[index])
+	}
+	return strings.Join(parts, "/")
+}
+
+func secureEqual(left, right string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
+}
+
+func checksumFor(data []byte) string {
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(data))
+}

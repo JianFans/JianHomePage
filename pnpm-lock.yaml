@@ -105,13 +105,14 @@ importers:
         version: 3.3.11(typescript@6.0.3)
 
   packages/schema:
+    dependencies:
+      ajv:
+        specifier: latest
+        version: 8.20.0
     devDependencies:
       '@types/node':
         specifier: latest
         version: 26.4.0
-      ajv:
-        specifier: latest
-        version: 8.20.0
       json-schema-to-typescript:
         specifier: latest
         version: 16.0.0

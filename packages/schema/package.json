@@ -10,9 +10,11 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
+  "dependencies": {
+    "ajv": "latest"
+  },
   "devDependencies": {
     "@types/node": "latest",
-    "ajv": "latest",
     "json-schema-to-typescript": "latest",
     "sharp": "0.35.4",
     "typescript": "6.0.3",
