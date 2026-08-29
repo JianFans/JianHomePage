@@ -25,11 +25,7 @@ function normalizeBrowserLocale(value: string): SupportedLocale | null {
     return 'en'
   }
 
-  if (
-    normalized === 'zh-cn'
-    || normalized === 'zh-hans'
-    || normalized.startsWith('zh-hans-')
-  ) {
+  if (normalized === 'zh' || normalized.startsWith('zh-')) {
     return 'zh-CN'
   }
 

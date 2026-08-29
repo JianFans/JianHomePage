@@ -22,6 +22,13 @@ describe('detectLocale', () => {
     })
   })
 
+  it('将其他中文变体回退为站点默认中文', () => {
+    expect(detectLocale({ stored: null, browser: ['zh-TW', 'en-US'] })).toEqual({
+      locale: 'zh-CN',
+      notify: false,
+    })
+  })
+
   it('忽略无效偏好并在无法识别时回退简体中文', () => {
     expect(detectLocale({ stored: 'fr', browser: [] })).toEqual({
       locale: 'zh-CN',

@@ -23,7 +23,9 @@ export default defineNuxtPlugin((nuxtApp) => {
   nuxtApp.hook('app:mounted', () => {
     const detected = detectLocale({
       stored: localStorage.getItem(LOCALE_STORAGE_KEY),
-      browser: navigator.languages,
+      browser: navigator.languages.length
+        ? navigator.languages
+        : [navigator.language],
     })
 
     i18n.global.locale.value = detected.locale
