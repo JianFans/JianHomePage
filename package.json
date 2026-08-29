@@ -9,9 +9,13 @@
     "generate": "pnpm -r --if-present generate",
     "lint": "eslint .",
     "schema:generate": "pnpm --filter @yujian/schema generate",
-    "test": "pnpm -r --if-present test",
+    "test": "pnpm -r --if-present test && node --test scripts/verify-static-output.test.mjs",
+    "test:go": "cd apps/server && go test ./...",
+    "test:static": "node --test scripts/verify-static-output.test.mjs",
     "typecheck": "pnpm -r --if-present typecheck",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm generate"
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm generate && pnpm verify:static",
+    "verify:go": "cd apps/server && go generate ./... && go test ./... && go vet ./...",
+    "verify:static": "node scripts/verify-static-output.mjs apps/web/.output/public"
   },
   "devDependencies": {
     "@eslint/js": "latest",
