@@ -208,6 +208,7 @@ export interface Asset {
   kind: "image" | "gif" | "video" | "audio";
   src: MediaUrl;
   mimeType: "image/webp" | "image/gif" | "video/mp4" | "audio/wav" | "audio/mpeg";
+  byteSize: number;
   width?: number;
   height?: number;
   durationSeconds?: number;

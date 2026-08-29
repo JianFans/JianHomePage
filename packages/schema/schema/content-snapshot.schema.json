@@ -509,7 +509,7 @@
     "Asset": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "src", "mimeType", "alt", "rights", "checksum"],
+      "required": ["id", "kind", "src", "mimeType", "byteSize", "alt", "rights", "checksum"],
       "properties": {
         "id": { "type": "string", "pattern": "^asset_" },
         "kind": { "enum": ["image", "gif", "video", "audio"] },
@@ -517,6 +517,7 @@
         "mimeType": {
           "enum": ["image/webp", "image/gif", "video/mp4", "audio/wav", "audio/mpeg"]
         },
+        "byteSize": { "type": "integer", "minimum": 1 },
         "width": { "type": "integer", "minimum": 1 },
         "height": { "type": "integer", "minimum": 1 },
         "durationSeconds": { "type": "number", "exclusiveMinimum": 0 },

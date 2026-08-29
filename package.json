@@ -4,6 +4,8 @@
   "packageManager": "pnpm@11.23.0",
   "scripts": {
     "dev": "pnpm --filter @yujian/web dev",
+    "fixture:audio": "node scripts/generate-fixture-audio.mjs",
+    "fixture:images": "node scripts/generate-fixture-images.mjs",
     "generate": "pnpm -r --if-present generate",
     "lint": "eslint .",
     "schema:generate": "pnpm --filter @yujian/schema generate",
@@ -16,6 +18,7 @@
     "eslint": "latest",
     "eslint-plugin-vue": "latest",
     "globals": "latest",
+    "sharp": "0.35.4",
     "typescript": "6.0.3",
     "typescript-eslint": "latest",
     "vue-eslint-parser": "latest"
