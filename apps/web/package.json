@@ -15,6 +15,7 @@
   "dependencies": {
     "@lucide/vue": "latest",
     "@nuxt/image": "latest",
+    "@yujian/schema": "workspace:*",
     "nuxt": "latest",
     "vue": "latest",
     "vue-i18n": "latest",

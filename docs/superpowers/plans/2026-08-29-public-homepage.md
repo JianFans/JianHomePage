@@ -252,7 +252,7 @@ git commit -m "feat(内容契约): 添加首页静态快照模型"
 - 测试：`apps/web/test/unit/localized.test.ts`
 - 测试：`apps/web/test/unit/locale.test.ts`
 
-- [ ] **步骤 1：编写多语言回退失败测试**
+- [x] **步骤 1：编写多语言回退失败测试**
 
 ```ts
 // apps/web/test/unit/localized.test.ts
@@ -273,7 +273,7 @@ describe('resolveLocalized', () => {
 })
 ```
 
-- [ ] **步骤 2：运行测试并确认 `resolveLocalized` 缺失**
+- [x] **步骤 2：运行测试并确认 `resolveLocalized` 缺失**
 
 运行：
 
@@ -283,7 +283,7 @@ pnpm --filter @yujian/web test -- localized.test.ts
 
 预期：FAIL，提示无法解析导出。
 
-- [ ] **步骤 3：实现最小回退函数**
+- [x] **步骤 3：实现最小回退函数**
 
 ```ts
 // apps/web/utils/localized.ts
@@ -296,7 +296,7 @@ export function resolveLocalized(value: LocalizedText, locale: SupportedLocale):
 }
 ```
 
-- [ ] **步骤 4：编写语言选择失败测试**
+- [x] **步骤 4：编写语言选择失败测试**
 
 `locale.test.ts` 覆盖以下独立行为：
 
@@ -306,11 +306,11 @@ expect(detectLocale({ stored: null, browser: ['en-US'] })).toEqual({ locale: 'en
 expect(detectLocale({ stored: null, browser: [] })).toEqual({ locale: 'zh-CN', notify: false })
 ```
 
-- [ ] **步骤 5：实现 `detectLocale`、服务端默认实例和客户端持久化**
+- [x] **步骤 5：实现 `detectLocale`、服务端默认实例和客户端持久化**
 
 `detectLocale` 只接受 `zh-CN` 与 `en`，优先 `localStorage`，再匹配 `navigator.languages`，最后回退 `zh-CN`。客户端插件只在挂载后切换语言，并通过 `useState('locale-notice')` 暴露一次性非阻断提示。
 
-- [ ] **步骤 6：验证测试和类型**
+- [x] **步骤 6：验证测试和类型**
 
 运行：
 
@@ -321,7 +321,7 @@ pnpm --filter @yujian/web typecheck
 
 预期：全部通过。
 
-- [ ] **步骤 7：提交**
+- [x] **步骤 7：提交**
 
 ```bash
 git add apps/web packages/schema
