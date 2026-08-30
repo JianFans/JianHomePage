@@ -5,11 +5,22 @@ import { loadBuildSnapshot } from './utils/build-snapshot'
 const appDirectory = fileURLToPath(new URL('.', import.meta.url))
 const workspaceRoot = resolve(appDirectory, '../..')
 const defaultSnapshotPath = resolve(workspaceRoot, 'content/fixtures/homepage.json')
+const publicDirectory = resolve(appDirectory, 'public')
 const buildSnapshot = loadBuildSnapshot({
   envPath: process.env.CONTENT_SNAPSHOT_PATH,
   workspaceRoot,
   defaultPath: defaultSnapshotPath,
+  publicDirectory,
 })
+const defaultLocale = buildSnapshot.site.defaultLocale
+const seoTitle = buildSnapshot.site.seo.title[defaultLocale]
+const seoDescription = buildSnapshot.site.seo.description[defaultLocale]
+const seoAsset = buildSnapshot.assets.find(asset => asset.id === buildSnapshot.site.seo.ogAssetId)
+if (!seoAsset) {
+  throw new Error(`SEO asset not found: ${buildSnapshot.site.seo.ogAssetId}`)
+}
+const seoImage = new URL(seoAsset.src, buildSnapshot.site.canonicalUrl).toString()
+const seoImageAlt = seoAsset.alt[defaultLocale]
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-01',
@@ -32,7 +43,7 @@ export default defineNuxtConfig({
   nitro: {
     preset: 'static',
     prerender: {
-      routes: ['/sitemap.xml'],
+      routes: ['/robots.txt', '/sitemap.xml'],
     },
   },
   runtimeConfig: {
@@ -48,22 +59,22 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: 'zh-CN' },
-      title: '遇健我 | 王子健官方网站',
+      title: seoTitle,
       meta: [
         {
           name: 'description',
-          content: '遇健我，音乐人王子健官方网站。',
+          content: seoDescription,
         },
-        { property: 'og:title', content: '遇健我 · 王子健' },
-        { property: 'og:description', content: '音乐人王子健官方站' },
+        { property: 'og:title', content: seoTitle },
+        { property: 'og:description', content: seoDescription },
         { property: 'og:type', content: 'website' },
-        { property: 'og:url', content: 'https://yujian.me' },
-        { property: 'og:image', content: 'https://yujian.me/media/hero-studio.webp' },
-        { property: 'og:image:alt', content: '遇健我 · 王子健' },
+        { property: 'og:url', content: buildSnapshot.site.canonicalUrl },
+        { property: 'og:image', content: seoImage },
+        { property: 'og:image:alt', content: seoImageAlt },
         { name: 'twitter:card', content: 'summary_large_image' },
       ],
       link: [
-        { rel: 'canonical', href: 'https://yujian.me' },
+        { rel: 'canonical', href: buildSnapshot.site.canonicalUrl },
       ],
     },
   },

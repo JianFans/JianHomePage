@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -11,6 +11,16 @@ import {
 
 describe('构建时内容快照', () => {
 	const fixture = JSON.parse(readFileSync(resolve(process.cwd(), '../../content/fixtures/homepage.json'), 'utf8'))
+	const fixturePublicDirectory = resolve(process.cwd(), 'public')
+
+	function copyLocalAssets(publicDirectory: string, excludedSrc?: string) {
+		for (const asset of fixture.assets) {
+			if (!asset.src.startsWith('/') || asset.src === excludedSrc) continue
+			const target = join(publicDirectory, asset.src.slice(1))
+			mkdirSync(dirname(target), { recursive: true })
+			copyFileSync(join(fixturePublicDirectory, asset.src.slice(1)), target)
+		}
+	}
 
   it('未配置路径时回退到默认 fixture', () => {
     const workspaceRoot = 'D:/workspace'
@@ -81,5 +91,72 @@ describe('构建时内容快照', () => {
 		writeFileSync(snapshotPath, JSON.stringify(invalid))
 
 		expect(() => loadContentSnapshot(snapshotPath)).toThrow(/trackIds\/0/)
+	})
+
+	it('本地试听资源缺失会让构建失败', () => {
+		const root = mkdtempSync(join(tmpdir(), 'yujian-snapshot-'))
+		const snapshotPath = join(root, 'release.json')
+		const publicDirectory = join(root, 'public')
+		mkdirSync(publicDirectory)
+		copyLocalAssets(publicDirectory, '/media/preview-sample.wav')
+		writeFileSync(snapshotPath, JSON.stringify(fixture))
+
+		expect(() => loadBuildSnapshot({
+			envPath: snapshotPath,
+			workspaceRoot: root,
+			defaultPath: snapshotPath,
+			publicDirectory,
+		})).toThrow(/preview-sample\.wav/)
+	})
+
+	it('本地素材字节数与声明不符会让构建失败', () => {
+		const root = mkdtempSync(join(tmpdir(), 'yujian-snapshot-'))
+		const snapshotPath = join(root, 'release.json')
+		const publicDirectory = join(root, 'public')
+		const invalid = structuredClone(fixture)
+		invalid.assets[0].byteSize += 1
+		copyLocalAssets(publicDirectory)
+		writeFileSync(snapshotPath, JSON.stringify(invalid))
+
+		expect(() => loadBuildSnapshot({
+			envPath: snapshotPath,
+			workspaceRoot: root,
+			defaultPath: snapshotPath,
+			publicDirectory,
+		})).toThrow(/byte size/i)
+	})
+
+	it('本地素材校验和与声明不符会让构建失败', () => {
+		const root = mkdtempSync(join(tmpdir(), 'yujian-snapshot-'))
+		const snapshotPath = join(root, 'release.json')
+		const publicDirectory = join(root, 'public')
+		const invalid = structuredClone(fixture)
+		invalid.assets[0].checksum = `sha256:${'0'.repeat(64)}`
+		copyLocalAssets(publicDirectory)
+		writeFileSync(snapshotPath, JSON.stringify(invalid))
+
+		expect(() => loadBuildSnapshot({
+			envPath: snapshotPath,
+			workspaceRoot: root,
+			defaultPath: snapshotPath,
+			publicDirectory,
+		})).toThrow(/checksum/i)
+	})
+
+	it('本地素材 MIME 与扩展名不符会让构建失败', () => {
+		const root = mkdtempSync(join(tmpdir(), 'yujian-snapshot-'))
+		const snapshotPath = join(root, 'release.json')
+		const publicDirectory = join(root, 'public')
+		const invalid = structuredClone(fixture)
+		invalid.assets[0].mimeType = 'image/gif'
+		copyLocalAssets(publicDirectory)
+		writeFileSync(snapshotPath, JSON.stringify(invalid))
+
+		expect(() => loadBuildSnapshot({
+			envPath: snapshotPath,
+			workspaceRoot: root,
+			defaultPath: snapshotPath,
+			publicDirectory,
+		})).toThrow(/MIME/i)
 	})
 })

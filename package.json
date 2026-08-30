@@ -14,6 +14,7 @@
     "test:static": "node --test scripts/verify-static-output.test.mjs",
     "typecheck": "pnpm -r --if-present typecheck",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm generate && pnpm verify:static",
+    "verify:edgeone": "node scripts/require-content-snapshot.mjs && pnpm verify",
     "verify:go": "cd apps/server && go generate ./... && go test ./... && go vet ./...",
     "verify:static": "node scripts/verify-static-output.mjs apps/web/.output/public"
   },

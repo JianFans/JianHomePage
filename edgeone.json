@@ -1,6 +1,6 @@
 {
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm verify",
+  "buildCommand": "pnpm verify:edgeone",
   "outputDirectory": "apps/web/.output/public",
   "nodeVersion": "22"
 }
