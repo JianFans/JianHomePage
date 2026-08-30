@@ -110,15 +110,24 @@ func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.T) {
 	database := &productionDatabaseFake{}
 	var blobConfig providerS3.Config
+	var buildConfig edgeone.Config
+	var databaseURL string
 	factory := productionFactory{
-		openDatabase: func(context.Context, string) (productionDatabase, error) { return database, nil },
+		openDatabase: func(_ context.Context, value string) (productionDatabase, error) {
+			databaseURL = value
+			return database, nil
+		},
 		newBlobStore: func(config providerS3.Config) (ports.BlobStore, error) {
 			blobConfig = config
 			return local.NewBlobStore(), nil
 		},
-		newBuildTrigger: func(edgeone.Config) (ports.BuildTrigger, error) { return local.NewBuildTrigger(), nil },
+		newBuildTrigger: func(config edgeone.Config) (ports.BuildTrigger, error) {
+			buildConfig = config
+			return local.NewBuildTrigger(), nil
+		},
 	}
-	dependencies, closeResources, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
+	settings := productionSettings()
+	dependencies, closeResources, err := buildProductionDependencies(context.Background(), settings, factory)
 	if err != nil {
 		t.Fatalf("build production dependencies: %v", err)
 	}
@@ -128,8 +137,26 @@ func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.
 	if blobConfig.PublicBaseURL != "https://media.yujian.me" {
 		t.Fatalf("unexpected production media base URL %q", blobConfig.PublicBaseURL)
 	}
+	if !blobConfig.RequireHTTPS {
+		t.Fatal("production object storage must require HTTPS")
+	}
+	if databaseURL != settings.DatabaseURL {
+		t.Fatalf("unexpected production database URL %q", databaseURL)
+	}
+	if buildConfig.TriggerURL != settings.EdgeOneTriggerURL || buildConfig.StatusURL != settings.EdgeOneStatusURL || !buildConfig.RequireHTTPS {
+		t.Fatalf("unexpected EdgeOne production configuration %#v", buildConfig)
+	}
 	if database.beginCalls != 1 || database.tx == nil || !database.tx.committed {
 		t.Fatalf("migrations did not commit in a database transaction: %#v", database)
+	}
+	handler, err := buildHandler(settings, dependencies)
+	if err != nil {
+		t.Fatalf("build production handler: %v", err)
+	}
+	health := httptest.NewRecorder()
+	handler.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if health.Code != http.StatusOK {
+		t.Fatalf("production health check: status=%d body=%s", health.Code, health.Body.String())
 	}
 	if err := closeResources(); err != nil {
 		t.Fatalf("close resources: %v", err)
@@ -162,6 +189,195 @@ func TestPublishReconcilerRunsImmediatelyAndStopsWithContext(t *testing.T) {
 	}
 }
 
+func TestPublishReconcilerLogsFailuresAndUsesDefaultInterval(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reconciler := &publishReconcilerFake{
+		calls: make(chan struct{}, 1),
+		err:   errors.New("reconcile unavailable"),
+	}
+	logs := &notifyingWriter{wrote: make(chan struct{}, 1)}
+	done := make(chan struct{})
+	go func() {
+		runPublishReconciler(ctx, 0, reconciler, slog.New(slog.NewTextHandler(logs, nil)))
+		close(done)
+	}()
+
+	select {
+	case <-reconciler.calls:
+	case <-time.After(time.Second):
+		t.Fatal("reconciler did not run immediately")
+	}
+	select {
+	case <-logs.wrote:
+	case <-time.After(time.Second):
+		t.Fatal("reconcile failure was not logged")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("reconciler did not stop with context")
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("reconcile unavailable")) {
+		t.Fatalf("unexpected reconcile log: %q", logs.String())
+	}
+}
+
+func TestRunDevelopmentStopsWithCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	settings := config.Config{
+		Environment:      "development",
+		Address:          "127.0.0.1:0",
+		AllowDevIdentity: true,
+		ShutdownTimeout:  time.Second,
+	}
+
+	if err := run(ctx, settings, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
+		t.Fatalf("run development server: %v", err)
+	}
+}
+
+func TestRunReturnsHandlerConfigurationError(t *testing.T) {
+	settings := config.Config{
+		Environment:      "development",
+		OIDCIssuer:       "://invalid",
+		OIDCAudience:     "admin",
+		AllowDevIdentity: true,
+	}
+
+	if err := run(context.Background(), settings, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+		t.Fatal("expected invalid OIDC configuration to stop startup")
+	}
+}
+
+func TestRunProductionReturnsDatabaseConfigurationError(t *testing.T) {
+	settings := productionSettings()
+	settings.DatabaseURL = ""
+
+	err := run(context.Background(), settings, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil {
+		t.Fatal("expected missing production database URL to stop startup")
+	}
+}
+
+func TestDefaultProductionFactoryReturnsAdapterConfigurationErrors(t *testing.T) {
+	factory := defaultProductionFactory()
+	if factory.openDatabase == nil || factory.newBlobStore == nil || factory.newBuildTrigger == nil {
+		t.Fatalf("incomplete default production factory %#v", factory)
+	}
+	if _, err := factory.openDatabase(context.Background(), ""); err == nil {
+		t.Fatal("expected empty database URL to fail")
+	}
+	if _, err := factory.newBlobStore(providerS3.Config{}); err == nil {
+		t.Fatal("expected empty object storage configuration to fail")
+	}
+	if _, err := factory.newBuildTrigger(edgeone.Config{}); err == nil {
+		t.Fatal("expected empty build trigger configuration to fail")
+	}
+}
+
+func TestRunServerReturnsListenError(t *testing.T) {
+	settings := config.Config{
+		Address:         "127.0.0.1:-1",
+		ShutdownTimeout: time.Second,
+	}
+	err := runServer(context.Background(), settings, slog.New(slog.NewTextHandler(io.Discard, nil)), http.HandlerFunc(healthHandler))
+	if err == nil {
+		t.Fatal("expected invalid listen address to fail")
+	}
+}
+
+func TestRunServerShutsDownWhenContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	settings := config.Config{
+		Address:         "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+	}
+
+	if err := runServer(ctx, settings, slog.New(slog.NewTextHandler(io.Discard, nil)), http.HandlerFunc(healthHandler)); err != nil {
+		t.Fatalf("shutdown server: %v", err)
+	}
+}
+
+func TestBuildProductionDependenciesRejectsNonProductionEnvironment(t *testing.T) {
+	_, closeResources, err := buildProductionDependencies(context.Background(), config.Config{Environment: "development"}, productionFactory{})
+	if err == nil {
+		t.Fatal("expected non-production environment to be rejected")
+	}
+	if closeResources != nil {
+		t.Fatal("unexpected cleanup function after rejected configuration")
+	}
+}
+
+func TestBuildProductionDependenciesReturnsDatabaseOpenError(t *testing.T) {
+	sentinel := errors.New("database unavailable")
+	factory := productionFactory{
+		openDatabase: func(context.Context, string) (productionDatabase, error) { return nil, sentinel },
+	}
+
+	_, _, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected database error, got %v", err)
+	}
+}
+
+func TestBuildProductionDependenciesClosesDatabaseOnMigrationFailure(t *testing.T) {
+	sentinel := errors.New("migration unavailable")
+	database := &productionDatabaseFake{beginErr: sentinel}
+	factory := productionFactory{
+		openDatabase: func(context.Context, string) (productionDatabase, error) { return database, nil },
+	}
+
+	_, _, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected migration error, got %v", err)
+	}
+	if !database.closed {
+		t.Fatal("database was not closed after migration failure")
+	}
+}
+
+func TestBuildProductionDependenciesClosesDatabaseOnBuildTriggerFailure(t *testing.T) {
+	database := &productionDatabaseFake{}
+	sentinel := errors.New("build trigger unavailable")
+	factory := productionFactory{
+		openDatabase: func(context.Context, string) (productionDatabase, error) { return database, nil },
+		newBlobStore: func(providerS3.Config) (ports.BlobStore, error) {
+			return local.NewBlobStore(), nil
+		},
+		newBuildTrigger: func(edgeone.Config) (ports.BuildTrigger, error) { return nil, sentinel },
+	}
+
+	_, _, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected build trigger error, got %v", err)
+	}
+	if !database.closed {
+		t.Fatal("database was not closed after build trigger failure")
+	}
+}
+
+func TestBuildHandlerRejectsIncompleteProductionServices(t *testing.T) {
+	_, err := buildHandler(productionSettings(), ServiceDependencies{})
+	if err == nil {
+		t.Fatal("expected incomplete production services to be rejected")
+	}
+}
+
+func TestBuildHandlerRejectsDevelopmentIdentityInProduction(t *testing.T) {
+	settings := productionSettings()
+	settings.OIDCIssuer = ""
+	settings.OIDCAudience = ""
+	settings.AllowDevIdentity = true
+
+	_, err := buildHandler(settings, developmentDependencies())
+	if !errors.Is(err, config.ErrUnsafeDevelopmentIdentity) {
+		t.Fatalf("expected unsafe development identity error, got %v", err)
+	}
+}
+
 func TestBuildProductionDependenciesClosesDatabaseOnProviderFailure(t *testing.T) {
 	database := &productionDatabaseFake{}
 	sentinel := errors.New("object storage unavailable")
@@ -182,14 +398,32 @@ func TestBuildProductionDependenciesClosesDatabaseOnProviderFailure(t *testing.T
 type productionDatabaseFake struct {
 	tx         *productionTxFake
 	beginCalls int
+	beginErr   error
 	closed     bool
 }
 
-type publishReconcilerFake struct{ calls chan struct{} }
+type publishReconcilerFake struct {
+	calls chan struct{}
+	err   error
+}
+
+type notifyingWriter struct {
+	bytes.Buffer
+	wrote chan struct{}
+}
+
+func (writer *notifyingWriter) Write(value []byte) (int, error) {
+	written, err := writer.Buffer.Write(value)
+	select {
+	case writer.wrote <- struct{}{}:
+	default:
+	}
+	return written, err
+}
 
 func (reconciler *publishReconcilerFake) Reconcile(context.Context) error {
 	reconciler.calls <- struct{}{}
-	return nil
+	return reconciler.err
 }
 
 func (*productionDatabaseFake) ExecContext(context.Context, string, ...any) (postgres.ExecResult, error) {
@@ -203,6 +437,9 @@ func (*productionDatabaseFake) QueryContext(context.Context, string, ...any) (po
 }
 func (database *productionDatabaseFake) BeginTx(context.Context) (postgres.Tx, error) {
 	database.beginCalls++
+	if database.beginErr != nil {
+		return nil, database.beginErr
+	}
 	database.tx = &productionTxFake{}
 	return database.tx, nil
 }

@@ -1,31 +1,39 @@
 {
   "name": "yujian-me",
   "private": true,
+  "engines": {
+    "node": ">=22 <23"
+  },
   "packageManager": "pnpm@11.23.0",
   "scripts": {
+    "check:format:go": "node scripts/check-go-format.mjs",
     "dev": "pnpm --filter @yujian/web dev",
     "fixture:audio": "node scripts/generate-fixture-audio.mjs",
     "fixture:images": "node scripts/generate-fixture-images.mjs",
     "generate": "pnpm -r --if-present generate",
     "lint": "eslint .",
     "schema:generate": "pnpm --filter @yujian/schema generate",
-    "test": "pnpm -r --if-present test && node --test scripts/verify-static-output.test.mjs scripts/edgeone-config.test.mjs",
+    "test": "pnpm -r --if-present test && node --test scripts/verify-static-output.test.mjs scripts/edgeone-config.test.mjs scripts/automation-config.test.mjs scripts/check-go-format.test.mjs scripts/go-coverage.test.mjs",
+    "test:automation": "node --test scripts/automation-config.test.mjs",
+    "test:coverage": "pnpm -r --if-present test:coverage",
+    "test:coverage:go": "node scripts/go-coverage.mjs --threshold=80",
     "test:go": "cd apps/server && go test ./...",
     "test:static": "node --test scripts/verify-static-output.test.mjs",
     "typecheck": "pnpm -r --if-present typecheck",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm generate && pnpm verify:static",
     "verify:edgeone": "node scripts/require-content-snapshot.mjs && pnpm verify",
-    "verify:go": "cd apps/server && go generate ./... && go test ./... && go vet ./...",
+    "verify:go": "pnpm check:format:go && cd apps/server && go generate ./... && go test ./... && go vet ./...",
     "verify:static": "node scripts/verify-static-output.mjs apps/web/.output/public"
   },
   "devDependencies": {
-    "@eslint/js": "latest",
-    "eslint": "latest",
-    "eslint-plugin-vue": "latest",
-    "globals": "latest",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.9.1",
+    "eslint-plugin-vue": "10.10.0",
+    "globals": "17.11.0",
     "sharp": "0.35.4",
     "typescript": "6.0.3",
-    "typescript-eslint": "latest",
-    "vue-eslint-parser": "latest"
+    "typescript-eslint": "8.68.0",
+    "vue-eslint-parser": "10.4.1",
+    "yaml": "2.9.0"
   }
 }

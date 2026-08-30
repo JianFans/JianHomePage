@@ -6,29 +6,32 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
+    "playwright:install": "playwright install --with-deps chromium",
     "postinstall": "nuxt prepare",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "@lucide/vue": "latest",
-    "@nuxt/image": "latest",
+    "@lucide/vue": "1.35.0",
+    "@nuxt/image": "2.1.0",
     "@yujian/schema": "workspace:*",
-    "nuxt": "latest",
-    "vue": "latest",
-    "vue-i18n": "latest",
-    "vue-router": "latest"
+    "nuxt": "4.5.2",
+    "vue": "3.5.42",
+    "vue-i18n": "11.4.10",
+    "vue-router": "5.3.0"
   },
   "devDependencies": {
-    "@axe-core/playwright": "latest",
-    "@nuxt/test-utils": "latest",
-    "@playwright/test": "latest",
-    "@types/node": "latest",
-    "@vue/test-utils": "latest",
-    "happy-dom": "latest",
-    "vitest": "latest",
-    "vue-tsc": "^3.3.11"
+    "@axe-core/playwright": "4.13.0",
+    "@nuxt/test-utils": "4.2.0",
+    "@playwright/test": "1.62.1",
+    "@types/node": "26.4.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "@vue/test-utils": "2.5.0",
+    "happy-dom": "20.11.15",
+    "vitest": "4.1.11",
+    "vue-tsc": "3.3.11"
   }
 }

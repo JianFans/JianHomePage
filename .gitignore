@@ -3,6 +3,7 @@
 node_modules/
 .pnpm-store/
 .nuxt/
+.nuxtrc
 .output/
 dist/
 coverage/

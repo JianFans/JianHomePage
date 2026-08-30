@@ -1,8 +1,15 @@
-import { defineConfig } from 'vitest/config'
+import { defineVitestConfig } from '@nuxt/test-utils/config'
+import { coverageConfig } from '../../vitest.coverage.mjs'
 
-export default defineConfig({
+export default defineVitestConfig({
   test: {
-    environment: 'happy-dom',
+    environment: 'nuxt',
     include: ['test/**/*.test.ts'],
+    coverage: coverageConfig('admin', [
+      'app.vue',
+      'composables/**/*.ts',
+      'pages/**/*.vue',
+      'utils/**/*.ts',
+    ]),
   },
 })

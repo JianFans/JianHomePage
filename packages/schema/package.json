@@ -8,16 +8,18 @@
   "scripts": {
     "generate": "node scripts/generate.mjs",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "ajv": "latest"
+    "ajv": "8.20.0"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "json-schema-to-typescript": "latest",
+    "@types/node": "26.4.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "json-schema-to-typescript": "16.0.0",
     "sharp": "0.35.4",
     "typescript": "6.0.3",
-    "vitest": "latest"
+    "vitest": "4.1.11"
   }
 }

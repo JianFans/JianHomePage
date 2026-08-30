@@ -8,16 +8,19 @@
     "generate": "nuxt generate",
     "postinstall": "nuxt prepare",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "nuxt": "latest",
-    "vue": "latest"
+    "nuxt": "4.5.2",
+    "vue": "3.5.42"
   },
   "devDependencies": {
-    "@vue/test-utils": "latest",
-    "happy-dom": "latest",
-    "vitest": "latest",
-    "vue-tsc": "^3.3.11"
+    "@nuxt/test-utils": "4.2.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "@vue/test-utils": "2.5.0",
+    "happy-dom": "20.11.15",
+    "vitest": "4.1.11",
+    "vue-tsc": "3.3.11"
   }
 }
