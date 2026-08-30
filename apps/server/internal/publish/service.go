@@ -296,9 +296,12 @@ func (service *Service) validateManagedAssets(ctx context.Context, snapshot []by
 		if !validStatus {
 			return fmt.Errorf("%w: managed asset %s is not publishable", domain.ErrInvalidInput, reference.ID)
 		}
-		expectedSource, err := service.blobStore.PublicURL(ctx, blobKey)
-		if err != nil {
-			return err
+		expectedSource := asset.SourceURL
+		if expectedSource == "" {
+			expectedSource, err = service.blobStore.PublicURL(ctx, blobKey)
+			if err != nil {
+				return err
+			}
 		}
 		if expectedSource != reference.Source {
 			return fmt.Errorf("%w: managed asset %s public URL does not match", domain.ErrInvalidInput, reference.ID)

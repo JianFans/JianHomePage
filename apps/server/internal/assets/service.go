@@ -188,8 +188,7 @@ func (service *Service) CompleteUpload(
 		return domain.AssetRecord{}, err
 	}
 	if asset.Status == domain.AssetReady {
-		asset.SourceURL, err = service.blobStore.PublicURL(ctx, asset.BlobKey)
-		return asset, err
+		return service.persistMissingReadySourceURL(ctx, asset)
 	}
 	if asset.Status != domain.AssetPending {
 		return domain.AssetRecord{}, domain.ErrInvalidTransition
@@ -220,6 +219,12 @@ func (service *Service) CompleteUpload(
 	}
 	asset.Metadata = metadata
 	asset.Status = domain.AssetReady
+	if asset.SourceURL == "" {
+		asset.SourceURL, err = service.blobStore.PublicURL(ctx, asset.BlobKey)
+		if err != nil {
+			return domain.AssetRecord{}, err
+		}
+	}
 	now := service.now().UTC()
 
 	err = service.repository.WithinTransaction(ctx, func(repository Repository) error {
@@ -228,11 +233,20 @@ func (service *Service) CompleteUpload(
 			return err
 		}
 		if current.Status == domain.AssetReady {
+			if current.SourceURL == "" {
+				current.SourceURL = asset.SourceURL
+				if err := repository.UpdateAsset(ctx, current, current.Status); err != nil {
+					return err
+				}
+			}
 			asset = current
 			return nil
 		}
 		if current.Status != domain.AssetPending {
 			return domain.ErrInvalidTransition
+		}
+		if current.SourceURL != "" {
+			asset.SourceURL = current.SourceURL
 		}
 		if err := repository.UpdateAsset(ctx, asset, current.Status); err != nil {
 			return err
@@ -242,11 +256,38 @@ func (service *Service) CompleteUpload(
 	if err != nil {
 		return domain.AssetRecord{}, err
 	}
-	asset.SourceURL, err = service.blobStore.PublicURL(ctx, asset.BlobKey)
+	return asset, nil
+}
+
+func (service *Service) persistMissingReadySourceURL(
+	ctx context.Context,
+	asset domain.AssetRecord,
+) (domain.AssetRecord, error) {
+	if asset.SourceURL != "" {
+		return asset, nil
+	}
+	sourceURL, err := service.blobStore.PublicURL(ctx, asset.BlobKey)
 	if err != nil {
 		return domain.AssetRecord{}, err
 	}
-	return asset, nil
+	err = service.repository.WithinTransaction(ctx, func(repository Repository) error {
+		current, err := repository.GetAsset(ctx, asset.ID)
+		if err != nil {
+			return err
+		}
+		if current.Status != domain.AssetReady {
+			return domain.ErrInvalidTransition
+		}
+		if current.SourceURL == "" {
+			current.SourceURL = sourceURL
+			if err := repository.UpdateAsset(ctx, current, current.Status); err != nil {
+				return err
+			}
+		}
+		asset = current
+		return nil
+	})
+	return asset, err
 }
 
 func (service *Service) Delete(ctx context.Context, actor domain.Principal, id string) error {

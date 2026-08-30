@@ -120,9 +120,6 @@ func buildProductionDependencies(
 			_ = database.Close()
 		}
 	}()
-	if err := postgres.Migrate(ctx, database); err != nil {
-		return ServiceDependencies{}, nil, fmt.Errorf("migrate production database: %w", err)
-	}
 	blobs, err := factory.newBlobStore(providerS3.Config{
 		Endpoint: settings.S3Endpoint, PublicBaseURL: settings.MediaPublicBaseURL,
 		Region: settings.S3Region, Bucket: settings.S3Bucket,
@@ -131,6 +128,11 @@ func buildProductionDependencies(
 	})
 	if err != nil {
 		return ServiceDependencies{}, nil, fmt.Errorf("configure production object storage: %w", err)
+	}
+	if err := postgres.Migrate(ctx, database, postgres.MigrationOptions{
+		ResolveAssetSourceURL: blobs.PublicURL,
+	}); err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("migrate production database: %w", err)
 	}
 	trigger, err := factory.newBuildTrigger(edgeone.Config{
 		TriggerURL: settings.EdgeOneTriggerURL, StatusURL: settings.EdgeOneStatusURL,

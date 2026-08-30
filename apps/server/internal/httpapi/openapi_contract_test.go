@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -29,8 +30,13 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 			Schemas map[string]struct {
 				Required   []string `json:"required"`
 				Properties map[string]struct {
-					Ref  string   `json:"$ref"`
-					Enum []string `json:"enum"`
+					Ref         string   `json:"$ref"`
+					Enum        []string `json:"enum"`
+					Description string   `json:"description"`
+					OneOf       []struct {
+						Format  string `json:"format"`
+						Pattern string `json:"pattern"`
+					} `json:"oneOf"`
 				} `json:"properties"`
 			} `json:"schemas"`
 		} `json:"components"`
@@ -88,6 +94,16 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	if len(rightsRequired) != 1 || rightsRequired[0] != "source" {
 		t.Fatalf("asset rights must require source: %#v", rightsRequired)
 	}
+	assetSchema := document.Components.Schemas["Asset"]
+	if !containsString(assetSchema.Required, "src") {
+		t.Fatalf("asset response must require src: %#v", assetSchema.Required)
+	}
+	source := assetSchema.Properties["src"]
+	if !strings.Contains(source.Description, "稳定") || len(source.OneOf) != 2 ||
+		source.OneOf[0].Format != "uri" || source.OneOf[0].Pattern != "^https://" ||
+		source.OneOf[1].Pattern != "^/media/" {
+		t.Fatalf("asset src must document the stable HTTPS or local media contract: %#v", source)
+	}
 }
 
 func TestOpenAPISourceIsSyncedIntoServerModule(t *testing.T) {
@@ -134,4 +150,13 @@ func assertRequiredHeader(t *testing.T, parameters []struct {
 		}
 	}
 	t.Fatalf("missing required header %s", name)
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }

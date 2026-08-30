@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,7 +109,7 @@ func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 }
 
 func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.T) {
-	database := &productionDatabaseFake{}
+	database := &productionDatabaseFake{legacyAsset: true}
 	var blobConfig providerS3.Config
 	var buildConfig edgeone.Config
 	var databaseURL string
@@ -148,6 +149,16 @@ func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.
 	}
 	if database.beginCalls != 1 || database.tx == nil || !database.tx.committed {
 		t.Fatalf("migrations did not commit in a database transaction: %#v", database)
+	}
+	assetURLBackfilled := false
+	for index, query := range database.tx.execQueries {
+		if strings.Contains(query, "UPDATE assets") && strings.Contains(query, "source_url") {
+			args := database.tx.execArgs[index]
+			assetURLBackfilled = len(args) == 2 && args[0] == "/media/assets/asset_legacy/source.webp" && args[1] == "asset_legacy"
+		}
+	}
+	if !assetURLBackfilled {
+		t.Fatalf("production migration did not use BlobStore.PublicURL: queries=%#v args=%#v", database.tx.execQueries, database.tx.execArgs)
 	}
 	handler, err := buildHandler(settings, dependencies)
 	if err != nil {
@@ -328,6 +339,7 @@ func TestBuildProductionDependenciesClosesDatabaseOnMigrationFailure(t *testing.
 	database := &productionDatabaseFake{beginErr: sentinel}
 	factory := productionFactory{
 		openDatabase: func(context.Context, string) (productionDatabase, error) { return database, nil },
+		newBlobStore: func(providerS3.Config) (ports.BlobStore, error) { return local.NewBlobStore(), nil },
 	}
 
 	_, _, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
@@ -396,10 +408,11 @@ func TestBuildProductionDependenciesClosesDatabaseOnProviderFailure(t *testing.T
 }
 
 type productionDatabaseFake struct {
-	tx         *productionTxFake
-	beginCalls int
-	beginErr   error
-	closed     bool
+	tx          *productionTxFake
+	beginCalls  int
+	beginErr    error
+	closed      bool
+	legacyAsset bool
 }
 
 type publishReconcilerFake struct {
@@ -440,7 +453,7 @@ func (database *productionDatabaseFake) BeginTx(context.Context) (postgres.Tx, e
 	if database.beginErr != nil {
 		return nil, database.beginErr
 	}
-	database.tx = &productionTxFake{}
+	database.tx = &productionTxFake{legacyAsset: database.legacyAsset}
 	return database.tx, nil
 }
 func (database *productionDatabaseFake) Close() error {
@@ -449,16 +462,24 @@ func (database *productionDatabaseFake) Close() error {
 }
 
 type productionTxFake struct {
-	committed bool
+	committed   bool
+	legacyAsset bool
+	execQueries []string
+	execArgs    [][]any
 }
 
-func (*productionTxFake) ExecContext(context.Context, string, ...any) (postgres.ExecResult, error) {
+func (tx *productionTxFake) ExecContext(_ context.Context, query string, args ...any) (postgres.ExecResult, error) {
+	tx.execQueries = append(tx.execQueries, query)
+	tx.execArgs = append(tx.execArgs, args)
 	return productionResultFake(1), nil
 }
 func (*productionTxFake) QueryRowContext(context.Context, string, ...any) postgres.Row {
 	return productionRowFake{}
 }
-func (*productionTxFake) QueryContext(context.Context, string, ...any) (postgres.Rows, error) {
+func (tx *productionTxFake) QueryContext(_ context.Context, query string, _ ...any) (postgres.Rows, error) {
+	if tx.legacyAsset && strings.Contains(query, "FROM assets") {
+		return &productionAssetRowsFake{}, nil
+	}
 	return &productionRowsFake{}, nil
 }
 func (*productionTxFake) BeginTx(context.Context) (postgres.Tx, error) {
@@ -489,6 +510,33 @@ func (*productionRowsFake) Next() bool        { return false }
 func (*productionRowsFake) Scan(...any) error { return errors.New("no rows") }
 func (*productionRowsFake) Err() error        { return nil }
 func (*productionRowsFake) Close() error      { return nil }
+
+type productionAssetRowsFake struct{ read bool }
+
+func (rows *productionAssetRowsFake) Next() bool {
+	if rows.read {
+		return false
+	}
+	rows.read = true
+	return true
+}
+
+func (*productionAssetRowsFake) Scan(dest ...any) error {
+	if len(dest) != 2 {
+		return errors.New("expected asset id and blob key")
+	}
+	id, idOK := dest[0].(*string)
+	key, keyOK := dest[1].(*string)
+	if !idOK || !keyOK {
+		return errors.New("expected string asset destinations")
+	}
+	*id = "asset_legacy"
+	*key = "assets/asset_legacy/source.webp"
+	return nil
+}
+
+func (*productionAssetRowsFake) Err() error   { return nil }
+func (*productionAssetRowsFake) Close() error { return nil }
 
 func productionSettings() config.Config {
 	return config.Config{

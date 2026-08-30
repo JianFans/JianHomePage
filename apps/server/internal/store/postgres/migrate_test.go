@@ -32,12 +32,14 @@ func (fake *execFake) BeginTx(context.Context) (Tx, error) {
 type migrationTxFake struct {
 	calls      []string
 	args       [][]any
+	queryCalls []string
 	failOn     int
 	failErr    error
 	committed  bool
 	rolledBack bool
 	applied    bool
 	rows       Rows
+	assetRows  Rows
 }
 
 func (fake *migrationTxFake) ExecContext(_ context.Context, statement string, args ...any) (ExecResult, error) {
@@ -51,7 +53,14 @@ func (fake *migrationTxFake) ExecContext(_ context.Context, statement string, ar
 func (fake *migrationTxFake) QueryRowContext(context.Context, string, ...any) Row {
 	return migrationBoolRow(fake.applied)
 }
-func (fake *migrationTxFake) QueryContext(context.Context, string, ...any) (Rows, error) {
+func (fake *migrationTxFake) QueryContext(_ context.Context, statement string, _ ...any) (Rows, error) {
+	fake.queryCalls = append(fake.queryCalls, statement)
+	if strings.Contains(statement, "FROM assets") {
+		if fake.assetRows != nil {
+			return fake.assetRows, nil
+		}
+		return &recordingRows{}, nil
+	}
 	if fake.rows != nil {
 		return fake.rows, nil
 	}
@@ -147,6 +156,70 @@ func TestMigrateCanonicalizesLegacyContentChecksumsBeforePublishFreeze(t *testin
 	}
 	if got := tx.args[updateIndex]; len(got) != 4 || got[0] != snapshotdata.Checksum(canonical) || got[1] != "ver_legacy" {
 		t.Fatalf("unexpected checksum update args %#v", got)
+	}
+}
+
+func TestMigrateBackfillsStableAssetURLsWithoutBlockingOldWriters(t *testing.T) {
+	tx := &migrationTxFake{assetRows: &recordingRows{rows: []recordingRow{{values: []any{
+		"asset_legacy", "assets/asset_legacy/source.webp",
+	}}}}}
+	fake := &execFake{tx: tx}
+	resolvedKeys := make([]string, 0, 1)
+
+	err := Migrate(context.Background(), fake, MigrationOptions{
+		ResolveAssetSourceURL: func(_ context.Context, key string) (string, error) {
+			resolvedKeys = append(resolvedKeys, key)
+			return "https://media.yujian.me/" + key, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if len(resolvedKeys) != 1 || resolvedKeys[0] != "assets/asset_legacy/source.webp" {
+		t.Fatalf("unexpected URL resolution keys %#v", resolvedKeys)
+	}
+
+	addColumnIndex := -1
+	backfillIndex := -1
+	constraintIndex := -1
+	for index, statement := range tx.calls {
+		switch {
+		case strings.Contains(statement, "ADD COLUMN IF NOT EXISTS source_url"):
+			addColumnIndex = index
+		case strings.Contains(statement, "UPDATE assets") && strings.Contains(statement, "source_url"):
+			backfillIndex = index
+			if args := tx.args[index]; len(args) != 2 || args[0] != "https://media.yujian.me/assets/asset_legacy/source.webp" || args[1] != "asset_legacy" {
+				t.Fatalf("unexpected asset URL backfill args %#v", args)
+			}
+		case strings.Contains(statement, "ALTER COLUMN source_url SET NOT NULL"):
+			t.Fatal("asset URL expansion migration must remain compatible with old writers")
+		case strings.Contains(statement, "assets_source_url_nonempty"):
+			constraintIndex = index
+		}
+	}
+	if addColumnIndex < 0 || backfillIndex <= addColumnIndex || constraintIndex <= backfillIndex {
+		t.Fatalf("unsafe asset URL migration sequence: %#v", tx.calls)
+	}
+	if !tx.committed || tx.rolledBack {
+		t.Fatalf("expected committed URL migration, got %#v", tx)
+	}
+}
+
+func TestMigrateRollsBackWhenLegacyAssetURLCannotBeResolved(t *testing.T) {
+	sentinel := errors.New("media URL unavailable")
+	tx := &migrationTxFake{assetRows: &recordingRows{rows: []recordingRow{{values: []any{
+		"asset_legacy", "assets/asset_legacy/source.webp",
+	}}}}}
+	fake := &execFake{tx: tx}
+
+	err := Migrate(context.Background(), fake, MigrationOptions{
+		ResolveAssetSourceURL: func(context.Context, string) (string, error) { return "", sentinel },
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected URL resolver error, got %v", err)
+	}
+	if !tx.rolledBack || tx.committed {
+		t.Fatalf("failed URL migration did not roll back: %#v", tx)
 	}
 }
 

@@ -69,6 +69,8 @@ type blobStoreFake struct {
 	uploads     []ports.UploadRequest
 	metadata    ports.BlobMetadata
 	deletedKeys []string
+	publicURL   string
+	publicCalls int
 	createErr   error
 	statErr     error
 	statCalls   int
@@ -108,6 +110,10 @@ func (store *blobStoreFake) SignedReadURL(context.Context, string, time.Duration
 }
 
 func (store *blobStoreFake) PublicURL(_ context.Context, key string) (string, error) {
+	store.publicCalls++
+	if store.publicURL != "" {
+		return store.publicURL, nil
+	}
 	return "https://media.example.com/" + key, nil
 }
 
@@ -379,6 +385,77 @@ func TestCompleteUploadCanRetryAfterReadyResponseIsLost(t *testing.T) {
 	}
 	if blobs.statCalls != 1 || len(repository.audits) != 2 {
 		t.Fatalf("retry repeated completion effects: stat=%d audits=%#v", blobs.statCalls, repository.audits)
+	}
+}
+
+func TestCompleteUploadRetryPreservesPersistedSourceURL(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.assets["asset_ready"] = domain.AssetRecord{
+		ID: "asset_ready", BlobKey: "assets/asset_ready/source.webp",
+		SourceURL: "https://media.yujian.me/assets/asset_ready/source.webp",
+		Status:    domain.AssetReady,
+	}
+	blobs := &blobStoreFake{publicURL: "https://new-provider.example/assets/asset_ready/source.webp"}
+	service := assetServiceForTest(repository, blobs)
+
+	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_ready")
+	if err != nil {
+		t.Fatalf("retry complete upload: %v", err)
+	}
+	if asset.SourceURL != repository.assets[asset.ID].SourceURL {
+		t.Fatalf("persisted source URL was overwritten: %#v", asset)
+	}
+	if blobs.publicCalls != 0 {
+		t.Fatalf("ready retry recalculated stable source URL %d times", blobs.publicCalls)
+	}
+}
+
+func TestCompleteUploadPersistsSourceURLForLegacyPendingAsset(t *testing.T) {
+	const checksum = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	const sourceURL = "https://media.yujian.me/assets/asset_legacy/source.webp"
+	repository := newMemoryRepository()
+	repository.assets["asset_legacy"] = domain.AssetRecord{
+		ID: "asset_legacy", BlobKey: "assets/asset_legacy/source.webp", Status: domain.AssetPending,
+		Metadata: json.RawMessage(`{"fileName":"cover.webp","contentType":"image/webp","declaredSize":1024,"checksum":"` + checksum + `"}`),
+		Rights:   json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
+	}
+	blobs := &blobStoreFake{
+		publicURL: sourceURL,
+		metadata:  ports.BlobMetadata{ContentType: "image/webp", Size: 1024, Checksum: checksum},
+	}
+	service := assetServiceForTest(repository, blobs)
+
+	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_legacy")
+	if err != nil {
+		t.Fatalf("complete legacy pending upload: %v", err)
+	}
+	stored := repository.assets[asset.ID]
+	if asset.SourceURL != sourceURL || stored.SourceURL != sourceURL || stored.Status != domain.AssetReady {
+		t.Fatalf("legacy source URL was not persisted: response=%#v stored=%#v", asset, stored)
+	}
+	if blobs.publicCalls != 1 {
+		t.Fatalf("legacy source URL resolved %d times", blobs.publicCalls)
+	}
+}
+
+func TestCompleteUploadPersistsSourceURLForLegacyReadyAsset(t *testing.T) {
+	const sourceURL = "https://media.yujian.me/assets/asset_legacy/source.webp"
+	repository := newMemoryRepository()
+	repository.assets["asset_legacy"] = domain.AssetRecord{
+		ID: "asset_legacy", BlobKey: "assets/asset_legacy/source.webp", Status: domain.AssetReady,
+	}
+	blobs := &blobStoreFake{publicURL: sourceURL}
+	service := assetServiceForTest(repository, blobs)
+
+	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_legacy")
+	if err != nil {
+		t.Fatalf("retry legacy ready upload: %v", err)
+	}
+	if asset.SourceURL != sourceURL || repository.assets[asset.ID].SourceURL != sourceURL {
+		t.Fatalf("legacy ready source URL was not persisted: response=%#v stored=%#v", asset, repository.assets[asset.ID])
+	}
+	if blobs.publicCalls != 1 {
+		t.Fatalf("legacy ready source URL resolved %d times", blobs.publicCalls)
 	}
 }
 

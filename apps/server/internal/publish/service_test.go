@@ -193,8 +193,10 @@ func (repository *memoryRepository) AppendAudit(_ context.Context, entry domain.
 }
 
 type blobStoreFake struct {
-	objects  map[string]ports.BlobMetadata
-	putCalls int
+	objects     map[string]ports.BlobMetadata
+	putCalls    int
+	publicURL   string
+	publicCalls int
 }
 
 func newBlobStoreFake() *blobStoreFake {
@@ -231,6 +233,10 @@ func (store *blobStoreFake) SignedReadURL(context.Context, string, time.Duration
 }
 
 func (store *blobStoreFake) PublicURL(_ context.Context, key string) (string, error) {
+	store.publicCalls++
+	if store.publicURL != "" {
+		return store.publicURL, nil
+	}
 	return "/media/" + key, nil
 }
 
@@ -407,6 +413,31 @@ func TestPublishRejectsManagedAssetURLOutsideConfiguredProvider(t *testing.T) {
 				t.Fatalf("provider URL mismatch triggered %d builds", trigger.triggerCalls)
 			}
 		})
+	}
+}
+
+func TestPublishUsesPersistedStableAssetURL(t *testing.T) {
+	const sourceURL = "https://media.yujian.me/assets/asset_managed/source.webp"
+	repository := newMemoryRepository()
+	target := managedVersionWithSource(t, domain.StatusInReview, sourceURL)
+	repository.versions[target.ID] = target
+	repository.assets["asset_managed"] = domain.AssetRecord{
+		ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", SourceURL: sourceURL,
+		Status: domain.AssetReady, Rights: managedRights(),
+	}
+	blobs := newBlobStoreFake()
+	blobs.publicURL = "https://new-provider.example/assets/asset_managed/source.webp"
+	blobs.objects["assets/asset_managed/source.webp"] = ports.BlobMetadata{
+		ContentType: "image/webp", Size: 7, Checksum: snapshotdata.Checksum([]byte("payload")),
+	}
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, blobs, trigger)
+
+	if _, err := service.Publish(t.Context(), publisher(), target.ID, "idem-stable-source-url"); err != nil {
+		t.Fatalf("publish persisted stable asset URL: %v", err)
+	}
+	if blobs.publicCalls != 0 {
+		t.Fatalf("publish recalculated stable source URL %d times", blobs.publicCalls)
 	}
 }
 

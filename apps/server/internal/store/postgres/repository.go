@@ -129,28 +129,35 @@ func (repository *AssetRepository) WithinTransaction(ctx context.Context, run fu
 
 func (repository *AssetRepository) CreateAsset(ctx context.Context, asset domain.AssetRecord) error {
 	_, err := repository.exec.ExecContext(ctx, `
-INSERT INTO assets (id, blob_key, status, metadata, rights, created_by, created_at, deleted_at)
-VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)`,
-		asset.ID, asset.BlobKey, asset.Status, []byte(asset.Metadata), []byte(asset.Rights), asset.CreatedBy, asset.CreatedAt, asset.DeletedAt)
+INSERT INTO assets (id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at)
+VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)`,
+		asset.ID, asset.BlobKey, nullableAssetSourceURL(asset.SourceURL), asset.Status, []byte(asset.Metadata), []byte(asset.Rights), asset.CreatedBy, asset.CreatedAt, asset.DeletedAt)
 	return err
 }
 
 func (repository *AssetRepository) GetAsset(ctx context.Context, id string) (domain.AssetRecord, error) {
 	return scanAsset(repository.exec.QueryRowContext(ctx, `
-SELECT id, blob_key, status, metadata, rights, created_by, created_at, deleted_at
+SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at
 FROM assets WHERE id = $1`, id))
 }
 
 func (repository *AssetRepository) UpdateAsset(ctx context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	result, err := repository.exec.ExecContext(ctx, `
 UPDATE assets
-SET blob_key = $1, status = $2, metadata = $3::jsonb, rights = $4::jsonb, deleted_at = $5
-WHERE id = $6 AND status = $7`,
-		asset.BlobKey, asset.Status, []byte(asset.Metadata), []byte(asset.Rights), asset.DeletedAt, asset.ID, expectedStatus)
+SET blob_key = $1, source_url = $2, status = $3, metadata = $4::jsonb, rights = $5::jsonb, deleted_at = $6
+WHERE id = $7 AND status = $8`,
+		asset.BlobKey, nullableAssetSourceURL(asset.SourceURL), asset.Status, []byte(asset.Metadata), []byte(asset.Rights), asset.DeletedAt, asset.ID, expectedStatus)
 	if err != nil {
 		return err
 	}
 	return compareAndSwapAssetResult(ctx, repository.exec, result, asset.ID)
+}
+
+func nullableAssetSourceURL(sourceURL string) any {
+	if sourceURL == "" {
+		return nil
+	}
+	return sourceURL
 }
 
 func compareAndSwapAssetResult(ctx context.Context, exec Executor, result ExecResult, id string) error {
@@ -162,7 +169,7 @@ func compareAndSwapAssetResult(ctx context.Context, exec Executor, result ExecRe
 		return nil
 	}
 	_, err = scanAsset(exec.QueryRowContext(ctx, `
-SELECT id, blob_key, status, metadata, rights, created_by, created_at, deleted_at
+SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at
 FROM assets WHERE id = $1`, id))
 	if errors.Is(err, domain.ErrNotFound) {
 		return domain.ErrNotFound
@@ -211,7 +218,7 @@ FROM content_versions WHERE id = $1`, id))
 
 func (repository *PublishRepository) GetAsset(ctx context.Context, id string) (domain.AssetRecord, error) {
 	return scanAsset(repository.exec.QueryRowContext(ctx, `
-SELECT id, blob_key, status, metadata, rights, created_by, created_at, deleted_at
+SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at
 FROM assets WHERE id = $1`, id))
 }
 
@@ -385,13 +392,17 @@ func scanAsset(row Row) (domain.AssetRecord, error) {
 	var asset domain.AssetRecord
 	var status string
 	var metadata, rights []byte
+	var sourceURL sql.NullString
 	var deletedAt sql.NullTime
-	err := row.Scan(&asset.ID, &asset.BlobKey, &status, &metadata, &rights, &asset.CreatedBy, &asset.CreatedAt, &deletedAt)
+	err := row.Scan(&asset.ID, &asset.BlobKey, &sourceURL, &status, &metadata, &rights, &asset.CreatedBy, &asset.CreatedAt, &deletedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.AssetRecord{}, domain.ErrNotFound
 	}
 	if err != nil {
 		return domain.AssetRecord{}, err
+	}
+	if sourceURL.Valid {
+		asset.SourceURL = sourceURL.String
 	}
 	asset.Status = domain.AssetStatus(status)
 	asset.Metadata = append(json.RawMessage(nil), metadata...)

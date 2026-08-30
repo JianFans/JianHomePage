@@ -32,7 +32,18 @@ func (row recordingRow) Scan(dest ...any) error {
 		}
 		switch target := dest[index].(type) {
 		case *string:
-			*target = row.values[index].(string)
+			value, ok := row.values[index].(string)
+			if !ok {
+				return errors.New("cannot scan NULL into string")
+			}
+			*target = value
+		case *sql.NullString:
+			value, ok := row.values[index].(string)
+			if !ok {
+				*target = sql.NullString{}
+				break
+			}
+			*target = sql.NullString{String: value, Valid: true}
 		case *int64:
 			*target = row.values[index].(int64)
 		case *bool:
@@ -188,16 +199,107 @@ func TestContentRepositoryPreservesLookupErrorsAfterZeroRowsUpdate(t *testing.T)
 	}
 }
 
+func TestAssetRepositoryPersistsStableSourceURL(t *testing.T) {
+	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
+	asset := domain.AssetRecord{
+		ID: "asset_1", BlobKey: "assets/asset_1/source.webp",
+		SourceURL: "https://media.yujian.me/assets/asset_1/source.webp",
+		Status:    domain.AssetPending, Metadata: []byte(`{"kind":"image"}`),
+		Rights: []byte(`{"source":{"zh-CN":"authorized"}}`), CreatedBy: "editor-1", CreatedAt: now,
+	}
+	executor := &recordingExecutor{result: recordingResult{affected: 1}}
+	repository := NewAssetRepository(executor)
+
+	if err := repository.CreateAsset(t.Context(), asset); err != nil {
+		t.Fatalf("create asset: %v", err)
+	}
+	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "source_url") {
+		t.Fatalf("asset insert does not persist source URL: %#v", executor.execQueries)
+	}
+	if args := executor.execArgs[0]; len(args) < 3 || args[2] != asset.SourceURL {
+		t.Fatalf("asset insert lost source URL: %#v", args)
+	}
+
+	executor.row = recordingRow{values: []any{
+		asset.ID, asset.BlobKey, asset.SourceURL, string(asset.Status), []byte(asset.Metadata), []byte(asset.Rights),
+		asset.CreatedBy, asset.CreatedAt, sql.NullTime{},
+	}}
+	loaded, err := repository.GetAsset(t.Context(), asset.ID)
+	if err != nil {
+		t.Fatalf("get asset: %v", err)
+	}
+	if loaded.SourceURL != asset.SourceURL {
+		t.Fatalf("asset read lost source URL: %#v", loaded)
+	}
+
+	loaded.Status = domain.AssetReady
+	if err := repository.UpdateAsset(t.Context(), loaded, domain.AssetPending); err != nil {
+		t.Fatalf("update asset: %v", err)
+	}
+	updateQuery := executor.execQueries[len(executor.execQueries)-1]
+	updateArgs := executor.execArgs[len(executor.execArgs)-1]
+	if !strings.Contains(updateQuery, "source_url") || len(updateArgs) < 2 || updateArgs[1] != asset.SourceURL {
+		t.Fatalf("asset update lost source URL: query=%q args=%#v", updateQuery, updateArgs)
+	}
+}
+
+func TestAssetRepositoryReadsLegacyNullSourceURL(t *testing.T) {
+	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
+	executor := &recordingExecutor{row: recordingRow{values: []any{
+		"asset_legacy", "assets/asset_legacy/source.webp", nil,
+		"pending", []byte(`{}`), []byte(`{"source":{"zh-CN":"authorized"}}`),
+		"editor-legacy", now, sql.NullTime{},
+	}}}
+
+	asset, err := NewAssetRepository(executor).GetAsset(t.Context(), "asset_legacy")
+	if err != nil {
+		t.Fatalf("read legacy asset with NULL source URL: %v", err)
+	}
+	if asset.SourceURL != "" || asset.Status != domain.AssetPending {
+		t.Fatalf("unexpected legacy asset %#v", asset)
+	}
+}
+
+func TestAssetRepositoryCreatesMissingSourceURLAsNull(t *testing.T) {
+	executor := &recordingExecutor{result: recordingResult{affected: 1}}
+	asset := domain.AssetRecord{
+		ID: "asset_legacy", BlobKey: "assets/asset_legacy/source.webp", Status: domain.AssetPending,
+		Metadata: []byte(`{}`), Rights: []byte(`{}`), CreatedAt: time.Now(),
+	}
+
+	if err := NewAssetRepository(executor).CreateAsset(t.Context(), asset); err != nil {
+		t.Fatalf("create asset without source URL: %v", err)
+	}
+	if args := executor.execArgs[0]; len(args) < 3 || args[2] != nil {
+		t.Fatalf("missing source URL must bind as SQL NULL: %#v", args)
+	}
+}
+
+func TestAssetRepositoryUpdatesMissingSourceURLAsNull(t *testing.T) {
+	executor := &recordingExecutor{result: recordingResult{affected: 1}}
+	asset := domain.AssetRecord{
+		ID: "asset_legacy", BlobKey: "assets/asset_legacy/source.webp", Status: domain.AssetDeleted,
+		Metadata: []byte(`{}`), Rights: []byte(`{}`),
+	}
+
+	if err := NewAssetRepository(executor).UpdateAsset(t.Context(), asset, domain.AssetPending); err != nil {
+		t.Fatalf("update asset without source URL: %v", err)
+	}
+	if args := executor.execArgs[0]; len(args) < 2 || args[1] != nil {
+		t.Fatalf("missing source URL must bind as SQL NULL: %#v", args)
+	}
+}
+
 func TestAssetRepositoryUpdateUsesStatusCompareAndSwap(t *testing.T) {
 	executor := &recordingExecutor{result: recordingResult{affected: 1}}
 	asset := domain.AssetRecord{ID: "asset_1", Status: domain.AssetReady, Metadata: []byte(`{}`), Rights: []byte(`{}`)}
 	if err := NewAssetRepository(executor).UpdateAsset(context.Background(), asset, domain.AssetPending); err != nil {
 		t.Fatalf("update asset: %v", err)
 	}
-	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "WHERE id = $6 AND status = $7") {
+	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "WHERE id = $7 AND status = $8") {
 		t.Fatalf("expected status compare-and-swap query, got %#v", executor.execQueries)
 	}
-	if executor.execArgs[0][6] != domain.AssetPending {
+	if executor.execArgs[0][7] != domain.AssetPending {
 		t.Fatalf("unexpected expected status %#v", executor.execArgs[0])
 	}
 }
@@ -207,7 +309,8 @@ func TestAssetRepositoryMapsStaleStatusToConflict(t *testing.T) {
 	executor := &recordingExecutor{
 		result: recordingResult{affected: 0},
 		row: recordingRow{values: []any{
-			"asset_1", "assets/asset_1/source.webp", "deleted", []byte(`{}`), []byte(`{}`),
+			"asset_1", "assets/asset_1/source.webp", "https://media.yujian.me/assets/asset_1/source.webp",
+			"deleted", []byte(`{}`), []byte(`{}`),
 			"editor-1", now, sql.NullTime{},
 		}},
 	}
