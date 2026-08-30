@@ -109,6 +109,204 @@ func TestOIDCProviderCanRequireHTTPS(t *testing.T) {
 	}
 }
 
+func TestOIDCProviderRejectsIssuerWithoutHostnameOrValidPort(t *testing.T) {
+	for _, issuer := range []string{"https://:443", "https://issuer.example:65536"} {
+		t.Run(issuer, func(t *testing.T) {
+			if _, err := auth.NewOIDCProvider(auth.OIDCConfig{Issuer: issuer, Audience: "aud", RequireHTTPS: true}); err == nil {
+				t.Fatalf("expected invalid issuer rejection for %q", issuer)
+			}
+		})
+	}
+}
+
+func TestOIDCProviderRejectsIssuerWithQueryOrFragment(t *testing.T) {
+	for _, issuer := range []string{
+		"https://issuer.example/tenant?client=yujian",
+		"https://issuer.example/tenant#configuration",
+	} {
+		t.Run(issuer, func(t *testing.T) {
+			if _, err := auth.NewOIDCProvider(auth.OIDCConfig{Issuer: issuer, Audience: "aud", RequireHTTPS: true}); err == nil {
+				t.Fatalf("expected invalid issuer rejection for %q", issuer)
+			}
+		})
+	}
+}
+
+func TestOIDCProviderThrottlesRefreshesAcrossUnknownKeyIDs(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	var discoveryCalls atomic.Int32
+	var jwksCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/.well-known/openid-configuration":
+			discoveryCalls.Add(1)
+			_ = json.NewEncoder(writer).Encode(map[string]string{
+				"issuer": requestHost(request), "jwks_uri": requestHost(request) + "/jwks",
+			})
+		case "/jwks":
+			jwksCalls.Add(1)
+			_ = json.NewEncoder(writer).Encode(map[string]any{"keys": []map[string]string{{
+				"kty": "RSA", "kid": "test-key",
+				"n": base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
+				"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
+			}}})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	now := time.Unix(1_700_000_000, 0)
+	provider, err := auth.NewOIDCProvider(auth.OIDCConfig{
+		Issuer: server.URL, Audience: "yujian-admin", HTTPClient: server.Client(), Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	claims := map[string]any{
+		"iss": server.URL, "sub": "editor-1", "aud": "yujian-admin",
+		"exp": 1_700_000_300, "roles": []string{"editor"},
+	}
+	if _, err := provider.Authenticate(context.Background(), signJWT(t, key, claims)); err != nil {
+		t.Fatalf("prime signing key cache: %v", err)
+	}
+	for _, keyID := range []string{"unknown-one", "unknown-two"} {
+		if _, err := provider.Authenticate(context.Background(), signJWTWithKeyID(t, key, keyID, claims)); err == nil {
+			t.Fatalf("expected unknown key rejection for %q", keyID)
+		}
+	}
+	if got := discoveryCalls.Load(); got != 2 {
+		t.Fatalf("expected one initial fetch and one throttled refresh, got %d discovery requests", got)
+	}
+	if got := jwksCalls.Load(); got != 2 {
+		t.Fatalf("expected one initial fetch and one throttled refresh, got %d JWKS requests", got)
+	}
+}
+
+func TestOIDCProviderThrottlesUnknownKeyRefreshAfterProviderFailure(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	var discoveryCalls atomic.Int32
+	var providerUnavailable atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/.well-known/openid-configuration":
+			discoveryCalls.Add(1)
+			if providerUnavailable.Load() {
+				writer.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			_ = json.NewEncoder(writer).Encode(map[string]string{
+				"issuer": requestHost(request), "jwks_uri": requestHost(request) + "/jwks",
+			})
+		case "/jwks":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"keys": []map[string]string{{
+				"kty": "RSA", "kid": "test-key",
+				"n": base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
+				"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
+			}}})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	now := time.Unix(1_700_000_000, 0)
+	provider, err := auth.NewOIDCProvider(auth.OIDCConfig{
+		Issuer: server.URL, Audience: "yujian-admin", HTTPClient: server.Client(), Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	claims := map[string]any{
+		"iss": server.URL, "sub": "editor-1", "aud": "yujian-admin",
+		"exp": 1_700_000_300, "roles": []string{"editor"},
+	}
+	if _, err := provider.Authenticate(context.Background(), signJWT(t, key, claims)); err != nil {
+		t.Fatalf("prime signing key cache: %v", err)
+	}
+	providerUnavailable.Store(true)
+	for _, keyID := range []string{"unknown-one", "unknown-two"} {
+		if _, err := provider.Authenticate(context.Background(), signJWTWithKeyID(t, key, keyID, claims)); err == nil {
+			t.Fatalf("expected unknown key rejection for %q", keyID)
+		}
+	}
+	if got := discoveryCalls.Load(); got != 2 {
+		t.Fatalf("expected failed unknown-key refresh to enter cooldown, got %d discovery requests", got)
+	}
+}
+
+func TestOIDCProviderUsesCachedKnownKeyDuringFailedRefreshCooldown(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	var discoveryCalls atomic.Int32
+	var providerUnavailable atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/.well-known/openid-configuration":
+			discoveryCalls.Add(1)
+			if providerUnavailable.Load() {
+				writer.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			_ = json.NewEncoder(writer).Encode(map[string]string{
+				"issuer": requestHost(request), "jwks_uri": requestHost(request) + "/jwks",
+			})
+		case "/jwks":
+			_ = json.NewEncoder(writer).Encode(map[string]any{"keys": []map[string]string{{
+				"kty": "RSA", "kid": "test-key",
+				"n": base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
+				"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
+			}}})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	now := time.Unix(1_700_000_000, 0)
+	provider, err := auth.NewOIDCProvider(auth.OIDCConfig{
+		Issuer: server.URL, Audience: "yujian-admin", HTTPClient: server.Client(), Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	token := signJWT(t, key, map[string]any{
+		"iss": server.URL, "sub": "editor-1", "aud": "yujian-admin",
+		"exp": 1_700_003_600, "roles": []string{"editor"},
+	})
+	if _, err := provider.Authenticate(context.Background(), token); err != nil {
+		t.Fatalf("prime signing key cache: %v", err)
+	}
+
+	providerUnavailable.Store(true)
+	now = now.Add(5*time.Minute + time.Second)
+	if _, err := provider.Authenticate(context.Background(), token); err != nil {
+		t.Fatalf("expected cached key after failed refresh: %v", err)
+	}
+	if _, err := provider.Authenticate(context.Background(), token); err != nil {
+		t.Fatalf("expected cached key during refresh cooldown: %v", err)
+	}
+	if got := discoveryCalls.Load(); got != 2 {
+		t.Fatalf("expected one failed refresh during cooldown, got %d discovery requests", got)
+	}
+
+	now = now.Add(31 * time.Second)
+	if _, err := provider.Authenticate(context.Background(), token); err != nil {
+		t.Fatalf("expected cached key after retry failure: %v", err)
+	}
+	if got := discoveryCalls.Load(); got != 3 {
+		t.Fatalf("expected refresh retry after cooldown, got %d discovery requests", got)
+	}
+}
+
 func TestOIDCProviderRejectsHTTPSDowngradeRedirectBeforeSendingRequest(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -262,7 +460,16 @@ func requestHost(request *http.Request) string {
 
 func signJWT(t *testing.T, key *rsa.PrivateKey, claims map[string]any) string {
 	t.Helper()
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","kid":"test-key","typ":"JWT"}`))
+	return signJWTWithKeyID(t, key, "test-key", claims)
+}
+
+func signJWTWithKeyID(t *testing.T, key *rsa.PrivateKey, keyID string, claims map[string]any) string {
+	t.Helper()
+	headerJSON, err := json.Marshal(map[string]string{"alg": "RS256", "kid": keyID, "typ": "JWT"})
+	if err != nil {
+		t.Fatalf("marshal header: %v", err)
+	}
+	header := base64.RawURLEncoding.EncodeToString(headerJSON)
 	payload, err := json.Marshal(claims)
 	if err != nil {
 		t.Fatalf("marshal claims: %v", err)

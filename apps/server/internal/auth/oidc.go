@@ -12,18 +12,19 @@ import (
 	"io"
 	"math/big"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/httpurl"
 )
 
 const (
-	defaultOIDCTokenBytes    = 16 * 1024
-	defaultOIDCResponseBytes = 256 * 1024
-	defaultOIDCKeyTTL        = 5 * time.Minute
+	defaultOIDCTokenBytes      = 16 * 1024
+	defaultOIDCResponseBytes   = 256 * 1024
+	defaultOIDCKeyTTL          = 5 * time.Minute
+	defaultOIDCRefreshCooldown = 30 * time.Second
 )
 
 type OIDCConfig struct {
@@ -45,10 +46,11 @@ type OIDCProvider struct {
 	maxTokenSize int
 	requireHTTPS bool
 
-	mu          sync.Mutex
-	jwksURL     string
-	keys        map[string]*rsa.PublicKey
-	keysFetched time.Time
+	mu                 sync.Mutex
+	jwksURL            string
+	keys               map[string]*rsa.PublicKey
+	keysFetched        time.Time
+	lastRefreshAttempt time.Time
 }
 
 type oidcDiscovery struct {
@@ -71,8 +73,8 @@ type jwk struct {
 
 func NewOIDCProvider(config OIDCConfig) (*OIDCProvider, error) {
 	issuer := strings.TrimRight(strings.TrimSpace(config.Issuer), "/")
-	parsed, err := url.Parse(issuer)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+	parsed, err := httpurl.ParseAbsolute(issuer)
+	if err != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("OIDC issuer must be an absolute HTTP(S) URL")
 	}
 	if config.RequireHTTPS && parsed.Scheme != "https" {
@@ -214,16 +216,29 @@ func (provider *OIDCProvider) validateClaims(claims map[string]any) error {
 func (provider *OIDCProvider) key(ctx context.Context, keyID string) (*rsa.PublicKey, error) {
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
-	if key, ok := provider.keys[keyID]; ok && provider.now().Before(provider.keysFetched.Add(defaultOIDCKeyTTL)) {
+	now := provider.now()
+	key, keyWasCached := provider.keys[keyID]
+	if keyWasCached && now.Before(provider.keysFetched.Add(defaultOIDCKeyTTL)) {
 		return key, nil
 	}
+	if !provider.lastRefreshAttempt.IsZero() && now.Before(provider.lastRefreshAttempt.Add(defaultOIDCRefreshCooldown)) {
+		if keyWasCached {
+			return key, nil
+		}
+		return nil, errors.New("signing key not found")
+	}
+	provider.lastRefreshAttempt = now
 	if err := provider.refreshKeysLocked(ctx); err != nil {
+		if keyWasCached {
+			return key, nil
+		}
 		return nil, err
 	}
 	key, ok := provider.keys[keyID]
 	if !ok {
 		return nil, errors.New("signing key not found")
 	}
+	provider.lastRefreshAttempt = time.Time{}
 	return key, nil
 }
 
@@ -237,8 +252,8 @@ func (provider *OIDCProvider) refreshKeysLocked(ctx context.Context) error {
 	if err := json.Unmarshal(body, &discovery); err != nil || discovery.JWKSURI == "" || discovery.Issuer != provider.issuer {
 		return errors.New("invalid OIDC discovery document")
 	}
-	parsed, err := url.Parse(discovery.JWKSURI)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	parsed, err := httpurl.ParseAbsolute(discovery.JWKSURI)
+	if err != nil {
 		return errors.New("invalid OIDC JWKS URL")
 	}
 	if provider.requireHTTPS && parsed.Scheme != "https" {
