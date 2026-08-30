@@ -217,3 +217,11 @@ func TestNewBlobStoreRejectsInvalidPublicBaseURL(t *testing.T) {
 		})
 	}
 }
+
+func TestBlobStoreRejectsParentDirectoryObjectKeys(t *testing.T) {
+	for _, key := range []string{"..", "../escape", "assets/../escape"} {
+		if err := validateKey(key); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("expected invalid key %q, got %v", key, err)
+		}
+	}
+}

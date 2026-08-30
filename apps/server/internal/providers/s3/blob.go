@@ -244,6 +244,11 @@ func validateKey(key string) error {
 	if key == "" || strings.HasPrefix(key, "/") || strings.Contains(key, "\\") || path.Clean(key) != key || key == "." {
 		return domain.ErrInvalidInput
 	}
+	for _, segment := range strings.Split(key, "/") {
+		if segment == ".." {
+			return domain.ErrInvalidInput
+		}
+	}
 	return nil
 }
 
