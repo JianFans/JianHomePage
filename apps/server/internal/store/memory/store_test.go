@@ -92,6 +92,53 @@ func TestAssetRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	}
 }
 
+func TestContentRepositoryLifecycleAndCloneIsolation(t *testing.T) {
+	state := NewState()
+	repository := NewContentRepository(state)
+	version := domain.ContentVersion{
+		ID: "ver_1", Status: domain.StatusDraft, Revision: 1,
+		Snapshot: json.RawMessage(`{"schemaVersion":"1.0.0"}`),
+	}
+
+	if err := repository.CreateVersion(t.Context(), version); err != nil {
+		t.Fatalf("create version: %v", err)
+	}
+	if err := repository.CreateVersion(t.Context(), version); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected duplicate version conflict, got %v", err)
+	}
+	loaded, err := repository.GetVersion(t.Context(), version.ID)
+	if err != nil {
+		t.Fatalf("get version: %v", err)
+	}
+	loaded.Snapshot[0] = '['
+	again, err := repository.GetVersion(t.Context(), version.ID)
+	if err != nil || string(again.Snapshot) != `{"schemaVersion":"1.0.0"}` {
+		t.Fatalf("stored snapshot was not isolated: %s err=%v", again.Snapshot, err)
+	}
+	if _, err := repository.GetVersion(t.Context(), "missing"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("expected missing version, got %v", err)
+	}
+
+	again.Revision = 2
+	if err := repository.UpdateVersion(t.Context(), again, 0); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected revision conflict, got %v", err)
+	}
+	if err := repository.UpdateVersion(t.Context(), domain.ContentVersion{ID: "missing"}, 1); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("expected missing update, got %v", err)
+	}
+	if err := repository.UpdateVersion(t.Context(), again, 1); err != nil {
+		t.Fatalf("update version: %v", err)
+	}
+	if err := repository.AppendAudit(t.Context(), domain.AuditEntry{
+		ResourceID: version.ID, Metadata: json.RawMessage(`{"revision":2}`),
+	}); err != nil {
+		t.Fatalf("append audit: %v", err)
+	}
+	if len(state.audits) != 1 || string(state.audits[0].Metadata) != `{"revision":2}` {
+		t.Fatalf("unexpected audits %#v", state.audits)
+	}
+}
+
 func TestPublishRepositoryLifecycleAndIndexes(t *testing.T) {
 	state := NewState()
 	contentRepository := NewContentRepository(state)

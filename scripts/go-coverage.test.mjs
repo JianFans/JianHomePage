@@ -43,6 +43,10 @@ test('覆盖率运行跨包插桩全部 Go 业务代码', () => {
   assert.ok(coverageArguments('coverage.out').includes('-coverpkg=./...'))
 })
 
+test('覆盖率禁用测试缓存以避免陈旧 block 污染', () => {
+  assert.ok(coverageArguments('coverage.out').includes('-count=1'))
+})
+
 test('跨包 profile 对重复源码块只统计一次', () => {
   const duplicated = `mode: atomic
 yujian.me/server/a.go:10.1,12.2 8 0

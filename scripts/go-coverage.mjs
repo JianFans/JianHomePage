@@ -62,6 +62,7 @@ export function assertCoverageThreshold(profile, threshold = DEFAULT_GO_COVERAGE
 export function coverageArguments(profilePath) {
   return [
     'test',
+    '-count=1',
     '-coverpkg=./...',
     '-covermode=atomic',
     `-coverprofile=${profilePath}`,
