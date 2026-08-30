@@ -10,7 +10,46 @@ export type ContentTarget =
       kind: "external";
       link: PlatformLink;
     };
+export type Asset = {
+  id: string;
+  kind: "image" | "gif" | "video" | "audio";
+  src: MediaUrl;
+  mimeType: "image/webp" | "image/gif" | "video/mp4" | "audio/wav" | "audio/mpeg";
+  byteSize: number;
+  width?: number;
+  height?: number;
+  durationSeconds?: number;
+  posterAssetId?: string;
+  alt: LocalizedText;
+  rights: {
+    source: LocalizedText;
+    credit?: string;
+    license?: string;
+  };
+  checksum: string;
+} & Asset1;
 export type MediaUrl = HttpsUrl | `/media/${string}`;
+export type Asset1 =
+  | {
+      kind: "image";
+      mimeType: "image/webp";
+      [k: string]: unknown;
+    }
+  | {
+      kind: "gif";
+      mimeType: "image/gif";
+      [k: string]: unknown;
+    }
+  | {
+      kind: "video";
+      mimeType: "video/mp4";
+      [k: string]: unknown;
+    }
+  | {
+      kind: "audio";
+      mimeType: "audio/wav" | "audio/mpeg";
+      [k: string]: unknown;
+    };
 
 export interface YujianContentSnapshot {
   schemaVersion: "1.0.0";
@@ -203,22 +242,4 @@ export interface ArtistProfile {
   shortBio: LocalizedText;
   portraitAssetId: string;
   platformLinks: PlatformLink[];
-}
-export interface Asset {
-  id: string;
-  kind: "image" | "gif" | "video" | "audio";
-  src: MediaUrl;
-  mimeType: "image/webp" | "image/gif" | "video/mp4" | "audio/wav" | "audio/mpeg";
-  byteSize: number;
-  width?: number;
-  height?: number;
-  durationSeconds?: number;
-  posterAssetId?: string;
-  alt: LocalizedText;
-  rights: {
-    source: LocalizedText;
-    credit?: string;
-    license?: string;
-  };
-  checksum: string;
 }

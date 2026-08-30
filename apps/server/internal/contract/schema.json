@@ -101,7 +101,8 @@
     },
     "HttpsUrl": {
       "type": "string",
-      "pattern": "^https://"
+      "format": "https-url",
+      "pattern": "^https://[^/?#\\\\ \\t\\r\\n]+([/?#]|$)"
     },
     "MediaUrl": {
       "oneOf": [
@@ -511,6 +512,36 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "kind", "src", "mimeType", "byteSize", "alt", "rights", "checksum"],
+      "oneOf": [
+        {
+          "required": ["kind", "mimeType"],
+          "properties": {
+            "kind": { "const": "image" },
+            "mimeType": { "const": "image/webp" }
+          }
+        },
+        {
+          "required": ["kind", "mimeType"],
+          "properties": {
+            "kind": { "const": "gif" },
+            "mimeType": { "const": "image/gif" }
+          }
+        },
+        {
+          "required": ["kind", "mimeType"],
+          "properties": {
+            "kind": { "const": "video" },
+            "mimeType": { "const": "video/mp4" }
+          }
+        },
+        {
+          "required": ["kind", "mimeType"],
+          "properties": {
+            "kind": { "const": "audio" },
+            "mimeType": { "enum": ["audio/wav", "audio/mpeg"] }
+          }
+        }
+      ],
       "properties": {
         "id": { "type": "string", "pattern": "^asset_" },
         "kind": { "enum": ["image", "gif", "video", "audio"] },

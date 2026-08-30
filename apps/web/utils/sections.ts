@@ -29,11 +29,19 @@ function orderedItems<T extends { id: string }>(ids: string[], items: T[]) {
   return ids.flatMap(id => byId.get(id) ?? [])
 }
 
+function isVisibleAt(slide: HeroSlide, referenceTime: Date) {
+  const referenceTimeMs = referenceTime.getTime()
+  const startsBeforeOrAtReference = !slide.startsAt || new Date(slide.startsAt).getTime() <= referenceTimeMs
+  const endsAfterReference = !slide.endsAt || referenceTimeMs < new Date(slide.endsAt).getTime()
+  return startsBeforeOrAtReference && endsAfterReference
+}
+
 export function resolveHomepageSections(
   snapshot: YujianContentSnapshot,
   _locale: 'zh-CN' | 'en',
-  now = new Date(),
+  now?: Date,
 ): ResolvedHomepageSection[] {
+  const referenceTime = now ?? new Date(snapshot.generatedAt)
   return snapshot.homepage.sections.flatMap((section): ResolvedHomepageSection[] => {
     if (!section.enabled) {
       return []
@@ -42,6 +50,7 @@ export function resolveHomepageSections(
     switch (section.type) {
       case 'hero': {
         const items = orderedItems(section.itemIds, snapshot.heroSlides)
+          .filter(slide => isVisibleAt(slide, referenceTime))
         return items.length ? [{ ...section, items }] : []
       }
       case 'music': {
@@ -54,7 +63,7 @@ export function resolveHomepageSections(
       }
       case 'event': {
         const items = orderedItems(section.itemIds, snapshot.events)
-          .filter(event => event.status === 'scheduled' && new Date(event.dateTime) > now)
+          .filter(event => event.status === 'scheduled' && new Date(event.dateTime) > referenceTime)
           .slice(0, section.limit)
         return items.length ? [{ ...section, items }] : []
       }

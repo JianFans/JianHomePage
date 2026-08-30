@@ -138,6 +138,14 @@ async function togglePlayback() {
     aria-roledescription="carousel"
     :aria-label="brand"
   >
+    <span
+      v-for="slide in slides"
+      :id="slide.id"
+      :key="`anchor-${slide.id}`"
+      class="content-anchor"
+      data-content-anchor
+      aria-hidden="true"
+    />
     <div
       v-if="activeSlide"
       class="hero-media"
@@ -273,6 +281,16 @@ async function togglePlayback() {
   overflow: hidden;
   isolation: isolate;
   background: var(--color-surface);
+}
+
+.content-anchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  scroll-margin-top: 3.5rem;
 }
 
 .hero-media,

@@ -34,6 +34,14 @@ describe('MusicSection', () => {
     expect(cards[0]!.text()).toContain('示例作品 01')
   })
 
+  it('为作品和曲目内容 ID 提供稳定锚点', () => {
+    const wrapper = mountMusicSection()
+
+    expect(wrapper.find('#release_01').exists()).toBe(true)
+    expect(wrapper.find('#track_01').exists()).toBe(true)
+    expect(wrapper.find('#track_05').exists()).toBe(true)
+  })
+
   it('只有具备试听资源的作品才在封面显示播放按钮', async () => {
     const wrapper = mountMusicSection()
     const cards = wrapper.findAll('[data-testid="music-card"]')

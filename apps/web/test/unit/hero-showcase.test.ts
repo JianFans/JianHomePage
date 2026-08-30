@@ -84,6 +84,22 @@ describe('HeroShowcase', () => {
     expect(wrapper.findAll('[data-hero-progress]')[1]!.attributes('aria-current')).toBe('true')
   })
 
+  it('为每个 Hero 内容 ID 提供稳定锚点', () => {
+    stubReducedMotion(false)
+    const wrapper = mount(HeroShowcase, {
+      props: {
+        slides: imageSlides,
+        assets: imageAssets,
+        locale: 'zh-CN',
+        brand: '遇健我',
+        artistName: '王子健',
+      },
+    })
+
+    expect(wrapper.findAll('[data-content-anchor]').map(anchor => anchor.attributes('id')))
+      .toEqual(['hero_01', 'hero_02'])
+  })
+
   it('为配置的移动媒体输出响应式 source', () => {
     stubReducedMotion(false)
     const assets = [

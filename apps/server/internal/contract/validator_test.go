@@ -80,6 +80,41 @@ func TestValidatorRejectsNonHTTPSPlatformLink(t *testing.T) {
 	}
 }
 
+func TestValidatorRejectsHTTPSURLWithoutValidHost(t *testing.T) {
+	for _, value := range []string{
+		"https://",
+		"https://?q=x",
+		"https:///assets/cover.webp",
+		"https:// /cover.webp",
+		"https://:443/path",
+		"https://@/path",
+		"https://%/path",
+		"https://[::1/path",
+		"https://example.com:0/path",
+		"https://example.com:65536/path",
+		"https://@example.com/path",
+		"https://user@example.com/path",
+		"https://user:pass@example.com/path",
+	} {
+		t.Run(value, func(t *testing.T) {
+			var fixture map[string]any
+			if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+				t.Fatalf("decode fixture: %v", err)
+			}
+			site := fixture["site"].(map[string]any)
+			socialLinks := site["socialLinks"].([]any)
+			socialLinks[0].(map[string]any)["url"] = value
+			raw, err := json.Marshal(fixture)
+			if err != nil {
+				t.Fatalf("encode fixture: %v", err)
+			}
+			if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/site/socialLinks/0/url") {
+				t.Fatalf("expected invalid HTTPS host error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestValidatorRejectsInvalidNestedSectionVariant(t *testing.T) {
 	raw := bytes.Replace(readFixture(t), []byte(`"layoutVariant": "cover-reel"`), []byte(`"layoutVariant": "immersive"`), 1)
 	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/homepage/sections/1/layoutVariant") {
@@ -114,5 +149,187 @@ func TestValidatorRejectsBrokenMomentTargetReference(t *testing.T) {
 	}
 	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/moments/0/target/contentId") {
 		t.Fatalf("expected broken moment target pointer, got %v", err)
+	}
+}
+
+func TestValidatorRejectsInternalTargetHiddenBySectionLimit(t *testing.T) {
+	var fixture map[string]any
+	if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	heroes := fixture["heroSlides"].([]any)
+	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "release_02"
+	sections := fixture["homepage"].(map[string]any)["sections"].([]any)
+	sections[1].(map[string]any)["limit"] = float64(1)
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/heroSlides/2/target/contentId") {
+		t.Fatalf("expected unreachable target error, got %v", err)
+	}
+}
+
+func TestValidatorRejectsInternalTargetInDisabledSection(t *testing.T) {
+	var fixture map[string]any
+	if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	heroes := fixture["heroSlides"].([]any)
+	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "artist_primary"
+	sections := fixture["homepage"].(map[string]any)["sections"].([]any)
+	sections[5].(map[string]any)["enabled"] = false
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/heroSlides/2/target/contentId") {
+		t.Fatalf("expected unreachable target error, got %v", err)
+	}
+}
+
+func TestValidatorRejectsInternalTargetOutsideHomepageComposition(t *testing.T) {
+	var fixture map[string]any
+	if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	sections := fixture["homepage"].(map[string]any)["sections"].([]any)
+	musicSection := sections[1].(map[string]any)
+	musicSection["itemIds"] = musicSection["itemIds"].([]any)[1:]
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/heroSlides/2/target/contentId") {
+		t.Fatalf("expected unreachable target error, got %v", err)
+	}
+}
+
+func TestValidatorRejectsInternalTargetPastDisplayWindow(t *testing.T) {
+	var fixture map[string]any
+	if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	heroes := fixture["heroSlides"].([]any)
+	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "event_01"
+	events := fixture["events"].([]any)
+	events[0].(map[string]any)["dateTime"] = fixture["generatedAt"]
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/heroSlides/2/target/contentId") {
+		t.Fatalf("expected unreachable target error, got %v", err)
+	}
+}
+
+func TestValidatorRejectsNonAudioPreviewAsset(t *testing.T) {
+	var fixture map[string]any
+	if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	tracks := fixture["tracks"].([]any)
+	track := tracks[0].(map[string]any)
+	previewID, _ := track["previewAssetId"].(string)
+	assets := fixture["assets"].([]any)
+	for _, raw := range assets {
+		asset := raw.(map[string]any)
+		if asset["id"] == previewID {
+			asset["kind"] = "image"
+			asset["mimeType"] = "image/webp"
+		}
+	}
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/tracks/0/previewAssetId") {
+		t.Fatalf("expected preview asset kind error, got %v", err)
+	}
+}
+
+func TestValidatorRejectsAudioCoverAsset(t *testing.T) {
+	var fixture map[string]any
+	if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	assets := fixture["assets"].([]any)
+	var audioID string
+	for _, raw := range assets {
+		asset := raw.(map[string]any)
+		if asset["kind"] == "audio" {
+			audioID, _ = asset["id"].(string)
+			break
+		}
+	}
+	releases := fixture["releases"].([]any)
+	releases[0].(map[string]any)["coverAssetId"] = audioID
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/releases/0/coverAssetId") {
+		t.Fatalf("expected cover asset kind error, got %v", err)
+	}
+}
+
+func TestValidatorAppliesAssetConstraintsAlongsideOneOf(t *testing.T) {
+	tests := []struct {
+		name       string
+		mutate     func(map[string]any)
+		wantedPath string
+	}{
+		{
+			name: "required field",
+			mutate: func(asset map[string]any) {
+				delete(asset, "checksum")
+			},
+			wantedPath: "/assets/0/checksum",
+		},
+		{
+			name: "unknown field",
+			mutate: func(asset map[string]any) {
+				asset["unexpected"] = true
+			},
+			wantedPath: "/assets/0/unexpected",
+		},
+		{
+			name: "property type",
+			mutate: func(asset map[string]any) {
+				asset["byteSize"] = "large"
+			},
+			wantedPath: "/assets/0/byteSize",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var fixture map[string]any
+			if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+				t.Fatalf("decode fixture: %v", err)
+			}
+			asset := fixture["assets"].([]any)[0].(map[string]any)
+			test.mutate(asset)
+			raw, err := json.Marshal(fixture)
+			if err != nil {
+				t.Fatalf("encode fixture: %v", err)
+			}
+			if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), test.wantedPath) {
+				t.Fatalf("expected %s error, got %v", test.wantedPath, err)
+			}
+		})
+	}
+}
+
+func TestValidatorRequiresExactlyOneMatchingOneOfBranch(t *testing.T) {
+	validator := &Validator{}
+	schema := map[string]any{
+		"oneOf": []any{
+			map[string]any{"type": "string"},
+			map[string]any{"minLength": float64(1)},
+		},
+	}
+	if err := validator.validateSchema("value", schema, ""); err == nil {
+		t.Fatal("overlapping oneOf branches should be rejected")
 	}
 }

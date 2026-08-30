@@ -52,4 +52,38 @@ describe('首页板块解析', () => {
 
     expect(visible.some(section => section.type === 'event')).toBe(false)
   })
+
+  it('Hero 只保留在展示时间窗内的条目', () => {
+    const changed = structuredClone(snapshot)
+    changed.heroSlides[0]!.startsAt = now.toISOString()
+    changed.heroSlides[1]!.startsAt = '2026-08-29T00:00:01Z'
+    changed.heroSlides[2]!.endsAt = now.toISOString()
+
+    const visible = resolveHomepageSections(changed, 'zh-CN', now)
+    const hero = visible.find(section => section.type === 'hero')
+
+    expect(hero?.items.map(item => item.id)).toEqual(['hero_studio'])
+  })
+
+  it('Hero 条目全部不在展示时间窗时隐藏板块', () => {
+    const changed = structuredClone(snapshot)
+    changed.heroSlides.forEach((slide) => {
+      slide.startsAt = '2026-08-29T00:00:01Z'
+    })
+
+    const visible = resolveHomepageSections(changed, 'zh-CN', now)
+
+    expect(visible.some(section => section.type === 'hero')).toBe(false)
+  })
+
+  it('默认使用快照生成时间保持静态渲染与 hydration 一致', () => {
+    const changed = structuredClone(snapshot)
+    changed.generatedAt = '1999-12-31T00:00:00Z'
+    changed.events[0]!.dateTime = '2000-01-01T00:00:00Z'
+    changed.events = [changed.events[0]!]
+
+    const visible = resolveHomepageSections(changed, 'zh-CN')
+
+    expect(visible.find(section => section.type === 'event')?.items).toHaveLength(1)
+  })
 })

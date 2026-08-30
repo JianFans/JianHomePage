@@ -50,6 +50,7 @@ function durationLabel(seconds: number) {
     <div class="video-grid">
       <a
         v-for="(card, index) in cards"
+        :id="card.video.id"
         :key="card.video.id"
         class="video-card"
         :class="{ 'video-card--featured': index === 0 }"

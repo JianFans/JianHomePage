@@ -68,28 +68,9 @@ func (validator *Validator) validateSchema(value any, schema map[string]any, pat
 		if err != nil {
 			return validationFailure(path, err.Error())
 		}
-		return validator.validateSchema(value, resolved, path)
-	}
-	if branches, ok := schema["oneOf"].([]any); ok {
-		var deepest *schemaError
-		for _, branch := range branches {
-			branchSchema, ok := branch.(map[string]any)
-			if !ok {
-				continue
-			}
-			err := validator.validateSchema(value, branchSchema, path)
-			if err == nil {
-				return nil
-			}
-			var candidate *schemaError
-			if errors.As(err, &candidate) && (deepest == nil || len(candidate.path) > len(deepest.path)) {
-				deepest = candidate
-			}
+		if err := validator.validateSchema(value, resolved, path); err != nil {
+			return err
 		}
-		if deepest != nil {
-			return deepest
-		}
-		return validationFailure(path, "does not match any allowed schema")
 	}
 	if expected, exists := schema["const"]; exists && !schemaValuesEqual(value, expected) {
 		return validationFailure(path, "must equal the schema constant")
@@ -129,7 +110,44 @@ func (validator *Validator) validateSchema(value any, schema map[string]any, pat
 			return err
 		}
 	}
-	return validateSchemaFormat(value, schema, path)
+	if err := validateSchemaFormat(value, schema, path); err != nil {
+		return err
+	}
+	return validator.validateOneOf(value, schema, path)
+}
+
+func (validator *Validator) validateOneOf(value any, schema map[string]any, path string) error {
+	branches, ok := schema["oneOf"].([]any)
+	if !ok {
+		return nil
+	}
+	matches := 0
+	var deepest *schemaError
+	for _, branch := range branches {
+		branchSchema, ok := branch.(map[string]any)
+		if !ok {
+			continue
+		}
+		err := validator.validateSchema(value, branchSchema, path)
+		if err == nil {
+			matches++
+			continue
+		}
+		var candidate *schemaError
+		if errors.As(err, &candidate) && (deepest == nil || len(candidate.path) > len(deepest.path)) {
+			deepest = candidate
+		}
+	}
+	if matches == 1 {
+		return nil
+	}
+	if matches > 1 {
+		return validationFailure(path, "matches more than one allowed schema")
+	}
+	if deepest != nil {
+		return deepest
+	}
+	return validationFailure(path, "does not match any allowed schema")
 }
 
 func (validator *Validator) validateSchemaObject(value map[string]any, schema map[string]any, path string) error {
@@ -242,8 +260,29 @@ func validateSchemaFormat(value any, schema map[string]any, path string) error {
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			return validationFailure(path, "must be an absolute URI")
 		}
+	case "https-url":
+		if !isHTTPSURL(stringValue) {
+			return validationFailure(path, "must be an absolute HTTPS URL")
+		}
 	}
 	return nil
+}
+
+func isHTTPSURL(value string) bool {
+	if strings.TrimSpace(value) != value || strings.ContainsRune(value, '\\') {
+		return false
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" {
+		return false
+	}
+	if port := parsed.Port(); port != "" {
+		numericPort, err := strconv.Atoi(port)
+		if err != nil || numericPort < 1 || numericPort > 65535 {
+			return false
+		}
+	}
+	return true
 }
 
 func (validator *Validator) resolveSchemaRef(ref string) (map[string]any, error) {

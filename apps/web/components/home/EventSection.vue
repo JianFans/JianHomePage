@@ -36,6 +36,7 @@ const dateFormatter = computed(() => new Intl.DateTimeFormat(
       <ol class="event-list">
         <li
           v-for="event in items"
+          :id="event.id"
           :key="event.id"
           data-testid="event-item"
         >

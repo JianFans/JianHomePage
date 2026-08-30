@@ -23,6 +23,7 @@ describe('VideoSection', () => {
     expect(cards[0]!.classes()).toContain('video-card--featured')
     expect(cards[0]!.get('img').attributes('loading')).toBe('lazy')
     expect(cards[0]!.attributes()).toMatchObject({
+      id: snapshot.videos[0]!.id,
       target: '_blank',
       rel: 'noopener noreferrer',
     })
@@ -40,6 +41,7 @@ describe('EventSection', () => {
     const events = wrapper.findAll('[data-testid="event-item"]')
 
     expect(events).toHaveLength(2)
+    expect(events[0]!.attributes('id')).toBe(snapshot.events[0]!.id)
     expect(events[0]!.get('time').attributes('datetime')).toBe(snapshot.events[0]!.dateTime)
     expect(events[0]!.get('a').attributes('href')).toBe(snapshot.events[0]!.detailUrl)
   })
@@ -57,8 +59,30 @@ describe('MomentSection', () => {
     const items = wrapper.findAll('[data-testid="moment-item"]')
 
     expect(items).toHaveLength(3)
+    expect(items.map(item => item.attributes('id'))).toEqual(snapshot.moments.map(moment => moment.id))
     expect(items.every(item => item.get('img').attributes('loading') === 'lazy')).toBe(true)
     expect(wrapper.findAll('.moment-caption--visible')).toHaveLength(0)
+  })
+
+  it('将 Moment 的外部和内部目标渲染为安全链接', () => {
+    const moments = structuredClone(snapshot.moments)
+    moments[0]!.target = {
+      kind: 'external',
+      link: { provider: 'bilibili', url: 'https://space.bilibili.com/21096618' },
+    }
+    moments[1]!.target = { kind: 'internal', contentId: 'video_01' }
+    const wrapper = mount(MomentSection, {
+      props: { items: moments, assets: snapshot.assets, locale: 'zh-CN' },
+    })
+    const items = wrapper.findAll('[data-testid="moment-item"]')
+
+    expect(items[0]!.get('a').attributes()).toMatchObject({
+      href: 'https://space.bilibili.com/21096618',
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    })
+    expect(items[1]!.get('a').attributes('href')).toBe('#video_01')
+    expect(items[1]!.get('a').attributes('target')).toBeUndefined()
   })
 })
 
@@ -73,6 +97,7 @@ describe('ArtistSection', () => {
     })
 
     expect(wrapper.get('h2').text()).toBe('王子健')
+    expect(wrapper.find(`#${snapshot.artist.id}`).exists()).toBe(true)
     expect(wrapper.text()).toContain('正式资料将在授权后更新')
     expect(wrapper.get('img').attributes('loading')).toBe('lazy')
     expect(wrapper.find('[aria-label="微博"]').exists()).toBe(true)

@@ -126,6 +126,13 @@ function preview(track: AudioPlayerTrack) {
         :class="{ 'music-card--featured': card.release.featured }"
         data-testid="music-card"
       >
+        <span
+          v-for="trackId in card.release.trackIds"
+          :id="trackId"
+          :key="trackId"
+          class="content-anchor"
+          aria-hidden="true"
+        />
         <div class="music-cover">
           <button
             v-if="card.playable"
@@ -245,6 +252,7 @@ function preview(track: AudioPlayerTrack) {
 }
 
 .music-card {
+  position: relative;
   display: grid;
   min-width: 0;
   grid-template-columns: 6.5rem minmax(0, 1fr) auto;
@@ -252,6 +260,16 @@ function preview(track: AudioPlayerTrack) {
   gap: 1rem;
   padding: 0.75rem;
   background: var(--color-surface);
+}
+
+.content-anchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  scroll-margin-top: 3.5rem;
 }
 
 .music-card--featured:first-child {

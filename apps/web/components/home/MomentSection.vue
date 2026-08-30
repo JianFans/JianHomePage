@@ -15,7 +15,13 @@ const props = defineProps<{
 const assetById = computed(() => new Map(props.assets.map(asset => [asset.id, asset])))
 const visibleItems = computed(() => props.items.flatMap((moment) => {
   const asset = assetById.value.get(moment.assetId)
-  return asset ? [{ moment, asset }] : []
+  const target = moment.target
+  const href = !target
+    ? null
+    : target.kind === 'external'
+      ? target.link.url
+      : `#${target.contentId}`
+  return asset ? [{ moment, asset, href, external: target?.kind === 'external' }] : []
 }))
 const heading = computed(() => props.locale === 'en' ? 'Moments' : '片段')
 </script>
@@ -35,19 +41,28 @@ const heading = computed(() => props.locale === 'en' ? 'Moments' : '片段')
     <div class="moment-grid">
       <figure
         v-for="item in visibleItems"
+        :id="item.moment.id"
         :key="item.moment.id"
         data-testid="moment-item"
       >
-        <FallbackImage
-          :src="item.asset.src"
-          :alt="resolveLocalized(item.asset.alt, locale)"
-          :width="item.asset.width"
-          :height="item.asset.height"
-          loading="lazy"
-        />
-        <figcaption v-if="item.moment.caption">
-          {{ resolveLocalized(item.moment.caption, locale) }}
-        </figcaption>
+        <component
+          :is="item.href ? 'a' : 'div'"
+          class="moment-content"
+          :href="item.href ?? undefined"
+          :target="item.external ? '_blank' : undefined"
+          :rel="item.external ? 'noopener noreferrer' : undefined"
+        >
+          <FallbackImage
+            :src="item.asset.src"
+            :alt="resolveLocalized(item.asset.alt, locale)"
+            :width="item.asset.width"
+            :height="item.asset.height"
+            loading="lazy"
+          />
+          <figcaption v-if="item.moment.caption">
+            {{ resolveLocalized(item.moment.caption, locale) }}
+          </figcaption>
+        </component>
       </figure>
     </div>
   </section>
@@ -94,6 +109,13 @@ const heading = computed(() => props.locale === 'en' ? 'Moments' : '片段')
 
 .moment-grid figure:first-child {
   grid-row: 1 / 3;
+}
+
+.moment-content {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: inherit;
 }
 
 .moment-grid img {

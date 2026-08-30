@@ -21,6 +21,11 @@ const portrait = computed(() => props.assets.find(asset => asset.id === props.ar
     class="artist-section"
     :aria-labelledby="`${artist.id}-name`"
   >
+    <span
+      :id="artist.id"
+      class="content-anchor"
+      aria-hidden="true"
+    />
     <FallbackImage
       v-if="portrait"
       class="artist-texture"
@@ -53,6 +58,16 @@ const portrait = computed(() => props.assets.find(asset => asset.id === props.ar
   border-top: 1px solid var(--color-border);
   background: var(--color-surface);
   isolation: isolate;
+}
+
+.content-anchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+  scroll-margin-top: 3.5rem;
 }
 
 .artist-texture,

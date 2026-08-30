@@ -6,6 +6,7 @@ import Ajv2020 from 'ajv/dist/2020.js'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import schema from '../schema/content-snapshot.schema.json'
+import { validateContentSnapshot } from '../src/validate'
 
 const fixture = JSON.parse(
   readFileSync(new URL('../../../content/fixtures/homepage.json', import.meta.url), 'utf8'),
@@ -53,6 +54,98 @@ describe('首页快照契约', () => {
 
     musicSection.moreLink.url = 'http://example.com/music'
     expect(validate(configured)).toBe(false)
+  })
+
+  it('拒绝素材 kind 与 MIME 不一致', () => {
+    const invalid = structuredClone(fixture)
+    invalid.assets[0].kind = 'audio'
+    invalid.assets[0].mimeType = 'image/webp'
+
+    expect(validate(invalid)).toBe(false)
+  })
+
+  it('拒绝没有有效主机的 HTTPS URL', () => {
+    for (const url of [
+      'https://',
+      'https://?q=x',
+      'https:///assets/cover.webp',
+      'https:// /cover.webp',
+      'https://:443/path',
+      'https://@/path',
+      'https://%/path',
+      'https://[::1/path',
+      'https://example.com:0/path',
+      'https://example.com:65536/path',
+      'https://@example.com/path',
+      'https://user@example.com/path',
+      'https://user:pass@example.com/path',
+    ]) {
+      const invalid = structuredClone(fixture)
+      invalid.site.socialLinks[0].url = url
+      expect(validateContentSnapshot(invalid), url).toContain('/site/socialLinks/0/url')
+    }
+  })
+
+  it('拒绝把非音频素材用作试听', () => {
+    const invalid = structuredClone(fixture)
+    const trackIndex = invalid.tracks.findIndex((track: { previewAssetId?: string }) => track.previewAssetId)
+    const previewId = invalid.tracks[trackIndex].previewAssetId
+    const asset = invalid.assets.find((candidate: { id: string }) => candidate.id === previewId)
+    asset.kind = 'image'
+    asset.mimeType = 'image/webp'
+
+    expect(validateContentSnapshot(invalid)).toContain(`/tracks/${trackIndex}/previewAssetId`)
+  })
+
+  it('拒绝把音频素材用作封面', () => {
+    const invalid = structuredClone(fixture)
+    const audioAsset = invalid.assets.find((asset: { kind: string }) => asset.kind === 'audio')
+    invalid.releases[0].coverAssetId = audioAsset.id
+
+    expect(validateContentSnapshot(invalid)).toContain('/releases/0/coverAssetId')
+  })
+
+  it('拒绝指向被板块 limit 截断内容的内部目标', () => {
+    const invalid = structuredClone(fixture)
+    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
+    const musicSection = invalid.homepage.sections.find(
+      (section: { type: string }) => section.type === 'music',
+    )
+    hero.target.contentId = 'release_02'
+    musicSection.limit = 1
+
+    expect(validateContentSnapshot(invalid)).toContain('/heroSlides/2/target/contentId')
+  })
+
+  it('拒绝指向禁用板块内容的内部目标', () => {
+    const invalid = structuredClone(fixture)
+    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
+    const artistSection = invalid.homepage.sections.find(
+      (section: { type: string }) => section.type === 'artist',
+    )
+    hero.target.contentId = 'artist_primary'
+    artistSection.enabled = false
+
+    expect(validateContentSnapshot(invalid)).toContain('/heroSlides/2/target/contentId')
+  })
+
+  it('拒绝指向未编排内容的内部目标', () => {
+    const invalid = structuredClone(fixture)
+    const musicSection = invalid.homepage.sections.find(
+      (section: { type: string }) => section.type === 'music',
+    )
+    musicSection.itemIds = musicSection.itemIds.filter((id: string) => id !== 'release_01')
+
+    expect(validateContentSnapshot(invalid)).toContain('/heroSlides/2/target/contentId')
+  })
+
+  it('拒绝指向已过展示期内容的内部目标', () => {
+    const invalid = structuredClone(fixture)
+    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
+    hero.target.contentId = 'event_01'
+    invalid.events[0].dateTime = invalid.generatedAt
+
+    expect(validateContentSnapshot(invalid)).toContain('/heroSlides/2/target/contentId')
   })
 
   it('所有本地资源引用都指向格式、尺寸和校验和匹配的文件', async () => {

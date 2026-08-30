@@ -14,6 +14,7 @@ import type {
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: true })
 ajv.addFormat('date', { type: 'string', validate: isISODate })
 ajv.addFormat('date-time', { type: 'string', validate: isRFC3339DateTime })
+ajv.addFormat('https-url', { type: 'string', validate: isHTTPSURL })
 const validateSchema = ajv.compile(schema)
 
 export class ContentSnapshotValidationError extends Error {
@@ -61,17 +62,9 @@ function validateSemantics(snapshot: YujianContentSnapshot): string[] {
   const videos = indexRecords(snapshot.videos, '/videos', issues)
   const events = indexRecords(snapshot.events, '/events', issues)
   const moments = indexRecords(snapshot.moments, '/moments', issues)
-  const contentIds = new Set([
-    ...heroes.keys(),
-    ...releases.keys(),
-    ...tracks.keys(),
-    ...videos.keys(),
-    ...events.keys(),
-    ...moments.keys(),
-    snapshot.artist.id,
-  ])
+  const contentIds = renderedContentIds(snapshot, { heroes, releases, videos, events, moments })
 
-  requireReference(snapshot.site.seo.ogAssetId, assets, '/site/seo/ogAssetId', issues)
+  requireAssetKind(snapshot.site.seo.ogAssetId, assets, ['image', 'gif'], '/site/seo/ogAssetId', issues)
   validateHomepage(snapshot, { heroes, releases, videos, events, moments }, issues)
   validateHeroes(snapshot.heroSlides, assets, releases, contentIds, issues)
   validateReleases(snapshot.releases, assets, tracks, issues)
@@ -79,10 +72,10 @@ function validateSemantics(snapshot: YujianContentSnapshot): string[] {
   validateVideos(snapshot.videos, assets, issues)
   validateEvents(snapshot.events, assets, issues)
   validateMoments(snapshot.moments, assets, contentIds, issues)
-  requireReference(snapshot.artist.portraitAssetId, assets, '/artist/portraitAssetId', issues)
+  requireAssetKind(snapshot.artist.portraitAssetId, assets, ['image', 'gif'], '/artist/portraitAssetId', issues)
   snapshot.assets.forEach((asset, index) => {
     if (asset.posterAssetId) {
-      requireReference(asset.posterAssetId, assets, `/assets/${index}/posterAssetId`, issues)
+      requireAssetKind(asset.posterAssetId, assets, ['image', 'gif'], `/assets/${index}/posterAssetId`, issues)
     }
   })
   return issues
@@ -106,6 +99,58 @@ interface HomepageIndexes {
   videos: ReadonlyMap<string, Video>
   events: ReadonlyMap<string, Event>
   moments: ReadonlyMap<string, Moment>
+}
+
+function renderedContentIds(snapshot: YujianContentSnapshot, indexes: HomepageIndexes): Set<string> {
+  const result = new Set<string>()
+  const referenceTime = Date.parse(snapshot.generatedAt)
+
+  snapshot.homepage.sections.forEach((section) => {
+    if (!section.enabled) return
+
+    if (section.type === 'hero') {
+      section.itemIds.forEach((id) => {
+        const slide = indexes.heroes.get(id)
+        const startsAt = slide?.startsAt ? Date.parse(slide.startsAt) : Number.NEGATIVE_INFINITY
+        const endsAt = slide?.endsAt ? Date.parse(slide.endsAt) : Number.POSITIVE_INFINITY
+        if (slide && startsAt <= referenceTime && referenceTime < endsAt) result.add(id)
+      })
+      return
+    }
+
+    if (section.type === 'music') {
+      section.itemIds.slice(0, section.limit).forEach((id) => {
+        const release = indexes.releases.get(id)
+        if (!release) return
+        result.add(id)
+        release.trackIds.forEach(trackId => result.add(trackId))
+      })
+      return
+    }
+
+    if (section.type === 'video') {
+      section.itemIds.slice(0, section.limit).forEach(id => result.add(id))
+      return
+    }
+
+    if (section.type === 'event') {
+      section.itemIds
+        .flatMap(id => indexes.events.get(id) ?? [])
+        .filter(event => event.status === 'scheduled' && Date.parse(event.dateTime) > referenceTime)
+        .slice(0, section.limit)
+        .forEach(event => result.add(event.id))
+      return
+    }
+
+    if (section.type === 'moment') {
+      section.itemIds.slice(0, section.limit).forEach(id => result.add(id))
+      return
+    }
+
+    if (section.itemIds[0] === snapshot.artist.id) result.add(snapshot.artist.id)
+  })
+
+  return result
 }
 
 function validateHomepage(snapshot: YujianContentSnapshot, indexes: HomepageIndexes, issues: string[]) {
@@ -139,9 +184,9 @@ function validateHeroes(
 ) {
   records.forEach((record, index) => {
     const base = `/heroSlides/${index}`
-    requireReference(record.assetId, assets, `${base}/assetId`, issues)
-    if (record.mobileAssetId) requireReference(record.mobileAssetId, assets, `${base}/mobileAssetId`, issues)
-    if (record.posterAssetId) requireReference(record.posterAssetId, assets, `${base}/posterAssetId`, issues)
+    requireAssetKind(record.assetId, assets, [record.mediaKind], `${base}/assetId`, issues)
+    if (record.mobileAssetId) requireAssetKind(record.mobileAssetId, assets, [record.mediaKind], `${base}/mobileAssetId`, issues)
+    if (record.posterAssetId) requireAssetKind(record.posterAssetId, assets, ['image', 'gif'], `${base}/posterAssetId`, issues)
     if (record.releaseId) requireReference(record.releaseId, releases, `${base}/releaseId`, issues)
     validateInternalTarget(record.target, contentIds, `${base}/target/contentId`, issues)
   })
@@ -155,7 +200,7 @@ function validateReleases(
 ) {
   records.forEach((record, index) => {
     const base = `/releases/${index}`
-    requireReference(record.coverAssetId, assets, `${base}/coverAssetId`, issues)
+    requireAssetKind(record.coverAssetId, assets, ['image', 'gif'], `${base}/coverAssetId`, issues)
     record.trackIds.forEach((trackId, trackIndex) => {
       requireReference(trackId, tracks, `${base}/trackIds/${trackIndex}`, issues)
       const track = tracks.get(trackId)
@@ -173,21 +218,21 @@ function validateTracks(
   records.forEach((record, index) => {
     const base = `/tracks/${index}`
     requireReference(record.releaseId, releases, `${base}/releaseId`, issues)
-    if (record.previewAssetId) requireReference(record.previewAssetId, assets, `${base}/previewAssetId`, issues)
+    if (record.previewAssetId) requireAssetKind(record.previewAssetId, assets, ['audio'], `${base}/previewAssetId`, issues)
   })
 }
 
 function validateVideos(records: readonly Video[], assets: ReadonlyMap<string, Asset>, issues: string[]) {
   records.forEach((record, index) => {
     const base = `/videos/${index}`
-    requireReference(record.posterAssetId, assets, `${base}/posterAssetId`, issues)
-    if (record.videoAssetId) requireReference(record.videoAssetId, assets, `${base}/videoAssetId`, issues)
+    requireAssetKind(record.posterAssetId, assets, ['image', 'gif'], `${base}/posterAssetId`, issues)
+    if (record.videoAssetId) requireAssetKind(record.videoAssetId, assets, ['video'], `${base}/videoAssetId`, issues)
   })
 }
 
 function validateEvents(records: readonly Event[], assets: ReadonlyMap<string, Asset>, issues: string[]) {
   records.forEach((record, index) => {
-    if (record.posterAssetId) requireReference(record.posterAssetId, assets, `/events/${index}/posterAssetId`, issues)
+    if (record.posterAssetId) requireAssetKind(record.posterAssetId, assets, ['image', 'gif'], `/events/${index}/posterAssetId`, issues)
   })
 }
 
@@ -198,7 +243,7 @@ function validateMoments(
   issues: string[],
 ) {
   records.forEach((record, index) => {
-    requireReference(record.assetId, assets, `/moments/${index}/assetId`, issues)
+    requireAssetKind(record.assetId, assets, ['image', 'gif'], `/moments/${index}/assetId`, issues)
     validateInternalTarget(record.target, contentIds, `/moments/${index}/target/contentId`, issues)
   })
 }
@@ -214,6 +259,17 @@ function validateInternalTarget(
 
 function requireReference(id: string, records: ReadonlyMap<string, unknown>, path: string, issues: string[]) {
   if (!records.has(id)) issues.push(path)
+}
+
+function requireAssetKind(
+  id: string,
+  assets: ReadonlyMap<string, Asset>,
+  allowedKinds: readonly Asset['kind'][],
+  path: string,
+  issues: string[],
+) {
+  const asset = assets.get(id)
+  if (!asset || !allowedKinds.includes(asset.kind)) issues.push(path)
 }
 
 function escapePointer(value: string): string {
@@ -233,4 +289,23 @@ function isISODate(value: string): boolean {
 function isRFC3339DateTime(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
     && !Number.isNaN(Date.parse(value))
+}
+
+function isHTTPSURL(value: string): boolean {
+  if (value.trim() !== value || value.includes('\\')) return false
+  const authority = value.slice('https://'.length).split(/[/?#]/, 1)[0] ?? ''
+  if (authority.includes('@')) return false
+  try {
+    const parsed = new URL(value)
+    const port = parsed.port === '' ? 443 : Number(parsed.port)
+    return parsed.protocol === 'https:'
+      && parsed.hostname.length > 0
+      && parsed.username === ''
+      && parsed.password === ''
+      && Number.isInteger(port)
+      && port >= 1
+      && port <= 65_535
+  } catch {
+    return false
+  }
 }
