@@ -77,54 +77,78 @@ export function createAudioPlayerController({
     && currentQueueIndex.value < queue.value.length - 1
   ))
   let media: AudioMedia | null = null
+  let mediaGeneration = 0
+  let playbackRequest = 0
 
-  const handlePlay = () => {
-    state.status.value = 'playing'
-  }
-  const handlePause = () => {
-    if (state.current.value && state.status.value !== 'error') {
-      state.status.value = 'paused'
+  type MediaListeners = Record<'error' | 'timeupdate' | 'loadedmetadata' | 'ended', () => void>
+  let mediaListeners: MediaListeners | null = null
+
+  function bindMedia(activeMedia: AudioMedia, generation: number): MediaListeners {
+    const isActive = () => media === activeMedia && mediaGeneration === generation
+    const listeners: MediaListeners = {
+      error: () => {
+        if (isActive()) state.fail('media-error')
+      },
+      timeupdate: () => {
+        if (isActive()) currentTime.value = activeMedia.currentTime
+      },
+      loadedmetadata: () => {
+        if (isActive()) {
+          duration.value = Number.isFinite(activeMedia.duration) ? activeMedia.duration : 0
+        }
+      },
+      ended: () => {
+        if (!isActive()) return
+        activeMedia.currentTime = 0
+        currentTime.value = 0
+        state.status.value = 'paused'
+      },
     }
-  }
-  const handleError = () => {
-    state.fail('media-error')
-  }
-  const handleTimeUpdate = () => {
-    currentTime.value = media?.currentTime ?? 0
-  }
-  const handleLoadedMetadata = () => {
-    duration.value = media && Number.isFinite(media.duration) ? media.duration : 0
-  }
-  const handleEnded = () => {
-    if (media) {
-      media.currentTime = 0
+    for (const [name, listener] of Object.entries(listeners)) {
+      activeMedia.addEventListener(name, listener)
     }
-    currentTime.value = 0
-    state.status.value = 'paused'
+    return listeners
+  }
+
+  function disposeMedia() {
+    const activeMedia = media
+    const listeners = mediaListeners
+    if (!activeMedia) return
+
+    mediaGeneration++
+    media = null
+    mediaListeners = null
+    if (listeners) {
+      for (const [name, listener] of Object.entries(listeners)) {
+        activeMedia.removeEventListener(name, listener)
+      }
+    }
+    activeMedia.pause()
+    activeMedia.src = ''
+    activeMedia.load()
   }
 
   function getMedia() {
     if (!media) {
       media = createAudio()
       media.preload = 'metadata'
-      media.addEventListener('play', handlePlay)
-      media.addEventListener('pause', handlePause)
-      media.addEventListener('error', handleError)
-      media.addEventListener('timeupdate', handleTimeUpdate)
-      media.addEventListener('loadedmetadata', handleLoadedMetadata)
-      media.addEventListener('ended', handleEnded)
+      const generation = ++mediaGeneration
+      mediaListeners = bindMedia(media, generation)
     }
     return media
   }
 
   async function play(track: AudioPlayerTrack) {
+    const request = ++playbackRequest
     if (!queue.value.some(item => item.id === track.id)) {
       queue.value = [track]
     }
-    const activeMedia = getMedia()
     if (state.current.value && state.current.value.id !== track.id) {
-      activeMedia.pause()
+      disposeMedia()
+      currentTime.value = 0
+      duration.value = 0
     }
+    const activeMedia = getMedia()
 
     state.current.value = track
     state.status.value = 'loading'
@@ -133,25 +157,34 @@ export function createAudioPlayerController({
 
     try {
       await activeMedia.play()
+      if (request !== playbackRequest) return
       state.status.value = 'playing'
     } catch {
+      if (request !== playbackRequest) return
       state.fail('playback-rejected')
     }
   }
 
   function pause() {
+    playbackRequest++
     media?.pause()
+    if (state.current.value && state.status.value !== 'error') {
+      state.status.value = 'paused'
+    }
   }
 
   async function resume() {
     if (!media) {
       return
     }
+    const request = ++playbackRequest
     state.status.value = 'loading'
     try {
       await media.play()
+      if (request !== playbackRequest) return
       state.status.value = 'playing'
     } catch {
+      if (request !== playbackRequest) return
       state.fail('playback-rejected')
     }
   }
@@ -197,18 +230,8 @@ export function createAudioPlayerController({
   }
 
   function close() {
-    if (media) {
-      media.pause()
-      media.removeEventListener('play', handlePlay)
-      media.removeEventListener('pause', handlePause)
-      media.removeEventListener('error', handleError)
-      media.removeEventListener('timeupdate', handleTimeUpdate)
-      media.removeEventListener('loadedmetadata', handleLoadedMetadata)
-      media.removeEventListener('ended', handleEnded)
-      media.src = ''
-      media.load()
-      media = null
-    }
+    playbackRequest++
+    disposeMedia()
     state.close()
     queue.value = []
     currentTime.value = 0

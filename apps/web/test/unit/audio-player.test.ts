@@ -117,17 +117,74 @@ describe('音频播放器控制器', () => {
     expect(media.src).toContain(trackA.previewSrc)
   })
 
-  it('切换曲目时暂停旧媒体并复用单个实例', async () => {
-    const media = new FakeAudio()
-    const createAudio = vi.fn(() => media)
+  it('切换曲目时释放旧媒体并创建隔离实例', async () => {
+    const firstMedia = new FakeAudio()
+    const secondMedia = new FakeAudio()
+    const createAudio = vi.fn()
+      .mockReturnValueOnce(firstMedia)
+      .mockReturnValueOnce(secondMedia)
     const player = createAudioPlayerController({ createAudio })
 
     await player.play(trackA)
     await player.play(trackB)
 
-    expect(media.pauseCalls).toBe(1)
-    expect(createAudio).toHaveBeenCalledTimes(1)
+    expect(firstMedia.pauseCalls).toBe(1)
+    expect(firstMedia.src).toBe('')
+    expect(createAudio).toHaveBeenCalledTimes(2)
     expect(player.current.value?.id).toBe(trackB.id)
+  })
+
+  it('忽略快速切歌后旧播放请求的延迟失败', async () => {
+    let rejectFirst!: (reason?: unknown) => void
+    const firstPlay = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject
+    })
+    const media = new FakeAudio()
+    let playCalls = 0
+    media.play = async () => {
+      playCalls++
+      if (playCalls === 1) return firstPlay
+      media.paused = false
+      media.emit('play')
+    }
+    const player = createAudioPlayerController({ createAudio: () => media })
+
+    const stalePlay = player.play(trackA)
+    await player.play(trackB)
+    rejectFirst(new Error('stale playback rejection'))
+    await stalePlay
+
+    expect(player.current.value?.id).toBe(trackB.id)
+    expect(player.status.value).toBe('playing')
+  })
+
+  it('切歌后忽略旧媒体事件并清零试听进度', async () => {
+    const firstMedia = new FakeAudio()
+    const secondMedia = new FakeAudio()
+    const createAudio = vi.fn()
+      .mockReturnValueOnce(firstMedia)
+      .mockReturnValueOnce(secondMedia)
+    const player = createAudioPlayerController({ createAudio })
+
+    await player.play(trackA)
+    firstMedia.currentTime = 2
+    firstMedia.duration = 3
+    firstMedia.emit('timeupdate')
+    firstMedia.emit('loadedmetadata')
+
+    await player.play(trackB)
+    firstMedia.emit('pause')
+    firstMedia.emit('error')
+    firstMedia.emit('ended')
+    firstMedia.currentTime = 2.5
+    firstMedia.emit('timeupdate')
+
+    expect(createAudio).toHaveBeenCalledTimes(2)
+    expect(player.current.value?.id).toBe(trackB.id)
+    expect(player.status.value).toBe('playing')
+    expect(player.error.value).toBeNull()
+    expect(player.currentTime.value).toBe(0)
+    expect(player.duration.value).toBe(0)
   })
 
   it('关闭时暂停并释放媒体资源', async () => {
