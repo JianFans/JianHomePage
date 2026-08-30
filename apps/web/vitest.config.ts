@@ -8,4 +8,3 @@ export default defineVitestConfig({
     setupFiles: ['./test/setup.ts'],
   },
 })
-

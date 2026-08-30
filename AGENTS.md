@@ -31,4 +31,3 @@
 - Add a failing behavior test before production code.
 - Keep modules focused and prefer explicit interfaces over provider-specific APIs.
 - Run the narrow test first, then the affected package suite before committing.
-
