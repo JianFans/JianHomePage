@@ -14,7 +14,7 @@
 - 静态 SEO：canonical、Open Graph、JSON-LD、`robots.txt` 和 `sitemap.xml`。
 - Nuxt 管理端：快照编辑、审核、素材上传、发布状态和回滚操作台。
 - Go 内容服务：PostgreSQL、OIDC、S3 兼容对象存储、EdgeOne 构建触发与后台任务对账。
-- 验证体系：ESLint、TypeScript、Vitest、Playwright、axe、Go test、Go vet、静态产物校验和独立的生产依赖审计。
+- 验证体系：ESLint、TypeScript、Vitest 覆盖率、Playwright、axe、Go test、Go vet、Go 覆盖率、容器检查、静态产物校验和独立的生产依赖审计。
 
 当前不包含论坛、首页登录入口、统一身份中心或第三方平台内容自动抓取。后续子站点可以复用统一身份认证，但不应破坏公开首页的静态独立性。
 
@@ -94,10 +94,13 @@ go run ./cmd/api
 | `pnpm lint` | 运行 ESLint |
 | `pnpm typecheck` | 检查所有 TypeScript/Nuxt 项目 |
 | `pnpm test` | 运行 Schema、管理端、公开站和脚本测试 |
+| `pnpm test:coverage` | 验证三个 TypeScript 工作区的覆盖率门槛 |
+| `pnpm test:coverage:go` | 验证 Go 全包语句覆盖率不低于 80% |
+| `pnpm test:automation` | 验证 GitHub Actions、Dependabot 和 Docker 配置契约 |
 | `pnpm schema:generate` | 根据 canonical Schema 生成 TypeScript 类型 |
 | `pnpm generate` | 生成 Schema 类型及所有静态站点 |
 | `pnpm verify` | 运行前端完整门禁并检查静态产物 |
-| `pnpm verify:go` | 运行 Go generate、全包测试和 Go vet |
+| `pnpm verify:go` | 检查 gofmt，运行 Go generate、全包测试和 Go vet |
 | `pnpm --filter @yujian/web test:e2e` | 运行 Chrome E2E 与无障碍测试 |
 | `pnpm verify:edgeone` | 使用正式内容快照执行 EdgeOne 发布门禁 |
 | `pnpm fixture:images` | 重新生成开发图片 fixture |
@@ -129,9 +132,15 @@ pnpm verify:edgeone
 
 ```bash
 pnpm verify
+pnpm test:coverage
+pnpm test:coverage:go
 pnpm verify:go
 pnpm --filter @yujian/web test:e2e
 ```
+
+TypeScript 门槛为行和语句 80%、函数 75%、分支 70%；Go 语句覆盖率门槛为 80%。GitHub Actions 在 `master` 的 push、Pull Request 和手动触发时并行执行前端、Go、覆盖率、E2E 与容器门禁。Go 门禁还会执行 race 测试，前端和 Go 生成命令执行后必须保持已跟踪契约文件不变。失败的 Playwright 报告和覆盖率产物会保留为工作流制品。
+
+Dependabot 每周检查 pnpm 工作区、Go Modules、Docker 基础镜像和 GitHub Actions。Node.js、pnpm、Go 与应用依赖版本由 `package.json`、`go.mod` 和锁文件管理，Docker 基础镜像版本由 `Dockerfile` 管理；工作流不重复声明这些版本。GitHub Actions 引用按工作流语法保留在 YAML 中，并由 Dependabot 更新。前端门禁还会按根锁文件审计生产依赖的高危和严重漏洞。
 
 生产依赖审计：
 
@@ -158,13 +167,24 @@ EdgeOne Pages 使用仓库根目录的 [edgeone.json](edgeone.json)：
 
 生产环境需要 PostgreSQL、OIDC、S3/COS、稳定媒体域名、EdgeOne 构建接口和管理端 HTTPS Origin。完整变量、启动示例、API 行为和迁移说明见 [apps/server/README.md](apps/server/README.md)。
 
+根 Dockerfile 只封装 Go API。构建并检查开发模式健康端点：
+
+```bash
+docker build --tag yujian-server:local .
+docker run --detach --rm --name yujian-server-local --publish 127.0.0.1:8080:8080 yujian-server:local
+curl --fail http://127.0.0.1:8080/healthz
+docker rm --force yujian-server-local
+```
+
+生产运行时通过平台密钥和环境变量注入真实依赖，不把 `.env`、凭据或公开站静态产物写入镜像。
+
 首次部署包含 `0003_publish_target_freeze.sql` 的版本前，必须确认没有 `pending` 或 `building` 发布任务。不要手工修改 checksum，也不要跳过迁移。
 
 ### 上线检查清单
 
 - 代码已推送到 EdgeOne 可访问的 Git 远端。
 - `master` 工作区干净，提交历史符合原子化约束。
-- 前端、Go、E2E 和生产依赖审计通过。
+- 前端、Go、覆盖率、E2E、容器扫描和生产依赖审计通过。
 - 已准备非 fixture 的审核快照并配置 `CONTENT_SNAPSHOT_PATH`。
 - PostgreSQL、OIDC、COS、媒体域名和 EdgeOne 参数已配置。
 - COS 直传 CORS 允许管理端 Origin、`PUT`、`HEAD`、`Content-Type` 和 `X-Amz-Checksum-Sha256`。

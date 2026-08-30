@@ -62,6 +62,21 @@ go run ./cmd/api
 
 服务入口提供 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 SHA-256；上传成功后可通过与内容契约一致的 `/media/*` 路径读取，便于本地管理端直接预览。生产环境不会自动降级到内存仓储；启动时按顺序加载配置、连接并探测 PostgreSQL、在同一事务中执行迁移、构造 S3 与 EdgeOne 适配器、注册路由并启动 HTTP Server。任一步失败都会关闭已打开的数据库并拒绝启动。
 
+## 容器运行
+
+仓库根 `Dockerfile` 使用 Go 多阶段构建，只把静态 API 二进制复制到非 root 的 distroless 运行镜像。公开站和管理端不包含在该镜像中。
+
+在仓库根目录构建并执行开发模式健康检查：
+
+```bash
+docker build --tag yujian-server:local .
+docker run --detach --rm --name yujian-server-local --publish 127.0.0.1:8080:8080 yujian-server:local
+curl --fail http://127.0.0.1:8080/healthz
+docker rm --force yujian-server-local
+```
+
+生产部署应由编排平台注入下文列出的环境变量和密钥。不要在 Dockerfile、镜像层、构建参数或提交的 `.env` 文件中保存凭据。容器默认以 `nonroot` 用户运行并监听 `0.0.0.0:8080`；EdgeOne 回源和 TLS 在容器外配置。
+
 生产运行示例：
 
 ```powershell

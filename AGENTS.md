@@ -163,9 +163,12 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | Schema、管理端和公开站类型检查 |
 | `pnpm test` | JavaScript、Vue 和脚本测试 |
+| `pnpm test:coverage` | Schema、管理端和公开站覆盖率门禁 |
+| `pnpm test:coverage:go` | Go 全包语句覆盖率门禁 |
+| `pnpm test:automation` | GitHub Actions、Dependabot 和 Docker 配置契约 |
 | `pnpm generate` | Schema 类型与 Nuxt 静态生成 |
 | `pnpm verify` | 前端完整门禁和静态产物检查 |
-| `pnpm verify:go` | Go generate、全包测试和 Go vet |
+| `pnpm verify:go` | gofmt、Go generate、全包测试和 Go vet |
 | `pnpm verify:edgeone` | 正式快照约束下的 EdgeOne 完整门禁 |
 
 ### 按改动范围
@@ -175,6 +178,8 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 - 首页交互、响应式或无障碍：`pnpm --filter @yujian/web test:e2e`。
 - 管理端：`pnpm --filter @yujian/admin test`、`pnpm --filter @yujian/admin typecheck`。
 - Go 服务：在 `apps/server` 运行目标包测试，再运行 `pnpm verify:go`。
+- 覆盖率策略或测试范围：`pnpm test:coverage` 和 `pnpm test:coverage:go`。
+- Docker 或 GitHub 配置：`pnpm test:automation`，并在 Docker 可用时构建镜像和检查 `/healthz`。
 - EdgeOne 配置或构建快照：使用非 fixture 的 `CONTENT_SNAPSHOT_PATH` 运行 `pnpm verify:edgeone`。
 
 完成声明和提交前必须运行能证明结论的最新命令，并阅读退出码与失败数。不得用「之前通过」「理论上可行」或局部测试替代当前证据。
