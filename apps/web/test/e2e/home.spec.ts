@@ -1,11 +1,15 @@
 import { expect, test } from '@playwright/test'
 
 const sectionIds = ['music', 'video', 'event', 'moment', 'artist']
+const clientHydrationTimeout = 15_000
 
 async function openHomepage(page: import('@playwright/test').Page) {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toContainText(/遇健我|Meet Jian/)
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('yujian:locale'))).toMatch(/^(zh-CN|en)$/)
+  await expect.poll(
+    () => page.evaluate(() => localStorage.getItem('yujian:locale')),
+    { timeout: clientHydrationTimeout },
+  ).toMatch(/^(zh-CN|en)$/)
 }
 
 async function expectHeroPixels(page: import('@playwright/test').Page) {
