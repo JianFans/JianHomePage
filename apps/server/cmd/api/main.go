@@ -59,14 +59,22 @@ func run(ctx context.Context, settings config.Config, logger *slog.Logger) (retu
 	if err != nil {
 		return err
 	}
+	if dependencies.PublishReconciler != nil {
+		go runPublishReconciler(ctx, 15*time.Second, dependencies.PublishReconciler, logger)
+	}
 	return runServer(ctx, settings, logger, handler)
 }
 
+type publishReconciler interface {
+	Reconcile(context.Context) error
+}
+
 type ServiceDependencies struct {
-	Content      httpapi.ContentService
-	Assets       httpapi.AssetService
-	Publish      httpapi.PublishService
-	LocalUploads http.Handler
+	Content           httpapi.ContentService
+	Assets            httpapi.AssetService
+	Publish           httpapi.PublishService
+	PublishReconciler publishReconciler
+	LocalUploads      http.Handler
 }
 
 type productionDatabase interface {
@@ -116,7 +124,8 @@ func buildProductionDependencies(
 		return ServiceDependencies{}, nil, fmt.Errorf("migrate production database: %w", err)
 	}
 	blobs, err := factory.newBlobStore(providerS3.Config{
-		Endpoint: settings.S3Endpoint, Region: settings.S3Region, Bucket: settings.S3Bucket,
+		Endpoint: settings.S3Endpoint, PublicBaseURL: settings.MediaPublicBaseURL,
+		Region: settings.S3Region, Bucket: settings.S3Bucket,
 		AccessKeyID: settings.S3AccessKeyID, SecretAccessKey: settings.S3SecretAccessKey,
 		SessionToken: settings.S3SessionToken, UsePathStyle: settings.S3UsePathStyle, RequireHTTPS: true,
 	})
@@ -131,6 +140,10 @@ func buildProductionDependencies(
 		return ServiceDependencies{}, nil, fmt.Errorf("configure EdgeOne build trigger: %w", err)
 	}
 	validator := contract.NewValidator()
+	publishService := publish.NewService(publish.ServiceOptions{
+		Repository: postgres.NewPublishRepository(database), BlobStore: blobs,
+		BuildTrigger: trigger, Validator: validator,
+	})
 	dependencies := ServiceDependencies{
 		Content: content.NewService(content.ServiceOptions{
 			Store: postgres.NewContentRepository(database), Validator: validator,
@@ -138,10 +151,8 @@ func buildProductionDependencies(
 		Assets: assets.NewService(assets.ServiceOptions{
 			Repository: postgres.NewAssetRepository(database), BlobStore: blobs,
 		}),
-		Publish: publish.NewService(publish.ServiceOptions{
-			Repository: postgres.NewPublishRepository(database), BlobStore: blobs,
-			BuildTrigger: trigger, Validator: validator,
-		}),
+		Publish:           publishService,
+		PublishReconciler: publishService,
 	}
 	closeOnError = false
 	return dependencies, database.Close, nil
@@ -189,6 +200,12 @@ func developmentDependencies() ServiceDependencies {
 	validator := contract.NewValidator()
 	blobs := local.NewBlobStore()
 	trigger := local.NewBuildTrigger()
+	publishService := publish.NewService(publish.ServiceOptions{
+		Repository:   memory.NewPublishRepository(state),
+		BlobStore:    blobs,
+		BuildTrigger: trigger,
+		Validator:    validator,
+	})
 	return ServiceDependencies{
 		Content: content.NewService(content.ServiceOptions{
 			Store:     memory.NewContentRepository(state),
@@ -198,13 +215,29 @@ func developmentDependencies() ServiceDependencies {
 			Repository: memory.NewAssetRepository(state),
 			BlobStore:  blobs,
 		}),
-		Publish: publish.NewService(publish.ServiceOptions{
-			Repository:   memory.NewPublishRepository(state),
-			BlobStore:    blobs,
-			BuildTrigger: trigger,
-			Validator:    validator,
-		}),
-		LocalUploads: blobs,
+		Publish:           publishService,
+		PublishReconciler: publishService,
+		LocalUploads:      blobs,
+	}
+}
+
+func runPublishReconciler(ctx context.Context, interval time.Duration, reconciler publishReconciler, logger *slog.Logger) {
+	if interval <= 0 {
+		interval = 15 * time.Second
+	}
+	for {
+		if err := reconciler.Reconcile(ctx); err != nil && ctx.Err() == nil {
+			logger.Error("reconcile publish job", "error", err)
+		}
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		case <-timer.C:
+		}
 	}
 }
 

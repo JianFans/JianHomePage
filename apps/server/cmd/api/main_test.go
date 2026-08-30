@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"yujian.me/server/internal/config"
 	"yujian.me/server/internal/ports"
@@ -106,17 +109,24 @@ func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 
 func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.T) {
 	database := &productionDatabaseFake{}
+	var blobConfig providerS3.Config
 	factory := productionFactory{
-		openDatabase:    func(context.Context, string) (productionDatabase, error) { return database, nil },
-		newBlobStore:    func(providerS3.Config) (ports.BlobStore, error) { return local.NewBlobStore(), nil },
+		openDatabase: func(context.Context, string) (productionDatabase, error) { return database, nil },
+		newBlobStore: func(config providerS3.Config) (ports.BlobStore, error) {
+			blobConfig = config
+			return local.NewBlobStore(), nil
+		},
 		newBuildTrigger: func(edgeone.Config) (ports.BuildTrigger, error) { return local.NewBuildTrigger(), nil },
 	}
 	dependencies, closeResources, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
 	if err != nil {
 		t.Fatalf("build production dependencies: %v", err)
 	}
-	if dependencies.Content == nil || dependencies.Assets == nil || dependencies.Publish == nil {
+	if dependencies.Content == nil || dependencies.Assets == nil || dependencies.Publish == nil || dependencies.PublishReconciler == nil {
 		t.Fatalf("incomplete production dependencies %#v", dependencies)
+	}
+	if blobConfig.PublicBaseURL != "https://media.yujian.me" {
+		t.Fatalf("unexpected production media base URL %q", blobConfig.PublicBaseURL)
 	}
 	if database.beginCalls != 1 || database.tx == nil || !database.tx.committed {
 		t.Fatalf("migrations did not commit in a database transaction: %#v", database)
@@ -126,6 +136,29 @@ func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.
 	}
 	if !database.closed {
 		t.Fatal("database was not closed")
+	}
+}
+
+func TestPublishReconcilerRunsImmediatelyAndStopsWithContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reconciler := &publishReconcilerFake{calls: make(chan struct{}, 1)}
+	done := make(chan struct{})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	go func() {
+		runPublishReconciler(ctx, time.Hour, reconciler, logger)
+		close(done)
+	}()
+
+	select {
+	case <-reconciler.calls:
+	case <-time.After(time.Second):
+		t.Fatal("reconciler did not run immediately")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("reconciler did not stop with context")
 	}
 }
 
@@ -150,6 +183,13 @@ type productionDatabaseFake struct {
 	tx         *productionTxFake
 	beginCalls int
 	closed     bool
+}
+
+type publishReconcilerFake struct{ calls chan struct{} }
+
+func (reconciler *publishReconcilerFake) Reconcile(context.Context) error {
+	reconciler.calls <- struct{}{}
+	return nil
 }
 
 func (*productionDatabaseFake) ExecContext(context.Context, string, ...any) (postgres.ExecResult, error) {
@@ -196,7 +236,15 @@ func (result productionResultFake) RowsAffected() (int64, error) { return int64(
 
 type productionRowFake struct{}
 
-func (productionRowFake) Scan(...any) error { return errors.New("no rows") }
+func (productionRowFake) Scan(dest ...any) error {
+	if len(dest) == 1 {
+		if value, ok := dest[0].(*bool); ok {
+			*value = false
+			return nil
+		}
+	}
+	return errors.New("no rows")
+}
 
 type productionRowsFake struct{}
 
@@ -217,6 +265,7 @@ func productionSettings() config.Config {
 		S3Bucket:            "media",
 		S3AccessKeyID:       "access",
 		S3SecretAccessKey:   "secret",
+		MediaPublicBaseURL:  "https://media.yujian.me",
 		EdgeOneTriggerURL:   "https://edgeone.example.test/trigger",
 		EdgeOneStatusURL:    "https://edgeone.example.test/status",
 		EdgeOneToken:        "token",

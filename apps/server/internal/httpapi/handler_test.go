@@ -195,6 +195,22 @@ func TestRouterHealthzDoesNotRequireAuthentication(t *testing.T) {
 	}
 }
 
+func TestRouterMountsLocalMediaHandler(t *testing.T) {
+	localHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/media/assets/cover.webp" {
+			t.Fatalf("unexpected local read path %q", request.URL.Path)
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	})
+	router := NewRouter(RouterOptions{LocalUploads: localHandler})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/media/assets/cover.webp", nil))
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected local read handler response, got %d", recorder.Code)
+	}
+}
+
 func TestRouterHandlesAllowedCORSPreflightBeforeAuthentication(t *testing.T) {
 	router := NewRouter(RouterOptions{
 		Content:        &contentServiceStub{},
@@ -279,6 +295,48 @@ func TestCreateAssetUploadRequiresRightsObject(t *testing.T) {
 	}
 	if called {
 		t.Fatal("asset service must not be called without a rights object")
+	}
+}
+
+func TestCreateAssetUploadReturnsStableSourceURL(t *testing.T) {
+	middleware, err := auth.NewMiddleware(auth.MiddlewareOptions{AllowDevIdentity: true})
+	if err != nil {
+		t.Fatalf("create auth middleware: %v", err)
+	}
+	router := NewRouter(RouterOptions{
+		Assets: &assetServiceStub{createFn: func(context.Context, domain.Principal, assets.CreateUploadInput) (assets.CreateUploadResult, error) {
+			return assets.CreateUploadResult{
+				Asset: domain.AssetRecord{
+					ID: "asset_1", SourceURL: "https://media.yujian.me/assets/asset_1/source.webp",
+					Status: domain.AssetPending, Metadata: json.RawMessage(`{}`), Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
+				},
+				Upload: ports.SignedUpload{URL: "https://upload.example.test/signed", ExpiresAt: time.Now().UTC().Add(time.Minute)},
+			}, nil
+		}},
+		Middleware: middleware,
+	})
+	recorder := httptest.NewRecorder()
+	request := authenticatedRequest(
+		http.MethodPost,
+		"/api/v1/assets/uploads",
+		`{"fileName":"cover.webp","contentType":"image/webp","size":100,"checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","rights":{"source":{"zh-CN":"authorized"}}}`,
+		"editor",
+	)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response struct {
+		Asset struct {
+			Src string `json:"src"`
+		} `json:"asset"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Asset.Src != "https://media.yujian.me/assets/asset_1/source.webp" {
+		t.Fatalf("unexpected asset source %q", response.Asset.Src)
 	}
 }
 

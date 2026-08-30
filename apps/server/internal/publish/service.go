@@ -4,16 +4,19 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/ports"
+	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
 const productionSlot = "production"
@@ -25,12 +28,14 @@ type SnapshotValidator interface {
 type Repository interface {
 	WithinTransaction(context.Context, func(Repository) error) error
 	GetVersion(context.Context, string) (domain.ContentVersion, error)
+	GetAsset(context.Context, string) (domain.AssetRecord, error)
 	UpdateVersion(context.Context, domain.ContentVersion, int64) error
 	CreatePublishJob(context.Context, domain.PublishJob) error
 	GetPublishJob(context.Context, string) (domain.PublishJob, error)
 	GetPublishJobByIdempotencyKey(context.Context, string) (domain.PublishJob, error)
+	GetActivePublishJob(context.Context) (domain.PublishJob, error)
 	GetSuccessfulPublishByVersion(context.Context, string) (domain.PublishJob, error)
-	UpdatePublishJob(context.Context, domain.PublishJob) error
+	UpdatePublishJob(context.Context, domain.PublishJob, domain.PublishStatus) error
 	LockPublishSlot(context.Context, string) error
 	GetPublishPointer(context.Context, string) (domain.PublishPointer, error)
 	SetPublishPointer(context.Context, domain.PublishPointer) error
@@ -63,6 +68,17 @@ type canonicalResult struct {
 	ReleaseID string
 }
 
+type snapshotAsset struct {
+	ID       string          `json:"id"`
+	Source   string          `json:"src"`
+	MIMEType string          `json:"mimeType"`
+	ByteSize int64           `json:"byteSize"`
+	Checksum string          `json:"checksum"`
+	Rights   json.RawMessage `json:"rights"`
+}
+
+var managedAssetPath = regexp.MustCompile(`(?:^|/)assets/(asset_[A-Za-z0-9_-]+)/((?:source)\.[A-Za-z0-9]+)$`)
+
 func NewService(options ServiceOptions) *Service {
 	now := options.Now
 	if now == nil {
@@ -93,6 +109,27 @@ func (service *Service) GetPublishJob(
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
 	return service.repository.GetPublishJob(ctx, id)
+}
+
+// Reconcile advances the single active production job without relying on an
+// administrator keeping the management page open.
+func (service *Service) Reconcile(ctx context.Context) error {
+	job, err := service.repository.GetActivePublishJob(ctx)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if job.Status == domain.PublishPending {
+		_, err = service.resumeExisting(ctx, job)
+		return err
+	}
+	_, err = service.RefreshStatus(ctx, domain.Principal{
+		Subject: "system:publish-reconciler",
+		Roles:   []domain.Role{domain.RolePublisher},
+	}, job.ID)
+	return err
 }
 
 func (service *Service) Publish(
@@ -129,12 +166,17 @@ func (service *Service) Publish(
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
+	if version.Checksum != canonical.Checksum {
+		return domain.PublishJob{}, domain.ErrConflict
+	}
+	if err := service.validateManagedAssets(ctx, canonical.JSON, false); err != nil {
+		return domain.PublishJob{}, err
+	}
 	snapshotKey := fmt.Sprintf("snapshots/%s/%s.json", canonical.ReleaseID, canonical.Checksum)
 	if err := service.ensureSnapshot(ctx, snapshotKey, canonical); err != nil {
 		return domain.PublishJob{}, err
 	}
-
-	job := service.newJob(actor, domain.PublishOperationPublish, versionID, canonical.ReleaseID, idempotencyKey, snapshotKey, canonical.Checksum)
+	job := service.newJob(actor, domain.PublishOperationPublish, versionID, canonical.ReleaseID, idempotencyKey, snapshotKey, canonical.Checksum, version.Revision)
 	if err := service.createJob(ctx, actor, &job, "publish.requested"); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
 			if existing, found, lookupErr := service.existingJob(ctx, actor, domain.PublishOperationPublish, versionID, idempotencyKey); lookupErr != nil {
@@ -187,6 +229,18 @@ func (service *Service) Rollback(
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
+	if err := service.validateManagedAssets(ctx, canonical.JSON, true); err != nil {
+		return domain.PublishJob{}, err
+	}
+	snapshotKey := historical.SnapshotKey
+	snapshotChecksum := historical.SnapshotChecksum
+	if historical.SnapshotChecksum != canonical.Checksum {
+		snapshotKey = fmt.Sprintf("snapshots/%s/%s.json", canonical.ReleaseID, canonical.Checksum)
+		if err := service.ensureSnapshot(ctx, snapshotKey, canonical); err != nil {
+			return domain.PublishJob{}, err
+		}
+		snapshotChecksum = canonical.Checksum
+	}
 
 	job := service.newJob(
 		actor,
@@ -194,8 +248,9 @@ func (service *Service) Rollback(
 		versionID,
 		canonical.ReleaseID,
 		idempotencyKey,
-		historical.SnapshotKey,
-		historical.SnapshotChecksum,
+		snapshotKey,
+		snapshotChecksum,
+		version.Revision,
 	)
 	if err := service.createJob(ctx, actor, &job, "rollback.requested"); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
@@ -208,6 +263,95 @@ func (service *Service) Rollback(
 		return domain.PublishJob{}, err
 	}
 	return service.trigger(ctx, job, canonical.ReleaseID)
+}
+
+func (service *Service) validateManagedAssets(ctx context.Context, snapshot []byte, allowDeleted bool) error {
+	var envelope struct {
+		Assets []snapshotAsset `json:"assets"`
+	}
+	if err := json.Unmarshal(snapshot, &envelope); err != nil {
+		return fmt.Errorf("%w: decode managed assets: %v", domain.ErrInvalidInput, err)
+	}
+	for _, reference := range envelope.Assets {
+		asset, err := service.repository.GetAsset(ctx, reference.ID)
+		if errors.Is(err, domain.ErrNotFound) {
+			_, managed, parseErr := managedBlobKey(reference)
+			if parseErr != nil {
+				return parseErr
+			}
+			if managed {
+				return fmt.Errorf("%w: managed asset %s does not exist", domain.ErrInvalidInput, reference.ID)
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		matches := managedAssetPath.FindStringSubmatch("/" + asset.BlobKey)
+		if len(matches) == 0 || matches[1] != reference.ID || asset.BlobKey != "assets/"+matches[1]+"/"+matches[2] {
+			return fmt.Errorf("%w: managed asset %s has an invalid blob key", domain.ErrInvalidInput, reference.ID)
+		}
+		blobKey := asset.BlobKey
+		validStatus := asset.Status == domain.AssetReady || (allowDeleted && asset.Status == domain.AssetDeleted)
+		if !validStatus {
+			return fmt.Errorf("%w: managed asset %s is not publishable", domain.ErrInvalidInput, reference.ID)
+		}
+		expectedSource, err := service.blobStore.PublicURL(ctx, blobKey)
+		if err != nil {
+			return err
+		}
+		if expectedSource != reference.Source {
+			return fmt.Errorf("%w: managed asset %s public URL does not match", domain.ErrInvalidInput, reference.ID)
+		}
+		storedRights, storedErr := snapshotdata.CanonicalJSON(asset.Rights)
+		referenceRights, referenceErr := snapshotdata.CanonicalJSON(reference.Rights)
+		if storedErr != nil || referenceErr != nil || !bytes.Equal(storedRights, referenceRights) {
+			return fmt.Errorf("%w: managed asset %s rights do not match", domain.ErrInvalidInput, reference.ID)
+		}
+		metadata, err := service.blobStore.Stat(ctx, blobKey)
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("%w: managed asset %s blob does not exist", domain.ErrInvalidInput, reference.ID)
+		}
+		if err != nil {
+			return err
+		}
+		if metadata.ContentType != reference.MIMEType || metadata.Size != reference.ByteSize || metadata.Checksum != reference.Checksum {
+			return fmt.Errorf("%w: managed asset %s metadata does not match", domain.ErrInvalidInput, reference.ID)
+		}
+	}
+	return nil
+}
+
+func managedBlobKey(reference snapshotAsset) (string, bool, error) {
+	if strings.TrimSpace(reference.Source) != reference.Source {
+		return "", false, fmt.Errorf("%w: ambiguous asset URL", domain.ErrInvalidInput)
+	}
+	parsed, err := url.Parse(reference.Source)
+	if err != nil {
+		return "", false, fmt.Errorf("%w: invalid managed asset URL", domain.ErrInvalidInput)
+	}
+	if parsed.Scheme == "https" && parsed.Host == "" {
+		return "", false, fmt.Errorf("%w: HTTPS asset URL requires a host", domain.ErrInvalidInput)
+	}
+	if strings.ContainsRune(parsed.Path, '\\') {
+		return "", false, fmt.Errorf("%w: ambiguous asset URL path", domain.ErrInvalidInput)
+	}
+	for _, segment := range strings.Split(parsed.Path, "/") {
+		if segment == "." || segment == ".." {
+			return "", false, fmt.Errorf("%w: ambiguous asset URL path", domain.ErrInvalidInput)
+		}
+	}
+	matches := managedAssetPath.FindStringSubmatch(parsed.Path)
+	if len(matches) == 0 {
+		return "", false, nil
+	}
+	if parsed.RawPath != "" {
+		return "", true, fmt.Errorf("%w: escaped managed asset URL path", domain.ErrInvalidInput)
+	}
+	if matches[1] != reference.ID {
+		return "", true, fmt.Errorf("%w: managed asset URL does not match id %s", domain.ErrInvalidInput, reference.ID)
+	}
+	return "assets/" + matches[1] + "/" + matches[2], true, nil
 }
 
 func (service *Service) RefreshStatus(
@@ -230,14 +374,14 @@ func (service *Service) RefreshStatus(
 		return job, err
 	}
 	if run.Status == domain.PublishFailed {
-		job.Status = domain.PublishFailed
-		job.ErrorMessage = run.Error
-		job.UpdatedAt = service.now().UTC()
-		if err := service.repository.UpdatePublishJob(ctx, job); err != nil {
+		failed, changed, err := service.failBuildingJob(ctx, actor, job, run.Error, true)
+		if err != nil {
 			return domain.PublishJob{}, err
 		}
-		service.notify(ctx, job, domain.PublishPointer{}, false)
-		return job, nil
+		if changed {
+			service.notify(ctx, failed, domain.PublishPointer{}, false)
+		}
+		return failed, nil
 	}
 	if run.Status != domain.PublishSucceeded {
 		return job, nil
@@ -245,6 +389,7 @@ func (service *Service) RefreshStatus(
 
 	var pointer domain.PublishPointer
 	alreadyFinalized := false
+	finalizationFailed := false
 	err = service.repository.WithinTransaction(ctx, func(repository Repository) error {
 		if err := repository.LockPublishSlot(ctx, productionSlot); err != nil {
 			return err
@@ -261,6 +406,19 @@ func (service *Service) RefreshStatus(
 		target, err := repository.GetVersion(ctx, job.VersionID)
 		if err != nil {
 			return err
+		}
+		if !service.targetMatchesJob(target, job) {
+			if err := service.releasePublishTarget(ctx, repository, actor, target, false); err != nil {
+				return err
+			}
+			job.Status = domain.PublishFailed
+			job.ErrorMessage = "publish target changed during build"
+			job.UpdatedAt = service.now().UTC()
+			if err := repository.UpdatePublishJob(ctx, job, domain.PublishBuilding); err != nil {
+				return err
+			}
+			finalizationFailed = true
+			return repository.AppendAudit(ctx, publishAudit(actor, failedAuditAction(job), job.ID, service.now().UTC()))
 		}
 		currentPointer, pointerErr := repository.GetPublishPointer(ctx, productionSlot)
 		if pointerErr != nil && !errors.Is(pointerErr, domain.ErrNotFound) {
@@ -282,13 +440,6 @@ func (service *Service) RefreshStatus(
 		}
 
 		targetRevision := target.Revision
-		if target.Status == domain.StatusInReview {
-			if !domain.CanTransition(target.Status, domain.StatusPublished, target.ReviewApproved) {
-				return domain.ErrInvalidTransition
-			}
-		} else if target.Status != domain.StatusArchived && target.Status != domain.StatusPublished {
-			return domain.ErrInvalidTransition
-		}
 		target.Status = domain.StatusPublished
 		target.Revision++
 		target.UpdatedBy = actor.Subject
@@ -310,7 +461,7 @@ func (service *Service) RefreshStatus(
 		job.Status = domain.PublishSucceeded
 		job.ErrorMessage = ""
 		job.UpdatedAt = service.now().UTC()
-		if err := repository.UpdatePublishJob(ctx, job); err != nil {
+		if err := repository.UpdatePublishJob(ctx, job, domain.PublishBuilding); err != nil {
 			return err
 		}
 		action := "publish.succeeded"
@@ -323,6 +474,10 @@ func (service *Service) RefreshStatus(
 		return domain.PublishJob{}, err
 	}
 	if alreadyFinalized {
+		return job, nil
+	}
+	if finalizationFailed {
+		service.notify(ctx, job, domain.PublishPointer{}, false)
 		return job, nil
 	}
 	service.notify(ctx, job, pointer, true)
@@ -358,6 +513,37 @@ func (service *Service) createJob(
 	action string,
 ) error {
 	return service.repository.WithinTransaction(ctx, func(repository Repository) error {
+		if err := repository.LockPublishSlot(ctx, productionSlot); err != nil {
+			return err
+		}
+		if _, err := repository.GetActivePublishJob(ctx); err == nil {
+			return domain.ErrConflict
+		} else if !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+		target, err := repository.GetVersion(ctx, job.VersionID)
+		if err != nil {
+			return err
+		}
+		if target.Revision != job.TargetRevision || target.Checksum != job.SnapshotChecksum {
+			return domain.ErrConflict
+		}
+		if job.Operation == domain.PublishOperationPublish {
+			if !domain.CanTransition(target.Status, domain.StatusPublishing, target.ReviewApproved) {
+				return domain.ErrInvalidTransition
+			}
+			targetRevision := target.Revision
+			target.Status = domain.StatusPublishing
+			target.Revision++
+			target.UpdatedBy = actor.Subject
+			target.UpdatedAt = service.now().UTC()
+			if err := repository.UpdateVersion(ctx, target, targetRevision); err != nil {
+				return err
+			}
+			job.TargetRevision = target.Revision
+		} else if target.Status != domain.StatusArchived && target.Status != domain.StatusPublished {
+			return domain.ErrInvalidTransition
+		}
 		if err := repository.CreatePublishJob(ctx, *job); err != nil {
 			return err
 		}
@@ -380,7 +566,10 @@ func (service *Service) trigger(
 	if err != nil {
 		job.Status = domain.PublishPending
 		job.ErrorMessage = err.Error()
-		if updateErr := service.repository.UpdatePublishJob(ctx, job); updateErr != nil {
+		if updateErr := service.repository.UpdatePublishJob(ctx, job, domain.PublishPending); updateErr != nil {
+			if errors.Is(updateErr, domain.ErrConflict) {
+				return service.repository.GetPublishJob(ctx, job.ID)
+			}
 			return domain.PublishJob{}, errors.Join(err, updateErr)
 		}
 		return job, err
@@ -388,7 +577,10 @@ func (service *Service) trigger(
 	job.BuildID = run.ID
 	job.Status = domain.PublishBuilding
 	job.ErrorMessage = ""
-	if err := service.repository.UpdatePublishJob(ctx, job); err != nil {
+	if err := service.repository.UpdatePublishJob(ctx, job, domain.PublishPending); err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			return service.repository.GetPublishJob(ctx, job.ID)
+		}
 		return domain.PublishJob{}, err
 	}
 	return job, nil
@@ -409,6 +601,7 @@ func (service *Service) newJob(
 	idempotencyKey string,
 	snapshotKey string,
 	snapshotChecksum string,
+	targetRevision int64,
 ) domain.PublishJob {
 	now := service.now().UTC()
 	return domain.PublishJob{
@@ -419,11 +612,95 @@ func (service *Service) newJob(
 		ReleaseID:        releaseID,
 		SnapshotKey:      snapshotKey,
 		SnapshotChecksum: snapshotChecksum,
+		TargetRevision:   targetRevision,
 		Status:           domain.PublishPending,
 		RequestedBy:      actor.Subject,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
+}
+
+func (service *Service) targetMatchesJob(target domain.ContentVersion, job domain.PublishJob) bool {
+	if target.Revision != job.TargetRevision || target.Checksum != job.SnapshotChecksum {
+		return false
+	}
+	if job.Operation == domain.PublishOperationPublish {
+		return target.Status == domain.StatusPublishing && target.ReviewApproved
+	}
+	return target.Status == domain.StatusArchived || target.Status == domain.StatusPublished
+}
+
+func (service *Service) failBuildingJob(
+	ctx context.Context,
+	actor domain.Principal,
+	job domain.PublishJob,
+	errorMessage string,
+	releaseTarget bool,
+) (domain.PublishJob, bool, error) {
+	changed := false
+	err := service.repository.WithinTransaction(ctx, func(repository Repository) error {
+		if err := repository.LockPublishSlot(ctx, productionSlot); err != nil {
+			return err
+		}
+		persisted, err := repository.GetPublishJob(ctx, job.ID)
+		if err != nil {
+			return err
+		}
+		job = persisted
+		if job.Status != domain.PublishBuilding {
+			return nil
+		}
+		if releaseTarget && job.Operation == domain.PublishOperationPublish {
+			target, err := repository.GetVersion(ctx, job.VersionID)
+			if err != nil {
+				return err
+			}
+			if target.Status == domain.StatusPublishing {
+				if err := service.releasePublishTarget(ctx, repository, actor, target, service.targetMatchesJob(target, job)); err != nil {
+					return err
+				}
+			}
+		}
+		job.Status = domain.PublishFailed
+		job.ErrorMessage = errorMessage
+		job.UpdatedAt = service.now().UTC()
+		if err := repository.UpdatePublishJob(ctx, job, domain.PublishBuilding); err != nil {
+			return err
+		}
+		changed = true
+		return repository.AppendAudit(ctx, publishAudit(actor, failedAuditAction(job), job.ID, service.now().UTC()))
+	})
+	if err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			current, lookupErr := service.repository.GetPublishJob(ctx, job.ID)
+			return current, false, lookupErr
+		}
+		return domain.PublishJob{}, false, err
+	}
+	return job, changed, nil
+}
+
+func (service *Service) releasePublishTarget(
+	ctx context.Context,
+	repository Repository,
+	actor domain.Principal,
+	target domain.ContentVersion,
+	preserveApproval bool,
+) error {
+	if target.Status != domain.StatusPublishing {
+		return nil
+	}
+	targetRevision := target.Revision
+	if preserveApproval {
+		target.Status = domain.StatusInReview
+	} else {
+		target.Status = domain.StatusDraft
+		target.ReviewApproved = false
+	}
+	target.Revision++
+	target.UpdatedBy = actor.Subject
+	target.UpdatedAt = service.now().UTC()
+	return repository.UpdateVersion(ctx, target, targetRevision)
 }
 
 func (service *Service) existingJob(
@@ -463,15 +740,9 @@ func (service *Service) notify(
 }
 
 func canonicalSnapshot(raw []byte) (canonicalResult, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
-		return canonicalResult{}, fmt.Errorf("decode snapshot: %w", err)
-	}
-	canonicalJSON, err := json.Marshal(value)
+	canonicalJSON, err := snapshotdata.CanonicalJSON(raw)
 	if err != nil {
-		return canonicalResult{}, fmt.Errorf("encode canonical snapshot: %w", err)
+		return canonicalResult{}, fmt.Errorf("decode snapshot: %w", err)
 	}
 	var envelope struct {
 		ReleaseID string `json:"releaseId"`
@@ -482,10 +753,9 @@ func canonicalSnapshot(raw []byte) (canonicalResult, error) {
 	if envelope.ReleaseID == "" {
 		return canonicalResult{}, domain.ErrInvalidInput
 	}
-	sum := sha256.Sum256(canonicalJSON)
 	return canonicalResult{
 		JSON:      canonicalJSON,
-		Checksum:  "sha256:" + hex.EncodeToString(sum[:]),
+		Checksum:  snapshotdata.Checksum(canonicalJSON),
 		ReleaseID: envelope.ReleaseID,
 	}, nil
 }
@@ -508,6 +778,13 @@ func publishAudit(actor domain.Principal, action, id string, createdAt time.Time
 		Metadata:     json.RawMessage(`{}`),
 		CreatedAt:    createdAt,
 	}
+}
+
+func failedAuditAction(job domain.PublishJob) string {
+	if job.Operation == domain.PublishOperationRollback {
+		return "rollback.failed"
+	}
+	return "publish.failed"
 }
 
 func randomID(prefix string) string {

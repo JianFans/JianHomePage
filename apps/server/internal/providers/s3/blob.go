@@ -2,6 +2,9 @@ package s3
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -15,14 +18,17 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
+	awss3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/httpurl"
 	"yujian.me/server/internal/ports"
 )
 
 type Config struct {
 	Endpoint        string
+	PublicBaseURL   string
 	Region          string
 	Bucket          string
 	AccessKeyID     string
@@ -34,14 +40,21 @@ type Config struct {
 }
 
 type BlobStore struct {
-	bucket    string
-	client    *awss3.Client
-	presigner *awss3.PresignClient
-	now       func() time.Time
+	bucket        string
+	publicBaseURL *url.URL
+	client        *awss3.Client
+	presigner     *awss3.PresignClient
+	now           func() time.Time
 }
+
+const defaultHTTPTimeout = 30 * time.Second
 
 func NewBlobStore(config Config) (*BlobStore, error) {
 	if err := validateConfig(config); err != nil {
+		return nil, err
+	}
+	publicBaseURL, err := parsePublicBaseURL(config.PublicBaseURL, config.RequireHTTPS)
+	if err != nil {
 		return nil, err
 	}
 	loadOptions := []func(*awsconfig.LoadOptions) error{
@@ -64,10 +77,11 @@ func NewBlobStore(config Config) (*BlobStore, error) {
 		options.UsePathStyle = config.UsePathStyle
 	})
 	return &BlobStore{
-		bucket:    config.Bucket,
-		client:    client,
-		presigner: awss3.NewPresignClient(client),
-		now:       time.Now,
+		bucket:        config.Bucket,
+		publicBaseURL: publicBaseURL,
+		client:        client,
+		presigner:     awss3.NewPresignClient(client),
+		now:           time.Now,
 	}, nil
 }
 
@@ -76,12 +90,15 @@ func s3HTTPClient(client *http.Client, requireHTTPS bool) *http.Client {
 		if !requireHTTPS {
 			return nil
 		}
-		client = http.DefaultClient
+		client = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	if !requireHTTPS {
 		return client
 	}
 	secured := *client
+	if secured.Timeout <= 0 {
+		secured.Timeout = defaultHTTPTimeout
+	}
 	checkRedirect := client.CheckRedirect
 	secured.CheckRedirect = func(request *http.Request, via []*http.Request) error {
 		if request.URL.Scheme != "https" {
@@ -96,16 +113,16 @@ func s3HTTPClient(client *http.Client, requireHTTPS bool) *http.Client {
 }
 
 func (store *BlobStore) CreateUpload(ctx context.Context, request ports.UploadRequest) (ports.SignedUpload, error) {
-	if err := validateKey(request.BlobKey); err != nil || request.ContentType == "" || request.Size <= 0 || request.ExpiresIn <= 0 {
+	checksum, checksumErr := encodeProviderChecksum(request.Checksum)
+	if keyErr := validateKey(request.BlobKey); keyErr != nil || request.ContentType == "" || request.Size <= 0 || request.ExpiresIn <= 0 || checksumErr != nil {
 		return ports.SignedUpload{}, domain.ErrInvalidInput
 	}
-	metadata := checksumMetadata(request.Checksum)
 	result, err := store.presigner.PresignPutObject(ctx, &awss3.PutObjectInput{
-		Bucket:        aws.String(store.bucket),
-		Key:           aws.String(request.BlobKey),
-		ContentLength: aws.Int64(request.Size),
-		ContentType:   aws.String(request.ContentType),
-		Metadata:      metadata,
+		Bucket:         aws.String(store.bucket),
+		Key:            aws.String(request.BlobKey),
+		ContentLength:  aws.Int64(request.Size),
+		ContentType:    aws.String(request.ContentType),
+		ChecksumSHA256: aws.String(checksum),
 	}, func(options *awss3.PresignOptions) {
 		options.Expires = request.ExpiresIn
 	})
@@ -113,9 +130,7 @@ func (store *BlobStore) CreateUpload(ctx context.Context, request ports.UploadRe
 		return ports.SignedUpload{}, mapBlobError(err)
 	}
 	headers := map[string]string{"Content-Type": request.ContentType}
-	if request.Checksum != "" {
-		headers["X-Amz-Meta-Checksum"] = request.Checksum
-	}
+	headers["X-Amz-Checksum-Sha256"] = checksum
 	return ports.SignedUpload{
 		URL:       result.URL,
 		Headers:   headers,
@@ -128,8 +143,9 @@ func (store *BlobStore) Stat(ctx context.Context, key string) (ports.BlobMetadat
 		return ports.BlobMetadata{}, domain.ErrInvalidInput
 	}
 	result, err := store.client.HeadObject(ctx, &awss3.HeadObjectInput{
-		Bucket: aws.String(store.bucket),
-		Key:    aws.String(key),
+		Bucket:       aws.String(store.bucket),
+		Key:          aws.String(key),
+		ChecksumMode: awss3types.ChecksumModeEnabled,
 	})
 	if err != nil {
 		return ports.BlobMetadata{}, mapBlobError(err)
@@ -137,7 +153,7 @@ func (store *BlobStore) Stat(ctx context.Context, key string) (ports.BlobMetadat
 	return ports.BlobMetadata{
 		ContentType: aws.ToString(result.ContentType),
 		Size:        aws.ToInt64(result.ContentLength),
-		Checksum:    result.Metadata["checksum"],
+		Checksum:    decodeProviderChecksum(aws.ToString(result.ChecksumSHA256)),
 	}, nil
 }
 
@@ -145,13 +161,17 @@ func (store *BlobStore) Put(ctx context.Context, key string, reader io.Reader, m
 	if err := validateKey(key); err != nil || reader == nil || metadata.ContentType == "" || metadata.Size < 0 {
 		return domain.ErrInvalidInput
 	}
-	_, err := store.client.PutObject(ctx, &awss3.PutObjectInput{
-		Bucket:        aws.String(store.bucket),
-		Key:           aws.String(key),
-		Body:          reader,
-		ContentLength: aws.Int64(metadata.Size),
-		ContentType:   aws.String(metadata.ContentType),
-		Metadata:      checksumMetadata(metadata.Checksum),
+	checksum, err := encodeProviderChecksum(metadata.Checksum)
+	if err != nil {
+		return domain.ErrInvalidInput
+	}
+	_, err = store.client.PutObject(ctx, &awss3.PutObjectInput{
+		Bucket:         aws.String(store.bucket),
+		Key:            aws.String(key),
+		Body:           reader,
+		ContentLength:  aws.Int64(metadata.Size),
+		ContentType:    aws.String(metadata.ContentType),
+		ChecksumSHA256: aws.String(checksum),
 	})
 	return mapBlobError(err)
 }
@@ -183,20 +203,41 @@ func (store *BlobStore) SignedReadURL(ctx context.Context, key string, expiresIn
 	return result.URL, nil
 }
 
+func (store *BlobStore) PublicURL(_ context.Context, key string) (string, error) {
+	if err := validateKey(key); err != nil {
+		return "", domain.ErrInvalidInput
+	}
+	return store.publicBaseURL.JoinPath(strings.Split(key, "/")...).String(), nil
+}
+
 func validateConfig(config Config) error {
 	if strings.TrimSpace(config.Endpoint) == "" || strings.TrimSpace(config.Region) == "" ||
 		strings.TrimSpace(config.Bucket) == "" || strings.TrimSpace(config.AccessKeyID) == "" ||
 		strings.TrimSpace(config.SecretAccessKey) == "" {
 		return errors.New("S3 endpoint, region, bucket, and credentials are required")
 	}
-	endpoint, err := url.Parse(config.Endpoint)
-	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil {
+	endpoint, err := httpurl.ParseAbsolute(config.Endpoint)
+	if err != nil {
 		return errors.New("S3 endpoint must be an absolute HTTP URL without credentials")
 	}
 	if config.RequireHTTPS && endpoint.Scheme != "https" {
 		return errors.New("S3 endpoint must use HTTPS")
 	}
+	if _, err := parsePublicBaseURL(config.PublicBaseURL, config.RequireHTTPS); err != nil {
+		return err
+	}
 	return nil
+}
+
+func parsePublicBaseURL(value string, requireHTTPS bool) (*url.URL, error) {
+	publicBaseURL, err := httpurl.ParseAbsolute(strings.TrimSpace(value))
+	if err != nil || publicBaseURL.RawQuery != "" || publicBaseURL.Fragment != "" {
+		return nil, errors.New("media public base URL must be an absolute HTTP URL without credentials, query, or fragment")
+	}
+	if requireHTTPS && publicBaseURL.Scheme != "https" {
+		return nil, errors.New("media public base URL must use HTTPS")
+	}
+	return publicBaseURL, nil
 }
 
 func validateKey(key string) error {
@@ -206,11 +247,23 @@ func validateKey(key string) error {
 	return nil
 }
 
-func checksumMetadata(checksum string) map[string]string {
-	if checksum == "" {
-		return nil
+func encodeProviderChecksum(checksum string) (string, error) {
+	if !strings.HasPrefix(checksum, "sha256:") {
+		return "", errors.New("SHA-256 checksum is required")
 	}
-	return map[string]string{"checksum": checksum}
+	digest, err := hex.DecodeString(strings.TrimPrefix(checksum, "sha256:"))
+	if err != nil || len(digest) != sha256.Size {
+		return "", errors.New("invalid SHA-256 checksum")
+	}
+	return base64.StdEncoding.EncodeToString(digest), nil
+}
+
+func decodeProviderChecksum(checksum string) string {
+	digest, err := base64.StdEncoding.DecodeString(checksum)
+	if err != nil || len(digest) != sha256.Size {
+		return ""
+	}
+	return "sha256:" + hex.EncodeToString(digest)
 }
 
 func mapBlobError(err error) error {

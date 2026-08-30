@@ -3,15 +3,17 @@ package content
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/domain"
+	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
 type SnapshotValidator interface {
@@ -88,21 +90,25 @@ func (service *Service) CreateDraft(
 	if err := service.validator.Validate(snapshot); err != nil {
 		return domain.ContentVersion{}, fmt.Errorf("%w: validate snapshot: %v", domain.ErrInvalidInput, err)
 	}
+	canonical, err := snapshotdata.CanonicalJSON(snapshot)
+	if err != nil {
+		return domain.ContentVersion{}, fmt.Errorf("%w: canonicalize snapshot: %v", domain.ErrInvalidInput, err)
+	}
 
 	now := service.now().UTC()
 	version := domain.ContentVersion{
 		ID:        service.newID("ver_"),
 		Status:    domain.StatusDraft,
 		Revision:  1,
-		Snapshot:  cloneJSON(snapshot),
-		Checksum:  checksum(snapshot),
+		Snapshot:  cloneJSON(canonical),
+		Checksum:  snapshotdata.Checksum(canonical),
 		CreatedBy: actor.Subject,
 		UpdatedBy: actor.Subject,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 
-	err := service.store.WithinTransaction(ctx, func(repository Repository) error {
+	err = service.store.WithinTransaction(ctx, func(repository Repository) error {
 		if err := repository.CreateVersion(ctx, version); err != nil {
 			return err
 		}
@@ -127,13 +133,17 @@ func (service *Service) UpdateDraft(
 	if err := service.validator.Validate(snapshot); err != nil {
 		return domain.ContentVersion{}, fmt.Errorf("%w: validate snapshot: %v", domain.ErrInvalidInput, err)
 	}
+	canonical, err := snapshotdata.CanonicalJSON(snapshot)
+	if err != nil {
+		return domain.ContentVersion{}, fmt.Errorf("%w: canonicalize snapshot: %v", domain.ErrInvalidInput, err)
+	}
 
 	return service.mutate(ctx, actor, id, expectedRevision, "content.update_draft", nil, func(version *domain.ContentVersion) error {
 		if version.Status != domain.StatusDraft {
 			return domain.ErrInvalidTransition
 		}
-		version.Snapshot = cloneJSON(snapshot)
-		version.Checksum = checksum(snapshot)
+		version.Snapshot = cloneJSON(canonical)
+		version.Checksum = snapshotdata.Checksum(canonical)
 		return nil
 	})
 }
@@ -184,6 +194,10 @@ func (service *Service) RejectReview(
 ) (domain.ContentVersion, error) {
 	if !hasPermission(actor, auth.PermissionReview) {
 		return domain.ContentVersion{}, domain.ErrForbidden
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" || utf8.RuneCountInString(reason) > 1000 {
+		return domain.ContentVersion{}, domain.ErrInvalidInput
 	}
 	metadata, err := json.Marshal(map[string]string{"reason": reason})
 	if err != nil {
@@ -254,11 +268,6 @@ func canRead(actor domain.Principal) bool {
 		hasPermission(actor, auth.PermissionReview) ||
 		hasPermission(actor, auth.PermissionPublish) ||
 		hasPermission(actor, auth.PermissionRollback)
-}
-
-func checksum(value []byte) string {
-	sum := sha256.Sum256(value)
-	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func cloneJSON(value []byte) json.RawMessage {

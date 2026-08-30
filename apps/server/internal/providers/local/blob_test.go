@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -40,6 +41,41 @@ func TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata(t *testing.T) {
 	}
 	if metadata.ContentType != "image/webp" || metadata.Size != int64(len(payload)) || metadata.Checksum != checksum {
 		t.Fatalf("unexpected metadata %#v", metadata)
+	}
+}
+
+func TestBlobStorePublishesUploadedObjectAtStableLocalURL(t *testing.T) {
+	store := NewBlobStore()
+	payload := []byte("audio-data")
+	key := "assets/asset_1/source.mp3"
+	if err := store.Put(t.Context(), key, bytes.NewReader(payload), ports.BlobMetadata{
+		ContentType: "audio/mpeg",
+		Size:        int64(len(payload)),
+		Checksum:    fmt.Sprintf("sha256:%x", sha256.Sum256(payload)),
+	}); err != nil {
+		t.Fatalf("put local object: %v", err)
+	}
+
+	publicURL, err := store.PublicURL(t.Context(), key)
+	if err != nil {
+		t.Fatalf("public URL: %v", err)
+	}
+	if publicURL != "/media/assets/asset_1/source.mp3" {
+		t.Fatalf("unexpected public URL %q", publicURL)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, publicURL, nil)
+	recorder := httptest.NewRecorder()
+	store.ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "audio/mpeg" || !bytes.Equal(body, payload) {
+		t.Fatalf("unexpected local read response status=%d type=%q body=%q", response.StatusCode, response.Header.Get("Content-Type"), body)
 	}
 }
 

@@ -191,6 +191,19 @@ func (repository *PublishRepository) GetVersion(_ context.Context, id string) (d
 	return value, err
 }
 
+func (repository *PublishRepository) GetAsset(_ context.Context, id string) (domain.AssetRecord, error) {
+	var value domain.AssetRecord
+	err := repository.withRead(func() error {
+		found, exists := repository.state.assets[id]
+		if !exists {
+			return domain.ErrNotFound
+		}
+		value = cloneAsset(found)
+		return nil
+	})
+	return value, err
+}
+
 func (repository *PublishRepository) UpdateVersion(_ context.Context, version domain.ContentVersion, expectedRevision int64) error {
 	return repository.withWrite(func() error {
 		current, exists := repository.state.versions[version.ID]
@@ -245,6 +258,20 @@ func (repository *PublishRepository) GetPublishJobByIdempotencyKey(_ context.Con
 	return value, err
 }
 
+func (repository *PublishRepository) GetActivePublishJob(_ context.Context) (domain.PublishJob, error) {
+	var value domain.PublishJob
+	err := repository.withRead(func() error {
+		for _, job := range repository.state.jobs {
+			if job.Status == domain.PublishPending || job.Status == domain.PublishBuilding {
+				value = job
+				return nil
+			}
+		}
+		return domain.ErrNotFound
+	})
+	return value, err
+}
+
 func (repository *PublishRepository) GetSuccessfulPublishByVersion(_ context.Context, versionID string) (domain.PublishJob, error) {
 	var value domain.PublishJob
 	err := repository.withRead(func() error {
@@ -258,10 +285,14 @@ func (repository *PublishRepository) GetSuccessfulPublishByVersion(_ context.Con
 	return value, err
 }
 
-func (repository *PublishRepository) UpdatePublishJob(_ context.Context, job domain.PublishJob) error {
+func (repository *PublishRepository) UpdatePublishJob(_ context.Context, job domain.PublishJob, expectedStatus domain.PublishStatus) error {
 	return repository.withWrite(func() error {
-		if _, exists := repository.state.jobs[job.ID]; !exists {
+		current, exists := repository.state.jobs[job.ID]
+		if !exists {
 			return domain.ErrNotFound
+		}
+		if current.Status != expectedStatus {
+			return domain.ErrConflict
 		}
 		repository.state.jobs[job.ID] = job
 		if job.Status == domain.PublishSucceeded {

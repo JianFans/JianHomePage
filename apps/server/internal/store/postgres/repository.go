@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/publish"
+	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
 // ExecResult is the tiny command-result surface needed for optimistic locking.
@@ -207,6 +209,12 @@ SELECT id, status, revision, snapshot, checksum, review_approved,
 FROM content_versions WHERE id = $1`, id))
 }
 
+func (repository *PublishRepository) GetAsset(ctx context.Context, id string) (domain.AssetRecord, error) {
+	return scanAsset(repository.exec.QueryRowContext(ctx, `
+SELECT id, blob_key, status, metadata, rights, created_by, created_at, deleted_at
+FROM assets WHERE id = $1`, id))
+}
+
 func (repository *PublishRepository) UpdateVersion(ctx context.Context, version domain.ContentVersion, expectedRevision int64) error {
 	result, err := repository.exec.ExecContext(ctx, `
 UPDATE content_versions
@@ -224,10 +232,10 @@ WHERE id = $8 AND revision = $9`,
 func (repository *PublishRepository) CreatePublishJob(ctx context.Context, job domain.PublishJob) error {
 	_, err := repository.exec.ExecContext(ctx, `
 INSERT INTO publish_jobs
-  (id, idempotency_key, operation, version_id, release_id, snapshot_key, snapshot_checksum, build_id, status, error_message, requested_by, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), $9, NULLIF($10, ''), $11, $12, $13)`,
+  (id, idempotency_key, operation, version_id, release_id, snapshot_key, snapshot_checksum, target_revision, build_id, status, error_message, requested_by, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, NULLIF($11, ''), $12, $13, $14)`,
 		job.ID, job.IdempotencyKey, job.Operation, job.VersionID, job.ReleaseID, job.SnapshotKey, job.SnapshotChecksum,
-		job.BuildID, job.Status, job.ErrorMessage, job.RequestedBy, job.CreatedAt, job.UpdatedAt)
+		job.TargetRevision, job.BuildID, job.Status, job.ErrorMessage, job.RequestedBy, job.CreatedAt, job.UpdatedAt)
 	return mapConstraintError(err)
 }
 
@@ -239,19 +247,24 @@ func (repository *PublishRepository) GetPublishJobByIdempotencyKey(ctx context.C
 	return scanPublishJob(repository.exec.QueryRowContext(ctx, publishJobQuery+" WHERE idempotency_key = $1", key))
 }
 
+func (repository *PublishRepository) GetActivePublishJob(ctx context.Context) (domain.PublishJob, error) {
+	return scanPublishJob(repository.exec.QueryRowContext(ctx, publishJobQuery+
+		" WHERE status IN ('pending', 'building') ORDER BY created_at DESC LIMIT 1"))
+}
+
 func (repository *PublishRepository) GetSuccessfulPublishByVersion(ctx context.Context, versionID string) (domain.PublishJob, error) {
 	return scanPublishJob(repository.exec.QueryRowContext(ctx, publishJobQuery+" WHERE version_id = $1 AND status = 'succeeded' ORDER BY updated_at DESC LIMIT 1", versionID))
 }
 
-func (repository *PublishRepository) UpdatePublishJob(ctx context.Context, job domain.PublishJob) error {
+func (repository *PublishRepository) UpdatePublishJob(ctx context.Context, job domain.PublishJob, expectedStatus domain.PublishStatus) error {
 	result, err := repository.exec.ExecContext(ctx, `
 UPDATE publish_jobs
 SET idempotency_key = $1, operation = $2, version_id = $3, release_id = $4,
     snapshot_key = $5, snapshot_checksum = $6, build_id = NULLIF($7, ''),
     status = $8, error_message = NULLIF($9, ''), requested_by = $10, updated_at = $11
-WHERE id = $12`,
+WHERE id = $12 AND status = $13`,
 		job.IdempotencyKey, job.Operation, job.VersionID, job.ReleaseID, job.SnapshotKey, job.SnapshotChecksum,
-		job.BuildID, job.Status, job.ErrorMessage, job.RequestedBy, job.UpdatedAt, job.ID)
+		job.BuildID, job.Status, job.ErrorMessage, job.RequestedBy, job.UpdatedAt, job.ID, expectedStatus)
 	if err != nil {
 		return err
 	}
@@ -260,7 +273,14 @@ WHERE id = $12`,
 		return err
 	}
 	if affected == 0 {
-		return domain.ErrNotFound
+		_, lookupErr := repository.GetPublishJob(ctx, job.ID)
+		if errors.Is(lookupErr, domain.ErrNotFound) {
+			return domain.ErrNotFound
+		}
+		if lookupErr != nil {
+			return lookupErr
+		}
+		return domain.ErrConflict
 	}
 	return nil
 }
@@ -308,7 +328,7 @@ VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
 
 const publishJobQuery = `
 SELECT id, idempotency_key, operation, version_id, release_id, snapshot_key, snapshot_checksum,
-       COALESCE(build_id, ''), status, COALESCE(error_message, ''),
+       target_revision, COALESCE(build_id, ''), status, COALESCE(error_message, ''),
        requested_by, created_at, updated_at
 FROM publish_jobs`
 
@@ -350,7 +370,14 @@ func scanVersion(row Row) (domain.ContentVersion, error) {
 		return domain.ContentVersion{}, err
 	}
 	version.Status = domain.ContentStatus(status)
-	version.Snapshot = append(json.RawMessage(nil), snapshot...)
+	canonical, err := snapshotdata.CanonicalJSON(snapshot)
+	if err != nil {
+		return domain.ContentVersion{}, fmt.Errorf("%w: canonicalize stored snapshot: %v", domain.ErrConflict, err)
+	}
+	if snapshotdata.Checksum(canonical) != version.Checksum {
+		return domain.ContentVersion{}, fmt.Errorf("%w: stored snapshot checksum mismatch", domain.ErrConflict)
+	}
+	version.Snapshot = append(json.RawMessage(nil), canonical...)
 	return version, nil
 }
 
@@ -380,7 +407,7 @@ func scanPublishJob(row Row) (domain.PublishJob, error) {
 	var job domain.PublishJob
 	var operation, status string
 	err := row.Scan(&job.ID, &job.IdempotencyKey, &operation, &job.VersionID, &job.ReleaseID, &job.SnapshotKey, &job.SnapshotChecksum,
-		&job.BuildID, &status, &job.ErrorMessage, &job.RequestedBy, &job.CreatedAt, &job.UpdatedAt)
+		&job.TargetRevision, &job.BuildID, &status, &job.ErrorMessage, &job.RequestedBy, &job.CreatedAt, &job.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.PublishJob{}, domain.ErrNotFound
 	}

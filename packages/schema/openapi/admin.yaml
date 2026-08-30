@@ -297,33 +297,60 @@
         "required": ["id", "status", "revision", "snapshot", "checksum"],
         "properties": {
           "id": { "type": "string" },
-          "status": { "enum": ["draft", "in_review", "published", "archived"] },
+          "status": { "enum": ["draft", "in_review", "publishing", "published", "archived"] },
           "revision": { "type": "integer" },
           "snapshot": { "type": "object", "additionalProperties": true },
           "checksum": { "type": "string" },
           "reviewApproved": { "type": "boolean" }
         }
       },
+      "LocalizedText": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zh-CN"],
+        "properties": {
+          "zh-CN": { "type": "string", "minLength": 1 },
+          "en": { "type": "string", "minLength": 1 }
+        }
+      },
+      "AssetRights": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source"],
+        "properties": {
+          "source": { "$ref": "#/components/schemas/LocalizedText" },
+          "credit": { "type": "string" },
+          "license": { "type": "string" }
+        }
+      },
       "AssetUploadRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["fileName", "contentType", "size", "rights"],
+        "required": ["fileName", "contentType", "size", "checksum", "rights"],
         "properties": {
           "fileName": { "type": "string" },
-          "contentType": { "type": "string" },
+          "contentType": {
+            "enum": ["image/webp", "image/gif", "video/mp4", "audio/wav", "audio/mpeg"]
+          },
           "size": { "type": "integer", "minimum": 1 },
-          "checksum": { "type": "string" },
-          "rights": { "type": "object", "additionalProperties": true }
+          "checksum": { "type": "string", "pattern": "^sha256:[0-9a-fA-F]{64}$" },
+          "rights": { "$ref": "#/components/schemas/AssetRights" }
         }
       },
       "Asset": {
         "type": "object",
-        "required": ["id", "status", "metadata", "rights"],
+        "required": ["id", "src", "status", "metadata", "rights"],
         "properties": {
           "id": { "type": "string" },
+          "src": {
+            "oneOf": [
+              { "type": "string", "pattern": "^https://" },
+              { "type": "string", "pattern": "^/media/" }
+            ]
+          },
           "status": { "enum": ["pending", "ready", "deleted"] },
           "metadata": { "type": "object", "additionalProperties": true },
-          "rights": { "type": "object", "additionalProperties": true }
+          "rights": { "$ref": "#/components/schemas/AssetRights" }
         }
       },
       "AssetUpload": {

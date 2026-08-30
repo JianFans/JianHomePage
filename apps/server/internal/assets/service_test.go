@@ -14,9 +14,9 @@ import (
 )
 
 type memoryRepository struct {
-	assets    map[string]domain.AssetRecord
-	audits    []domain.AuditEntry
-	updateErr error
+	assets       map[string]domain.AssetRecord
+	audits       []domain.AuditEntry
+	updateErr    error
 	beforeUpdate func(*memoryRepository)
 }
 
@@ -71,6 +71,7 @@ type blobStoreFake struct {
 	deletedKeys []string
 	createErr   error
 	statErr     error
+	statCalls   int
 	deleteErr   error
 }
 
@@ -86,6 +87,7 @@ func (store *blobStoreFake) CreateUpload(_ context.Context, request ports.Upload
 }
 
 func (store *blobStoreFake) Stat(context.Context, string) (ports.BlobMetadata, error) {
+	store.statCalls++
 	return store.metadata, store.statErr
 }
 
@@ -103,6 +105,10 @@ func (store *blobStoreFake) Delete(_ context.Context, key string) error {
 
 func (store *blobStoreFake) SignedReadURL(context.Context, string, time.Duration) (string, error) {
 	return "https://read.example.com/signed", nil
+}
+
+func (store *blobStoreFake) PublicURL(_ context.Context, key string) (string, error) {
+	return "https://media.example.com/" + key, nil
 }
 
 func assetServiceForTest(repository *memoryRepository, blobs *blobStoreFake) *Service {
@@ -134,7 +140,7 @@ func TestCreateUploadValidatesTypeAndCreatesProviderIndependentKey(t *testing.T)
 		ContentType: "image/webp",
 		Size:        1024,
 		Checksum:    "sha256:" + string(bytes.Repeat([]byte{'a'}, 64)),
-		Rights:      json.RawMessage(`{"source":"authorized"}`),
+		Rights:      json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 	})
 	if err != nil {
 		t.Fatalf("create upload: %v", err)
@@ -148,6 +154,9 @@ func TestCreateUploadValidatesTypeAndCreatesProviderIndependentKey(t *testing.T)
 	if result.Upload.URL != "https://upload.example.com/signed" {
 		t.Fatalf("unexpected upload URL %q", result.Upload.URL)
 	}
+	if result.Asset.SourceURL != "https://media.example.com/assets/asset_fixed/source.webp" {
+		t.Fatalf("unexpected public source URL %q", result.Asset.SourceURL)
+	}
 	if len(blobs.uploads) != 1 || blobs.uploads[0].ExpiresIn != 15*time.Minute {
 		t.Fatalf("unexpected upload request %#v", blobs.uploads)
 	}
@@ -158,6 +167,7 @@ func TestCreateUploadRejectsMismatchAndOversizeBeforeBlobCall(t *testing.T) {
 		{FileName: "cover.jpg", ContentType: "image/webp", Size: 1024},
 		{FileName: "video.mp4", ContentType: "video/mp4", Size: 2*1024*1024*1024 + 1},
 		{FileName: "script.svg", ContentType: "image/svg+xml", Size: 1024},
+		{FileName: "cover.webp", ContentType: "image/webp", Size: 1024, Checksum: "sha256:not-a-digest"},
 	}
 
 	for _, input := range tests {
@@ -169,6 +179,87 @@ func TestCreateUploadRejectsMismatchAndOversizeBeforeBlobCall(t *testing.T) {
 		if len(blobs.uploads) != 0 {
 			t.Fatalf("input %#v called blob store", input)
 		}
+	}
+}
+
+func TestUploadFormatsMatchSnapshotContract(t *testing.T) {
+	validChecksum := "sha256:" + string(bytes.Repeat([]byte{'a'}, 64))
+	service := assetServiceForTest(newMemoryRepository(), &blobStoreFake{})
+	if _, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+		FileName: "animation.gif", ContentType: "image/gif", Size: 1024,
+		Checksum: validChecksum, Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
+	}); err != nil {
+		t.Fatalf("snapshot-supported GIF should be uploadable: %v", err)
+	}
+
+	for _, input := range []CreateUploadInput{
+		{FileName: "photo.avif", ContentType: "image/avif", Size: 1024, Checksum: validChecksum, Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`)},
+		{FileName: "photo.jpg", ContentType: "image/jpeg", Size: 1024, Checksum: validChecksum, Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`)},
+		{FileName: "clip.webm", ContentType: "video/webm", Size: 1024, Checksum: validChecksum, Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`)},
+	} {
+		if _, err := service.CreateUpload(context.Background(), editor(), input); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("format outside snapshot contract should be rejected: %#v err=%v", input, err)
+		}
+	}
+}
+
+func TestCreateUploadRejectsNonCanonicalContentTypeBeforeBlobCall(t *testing.T) {
+	for _, contentType := range []string{"Image/WebP", "image/WEBP"} {
+		t.Run(contentType, func(t *testing.T) {
+			blobs := &blobStoreFake{}
+			service := assetServiceForTest(newMemoryRepository(), blobs)
+			_, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+				FileName: "cover.webp", ContentType: contentType, Size: 1024,
+				Checksum: "sha256:" + string(bytes.Repeat([]byte{'a'}, 64)),
+				Rights:   json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
+			})
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("expected non-canonical content type rejection, got %v", err)
+			}
+			if len(blobs.uploads) != 0 {
+				t.Fatalf("non-canonical content type called blob store: %#v", blobs.uploads)
+			}
+		})
+	}
+}
+
+func TestCreateUploadRequiresContentChecksum(t *testing.T) {
+	blobs := &blobStoreFake{}
+	service := assetServiceForTest(newMemoryRepository(), blobs)
+
+	_, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+		FileName: "cover.webp", ContentType: "image/webp", Size: 1024,
+		Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
+	})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected missing checksum rejection, got %v", err)
+	}
+	if len(blobs.uploads) != 0 {
+		t.Fatal("missing checksum reached blob store")
+	}
+}
+
+func TestCreateUploadNormalizesUppercaseChecksum(t *testing.T) {
+	blobs := &blobStoreFake{}
+	service := assetServiceForTest(newMemoryRepository(), blobs)
+	result, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+		FileName: "cover.webp", ContentType: "image/webp", Size: 1024,
+		Checksum: "sha256:" + string(bytes.Repeat([]byte{'A'}, 64)),
+		Rights:   json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
+	})
+	if err != nil {
+		t.Fatalf("create upload: %v", err)
+	}
+	want := "sha256:" + string(bytes.Repeat([]byte{'a'}, 64))
+	if len(blobs.uploads) != 1 || blobs.uploads[0].Checksum != want {
+		t.Fatalf("checksum was not normalized before signing: %#v", blobs.uploads)
+	}
+	var metadata storedMetadata
+	if err := json.Unmarshal(result.Asset.Metadata, &metadata); err != nil {
+		t.Fatalf("decode metadata: %v", err)
+	}
+	if metadata.Checksum != want {
+		t.Fatalf("checksum was not normalized before persistence: %q", metadata.Checksum)
 	}
 }
 
@@ -188,6 +279,37 @@ func TestCreateUploadRejectsMissingOrNonObjectRightsBeforeBlobCall(t *testing.T)
 	}
 }
 
+func TestCreateUploadRejectsRightsOutsideSnapshotContract(t *testing.T) {
+	checksum := "sha256:" + string(bytes.Repeat([]byte{'a'}, 64))
+	for _, rights := range []json.RawMessage{
+		json.RawMessage(`{}`),
+		json.RawMessage(`{"source":"authorized"}`),
+		json.RawMessage(`{"source":{}}`),
+		json.RawMessage(`{"source":{"en":"authorized"}}`),
+		json.RawMessage(`{"source":{"zh-CN":""}}`),
+		json.RawMessage(`{"source":{"zh-CN":"authorized"},"unknown":true}`),
+		json.RawMessage(`{"source":{"zh-CN":"authorized","unknown":"value"}}`),
+		json.RawMessage(`{"source":{"zh-CN":"authorized","en":null}}`),
+		json.RawMessage(`{"source":{"zh-CN":"authorized"},"credit":null}`),
+		json.RawMessage(`{"source":{"zh-CN":"authorized"},"license":null}`),
+	} {
+		t.Run(string(rights), func(t *testing.T) {
+			blobs := &blobStoreFake{}
+			service := assetServiceForTest(newMemoryRepository(), blobs)
+			_, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+				FileName: "cover.webp", ContentType: "image/webp", Size: 1024,
+				Checksum: checksum, Rights: rights,
+			})
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("rights %s: expected invalid input, got %v", rights, err)
+			}
+			if len(blobs.uploads) != 0 {
+				t.Fatalf("rights %s called blob store", rights)
+			}
+		})
+	}
+}
+
 func TestCompleteUploadChecksActualMetadata(t *testing.T) {
 	repository := newMemoryRepository()
 	blobs := &blobStoreFake{}
@@ -197,7 +319,7 @@ func TestCompleteUploadChecksActualMetadata(t *testing.T) {
 		ContentType: "image/webp",
 		Size:        1024,
 		Checksum:    "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)),
-		Rights:      json.RawMessage(`{"source":"authorized"}`),
+		Rights:      json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 	})
 	if err != nil {
 		t.Fatalf("create upload: %v", err)
@@ -227,6 +349,39 @@ func TestCompleteUploadChecksActualMetadata(t *testing.T) {
 	}
 }
 
+func TestCompleteUploadCanRetryAfterReadyResponseIsLost(t *testing.T) {
+	repository := newMemoryRepository()
+	blobs := &blobStoreFake{}
+	service := assetServiceForTest(repository, blobs)
+	created, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+		FileName: "cover.webp", ContentType: "image/webp", Size: 1024,
+		Checksum: "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)),
+		Rights:   json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
+	})
+	if err != nil {
+		t.Fatalf("create upload: %v", err)
+	}
+	blobs.metadata = ports.BlobMetadata{
+		ContentType: "image/webp", Size: 1024,
+		Checksum: "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)),
+	}
+
+	first, err := service.CompleteUpload(context.Background(), editor(), created.Asset.ID)
+	if err != nil {
+		t.Fatalf("first complete: %v", err)
+	}
+	retried, err := service.CompleteUpload(context.Background(), editor(), created.Asset.ID)
+	if err != nil {
+		t.Fatalf("retry complete: %v", err)
+	}
+	if retried.Status != domain.AssetReady || retried.SourceURL != first.SourceURL {
+		t.Fatalf("retry did not return ready asset: %#v", retried)
+	}
+	if blobs.statCalls != 1 || len(repository.audits) != 2 {
+		t.Fatalf("retry repeated completion effects: stat=%d audits=%#v", blobs.statCalls, repository.audits)
+	}
+}
+
 func TestDeleteAssetRequiresAdminAndWritesAudit(t *testing.T) {
 	repository := newMemoryRepository()
 	blobs := &blobStoreFake{}
@@ -235,7 +390,8 @@ func TestDeleteAssetRequiresAdminAndWritesAudit(t *testing.T) {
 		FileName:    "cover.webp",
 		ContentType: "image/webp",
 		Size:        1024,
-		Rights:      json.RawMessage(`{"source":"authorized"}`),
+		Checksum:    "sha256:" + string(bytes.Repeat([]byte{'d'}, 64)),
+		Rights:      json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 	})
 	if err != nil {
 		t.Fatalf("create upload: %v", err)
@@ -261,7 +417,8 @@ func TestDeleteAssetDoesNotDeleteBlobBeforeDatabaseCommit(t *testing.T) {
 	service := assetServiceForTest(repository, blobs)
 	created, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
 		FileName: "cover.webp", ContentType: "image/webp", Size: 1024,
-		Rights: json.RawMessage(`{"source":"authorized"}`),
+		Checksum: "sha256:" + string(bytes.Repeat([]byte{'e'}, 64)),
+		Rights:   json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 	})
 	if err != nil {
 		t.Fatalf("create upload: %v", err)
@@ -282,7 +439,8 @@ func TestDeleteAssetCanRetryBlobCleanupAfterProviderFailure(t *testing.T) {
 	service := assetServiceForTest(repository, blobs)
 	created, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
 		FileName: "cover.webp", ContentType: "image/webp", Size: 1024,
-		Rights: json.RawMessage(`{"source":"authorized"}`),
+		Checksum: "sha256:" + string(bytes.Repeat([]byte{'f'}, 64)),
+		Rights:   json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 	})
 	if err != nil {
 		t.Fatalf("create upload: %v", err)
@@ -303,17 +461,56 @@ func TestDeleteAssetCanRetryBlobCleanupAfterProviderFailure(t *testing.T) {
 	}
 }
 
+func TestDeleteReadyAssetRetainsBlobForPublishedAndHistoricalSnapshots(t *testing.T) {
+	repository := newMemoryRepository()
+	checksum := "sha256:" + string(bytes.Repeat([]byte{'a'}, 64))
+	blobs := &blobStoreFake{metadata: ports.BlobMetadata{
+		ContentType: "image/webp", Size: 10, Checksum: checksum,
+	}}
+	service := assetServiceForTest(repository, blobs)
+	created, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
+		FileName: "cover.webp", ContentType: "image/webp", Size: 10,
+		Checksum: checksum, Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
+	})
+	if err != nil {
+		t.Fatalf("create upload: %v", err)
+	}
+	if _, err := service.CompleteUpload(context.Background(), editor(), created.Asset.ID); err != nil {
+		t.Fatalf("complete upload: %v", err)
+	}
+	if err := service.Delete(context.Background(), admin(), created.Asset.ID); err != nil {
+		t.Fatalf("delete asset: %v", err)
+	}
+	if repository.assets[created.Asset.ID].Status != domain.AssetDeleted {
+		t.Fatal("asset should be logically deleted")
+	}
+	if len(blobs.deletedKeys) != 0 {
+		t.Fatalf("ready asset blob must be retained, deleted=%#v", blobs.deletedKeys)
+	}
+	if err := service.Delete(context.Background(), admin(), created.Asset.ID); err != nil {
+		t.Fatalf("retry delete asset: %v", err)
+	}
+	if len(blobs.deletedKeys) != 0 {
+		t.Fatalf("repeated delete must retain ready asset blob, deleted=%#v", blobs.deletedKeys)
+	}
+}
+
 func TestCompleteUploadDoesNotRestoreConcurrentlyDeletedAsset(t *testing.T) {
 	repository := newMemoryRepository()
 	blobs := &blobStoreFake{}
 	service := assetServiceForTest(repository, blobs)
 	created, err := service.CreateUpload(context.Background(), editor(), CreateUploadInput{
-		FileName: "cover.webp", ContentType: "image/webp", Size: 10, Rights: json.RawMessage(`{"owner":"team"}`),
+		FileName: "cover.webp", ContentType: "image/webp", Size: 10,
+		Checksum: "sha256:" + string(bytes.Repeat([]byte{'a'}, 64)),
+		Rights:   json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 	})
 	if err != nil {
 		t.Fatalf("create upload: %v", err)
 	}
-	blobs.metadata = ports.BlobMetadata{ContentType: "image/webp", Size: 10, Checksum: "sha256:test"}
+	blobs.metadata = ports.BlobMetadata{
+		ContentType: "image/webp", Size: 10,
+		Checksum: "sha256:" + string(bytes.Repeat([]byte{'a'}, 64)),
+	}
 	repository.beforeUpdate = func(repository *memoryRepository) {
 		asset := repository.assets[created.Asset.ID]
 		asset.Status = domain.AssetDeleted

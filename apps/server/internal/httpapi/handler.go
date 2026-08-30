@@ -108,6 +108,7 @@ type versionResponse struct {
 
 type assetResponse struct {
 	ID        string             `json:"id"`
+	Src       string             `json:"src"`
 	Status    domain.AssetStatus `json:"status"`
 	Metadata  json.RawMessage    `json:"metadata"`
 	Rights    json.RawMessage    `json:"rights"`
@@ -171,6 +172,7 @@ func NewRouter(options RouterOptions) http.Handler {
 	root.HandleFunc("GET /healthz", healthHandler)
 	if options.LocalUploads != nil {
 		root.Handle("/local-upload/", options.LocalUploads)
+		root.Handle("/media/", options.LocalUploads)
 	}
 	root.Handle("/api/", middleware.Authenticate(handler.withBodyLimit(api)))
 	requestID := options.RequestID
@@ -525,7 +527,7 @@ func writeVersion(writer http.ResponseWriter, status int, version domain.Content
 }
 
 func toAssetResponse(asset domain.AssetRecord) assetResponse {
-	return assetResponse{ID: asset.ID, Status: asset.Status, Metadata: asset.Metadata, Rights: asset.Rights, CreatedAt: asset.CreatedAt, DeletedAt: asset.DeletedAt}
+	return assetResponse{ID: asset.ID, Src: asset.SourceURL, Status: asset.Status, Metadata: asset.Metadata, Rights: asset.Rights, CreatedAt: asset.CreatedAt, DeletedAt: asset.DeletedAt}
 }
 
 func toPublishResponse(job domain.PublishJob) publishResponse {

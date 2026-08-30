@@ -7,7 +7,13 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"strings"
+
+	"yujian.me/server/internal/domain"
+	snapshotdata "yujian.me/server/internal/snapshot"
 )
+
+const publishFreezeMigration = "0003_publish_target_freeze.sql"
 
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
@@ -51,6 +57,17 @@ func Migrate(ctx context.Context, db Executor) error {
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
+		if name == publishFreezeMigration {
+			applied, err := migrationApplied(ctx, tx, strings.TrimSuffix(name, ".sql"))
+			if err != nil {
+				return fmt.Errorf("check migration %s: %w", name, err)
+			}
+			if !applied {
+				if err := upgradeLegacyContentChecksums(ctx, tx); err != nil {
+					return fmt.Errorf("upgrade legacy content checksums: %w", err)
+				}
+			}
+		}
 		if _, err := tx.ExecContext(ctx, string(statement)); err != nil {
 			return fmt.Errorf("execute migration %s: %w", name, err)
 		}
@@ -59,5 +76,69 @@ func Migrate(ctx context.Context, db Executor) error {
 		return fmt.Errorf("commit migrations: %w", err)
 	}
 	committed = true
+	return nil
+}
+
+func migrationApplied(ctx context.Context, tx Tx, version string) (bool, error) {
+	var applied bool
+	err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`, version,
+	).Scan(&applied)
+	return applied, err
+}
+
+func upgradeLegacyContentChecksums(ctx context.Context, tx Tx) error {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, snapshot, checksum FROM content_versions ORDER BY id FOR UPDATE`,
+	)
+	if err != nil {
+		return err
+	}
+	type legacyVersion struct {
+		id       string
+		snapshot []byte
+		checksum string
+	}
+	versions := make([]legacyVersion, 0)
+	for rows.Next() {
+		var version legacyVersion
+		if err := rows.Scan(&version.id, &version.snapshot, &version.checksum); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		versions = append(versions, version)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	for _, version := range versions {
+		canonical, err := snapshotdata.CanonicalJSON(version.snapshot)
+		if err != nil {
+			return fmt.Errorf("canonicalize content version %s: %w", version.id, err)
+		}
+		checksum := snapshotdata.Checksum(canonical)
+		if checksum == version.checksum {
+			continue
+		}
+		result, err := tx.ExecContext(ctx, `
+UPDATE content_versions SET checksum = $1
+WHERE id = $2 AND checksum = $3 AND snapshot = $4::jsonb`,
+			checksum, version.id, version.checksum, canonical)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected != 1 {
+			return domain.ErrConflict
+		}
+	}
 	return nil
 }

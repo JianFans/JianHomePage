@@ -71,6 +71,10 @@ func (store *BlobStore) CreateUpload(_ context.Context, request ports.UploadRequ
 }
 
 func (store *BlobStore) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if strings.HasPrefix(request.URL.Path, "/media/") {
+		store.serveRead(writer, request)
+		return
+	}
 	if request.Method != http.MethodPut {
 		writer.Header().Set("Allow", http.MethodPut)
 		http.Error(writer, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -134,6 +138,34 @@ func (store *BlobStore) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	writer.WriteHeader(http.StatusNoContent)
 }
 
+func (store *BlobStore) serveRead(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		writer.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
+		http.Error(writer, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	key := strings.TrimPrefix(request.URL.Path, "/media/")
+	if validateKey(key) != nil || key == request.URL.Path {
+		http.NotFound(writer, request)
+		return
+	}
+	store.mu.RLock()
+	object, exists := store.objects[key]
+	if exists {
+		object.data = append([]byte(nil), object.data...)
+	}
+	store.mu.RUnlock()
+	if !exists {
+		http.NotFound(writer, request)
+		return
+	}
+	writer.Header().Set("Content-Type", object.metadata.ContentType)
+	if object.metadata.Checksum != "" {
+		writer.Header().Set("ETag", `"`+object.metadata.Checksum+`"`)
+	}
+	http.ServeContent(writer, request, path.Base(key), time.Time{}, bytes.NewReader(object.data))
+}
+
 func (store *BlobStore) Stat(_ context.Context, key string) (ports.BlobMetadata, error) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -172,10 +204,21 @@ func (store *BlobStore) Delete(_ context.Context, key string) error {
 }
 
 func (store *BlobStore) SignedReadURL(_ context.Context, key string, expiresIn time.Duration) (string, error) {
-	if key == "" || expiresIn <= 0 {
+	if expiresIn <= 0 {
 		return "", domain.ErrInvalidInput
 	}
-	return "http://127.0.0.1:8080/local-read/" + path.Clean("/"+key), nil
+	publicURL, err := store.PublicURL(context.Background(), key)
+	if err != nil {
+		return "", err
+	}
+	return "http://127.0.0.1:8080" + publicURL, nil
+}
+
+func (store *BlobStore) PublicURL(_ context.Context, key string) (string, error) {
+	if err := validateKey(key); err != nil {
+		return "", domain.ErrInvalidInput
+	}
+	return "/media/" + escapeKeyPath(key), nil
 }
 
 var _ ports.BlobStore = (*BlobStore)(nil)
@@ -195,6 +238,13 @@ func escapeKeyPath(key string) string {
 		parts[index] = url.PathEscape(parts[index])
 	}
 	return strings.Join(parts, "/")
+}
+
+func validateKey(key string) error {
+	if key == "" || strings.HasPrefix(key, "/") || strings.Contains(key, "\\") || path.Clean(key) != key || key == "." {
+		return domain.ErrInvalidInput
+	}
+	return nil
 }
 
 func secureEqual(left, right string) bool {

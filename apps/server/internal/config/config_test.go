@@ -28,7 +28,7 @@ func TestLoadRequiresProductionDependencies(t *testing.T) {
 func TestLoadRequiresEveryProductionProviderSetting(t *testing.T) {
 	required := []string{
 		"DATABASE_URL", "OIDC_ISSUER", "OIDC_AUDIENCE", "ADMIN_ALLOWED_ORIGINS",
-		"S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY",
+		"S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "MEDIA_PUBLIC_BASE_URL",
 		"EDGEONE_TRIGGER_URL", "EDGEONE_STATUS_URL", "EDGEONE_TOKEN",
 	}
 	for _, key := range required {
@@ -52,7 +52,7 @@ func TestLoadParsesProviderConfiguration(t *testing.T) {
 		t.Fatalf("load production config: %v", err)
 	}
 	if settings.S3Endpoint != "https://cos.example.test" || settings.S3Region != "ap-singapore" ||
-		settings.S3Bucket != "yujian-media" || !settings.S3UsePathStyle {
+		settings.S3Bucket != "yujian-media" || settings.MediaPublicBaseURL != "https://media.yujian.me/base" || !settings.S3UsePathStyle {
 		t.Fatalf("unexpected S3 config %#v", settings)
 	}
 	if settings.EdgeOneTriggerURL == "" || settings.EdgeOneStatusURL == "" || settings.EdgeOneToken == "" {
@@ -61,13 +61,62 @@ func TestLoadParsesProviderConfiguration(t *testing.T) {
 }
 
 func TestLoadRejectsInsecureProductionProviderEndpoints(t *testing.T) {
-	for _, key := range []string{"S3_ENDPOINT", "EDGEONE_TRIGGER_URL", "EDGEONE_STATUS_URL"} {
+	for _, key := range []string{"S3_ENDPOINT", "MEDIA_PUBLIC_BASE_URL", "EDGEONE_TRIGGER_URL", "EDGEONE_STATUS_URL"} {
 		t.Run(key, func(t *testing.T) {
 			env := productionEnvironment()
 			env[key] = "http://provider.example.test/path"
 			_, err := Load(func(name string) string { return env[name] })
 			if !errors.Is(err, ErrInvalidConfig) {
 				t.Fatalf("expected invalid config for %s, got %v", key, err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsProductionURLsWithoutHostname(t *testing.T) {
+	for _, key := range []string{
+		"OIDC_ISSUER", "ADMIN_ALLOWED_ORIGINS", "S3_ENDPOINT", "MEDIA_PUBLIC_BASE_URL",
+		"EDGEONE_TRIGGER_URL", "EDGEONE_STATUS_URL",
+	} {
+		t.Run(key, func(t *testing.T) {
+			env := productionEnvironment()
+			env[key] = "https://:443"
+			_, err := Load(func(name string) string { return env[name] })
+			if !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("expected invalid config for %s, got %v", key, err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsOIDCIssuerWithQueryOrFragment(t *testing.T) {
+	for _, value := range []string{
+		"https://id.example.com/tenant?client=yujian",
+		"https://id.example.com/tenant#configuration",
+	} {
+		t.Run(value, func(t *testing.T) {
+			env := productionEnvironment()
+			env["OIDC_ISSUER"] = value
+			_, err := Load(func(name string) string { return env[name] })
+			if !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("expected invalid OIDC issuer for %q, got %v", value, err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsPublicMediaURLWithCredentialsQueryOrFragment(t *testing.T) {
+	for _, value := range []string{
+		"https://user:pass@media.yujian.me",
+		"https://media.yujian.me?token=secret",
+		"https://media.yujian.me#fragment",
+	} {
+		t.Run(value, func(t *testing.T) {
+			env := productionEnvironment()
+			env["MEDIA_PUBLIC_BASE_URL"] = value
+			_, err := Load(func(name string) string { return env[name] })
+			if !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("expected invalid media public URL for %q, got %v", value, err)
 			}
 		})
 	}
@@ -153,6 +202,7 @@ func productionEnvironment() map[string]string {
 		"S3_BUCKET":             "yujian-media",
 		"S3_ACCESS_KEY_ID":      "access-key",
 		"S3_SECRET_ACCESS_KEY":  "secret-key",
+		"MEDIA_PUBLIC_BASE_URL": "https://media.yujian.me/base",
 		"EDGEONE_TRIGGER_URL":   "https://edgeone.example.test/trigger",
 		"EDGEONE_STATUS_URL":    "https://edgeone.example.test/status",
 		"EDGEONE_TOKEN":         "edgeone-token",

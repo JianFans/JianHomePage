@@ -2,7 +2,7 @@ import { createIdempotencyKey } from './idempotency'
 
 export interface AdminVersion {
   id: string
-  status: 'draft' | 'in_review' | 'published' | 'archived'
+  status: 'draft' | 'in_review' | 'publishing' | 'published' | 'archived'
   revision: number
   snapshot: Record<string, unknown>
   checksum: string

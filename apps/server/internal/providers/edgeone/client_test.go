@@ -20,6 +20,18 @@ func TestNewClientRejectsMissingTriggerURL(t *testing.T) {
 	}
 }
 
+func TestNewClientRejectsEndpointWithoutHostnameOrValidPort(t *testing.T) {
+	for _, endpoint := range []string{"https://:443", "https://edgeone.example.test:65536"} {
+		t.Run(endpoint, func(t *testing.T) {
+			if _, err := NewClient(Config{
+				TriggerURL: endpoint, StatusURL: "https://status.example.test", RequireHTTPS: true,
+			}); err == nil {
+				t.Fatalf("expected invalid endpoint rejection for %q", endpoint)
+			}
+		})
+	}
+}
+
 func TestClientRejectsHTTPSDowngradeRedirectBeforeSendingToken(t *testing.T) {
 	var insecureCalls atomic.Int32
 	insecure := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -106,9 +118,10 @@ func TestTriggerSendsReleaseAndBearerToken(t *testing.T) {
 }
 
 func TestStatusEscapesBuildIDAndMapsFailure(t *testing.T) {
-	var path string
+	var path, requestURI string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		path = request.URL.Path
+		requestURI = request.RequestURI
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"id":"build/a","status":"failed","error":"lint failed"}`))
 	}))
@@ -122,8 +135,24 @@ func TestStatusEscapesBuildIDAndMapsFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("status: %v", err)
 	}
-	if !strings.Contains(path, "build%2Fa") || run.Status != domain.PublishFailed || run.Error != "lint failed" {
-		t.Fatalf("unexpected path/run path=%q run=%#v", path, run)
+	if path != "/status/build/a" || requestURI != "/status/build%2Fa" || run.Status != domain.PublishFailed || run.Error != "lint failed" {
+		t.Fatalf("unexpected path/run path=%q requestURI=%q run=%#v", path, requestURI, run)
+	}
+}
+
+func TestStatusRejectsResponseForAnotherBuild(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":"other-build","status":"succeeded"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{TriggerURL: server.URL, StatusURL: server.URL + "/status"})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if _, err := client.Status(context.Background(), "expected-build"); err == nil {
+		t.Fatal("expected mismatched build id rejection")
 	}
 }
 

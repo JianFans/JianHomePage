@@ -26,6 +26,13 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 				Type   string `json:"type"`
 				Scheme string `json:"scheme"`
 			} `json:"securitySchemes"`
+			Schemas map[string]struct {
+				Required   []string `json:"required"`
+				Properties map[string]struct {
+					Ref  string   `json:"$ref"`
+					Enum []string `json:"enum"`
+				} `json:"properties"`
+			} `json:"schemas"`
 		} `json:"components"`
 	}
 	if err := json.Unmarshal(raw, &document); err != nil {
@@ -69,6 +76,18 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	assertRequiredHeader(t, document.Paths["/api/v1/versions/{versionId}"]["put"].Parameters, "If-Match")
 	assertRequiredHeader(t, document.Paths["/api/v1/publishes"]["post"].Parameters, "Idempotency-Key")
 	assertRequiredHeader(t, document.Paths["/api/v1/rollbacks"]["post"].Parameters, "Idempotency-Key")
+	contentTypes := document.Components.Schemas["AssetUploadRequest"].Properties["contentType"].Enum
+	if len(contentTypes) != 5 {
+		t.Fatalf("asset upload MIME enum is not aligned with snapshot schema: %#v", contentTypes)
+	}
+	rightsReference := document.Components.Schemas["AssetUploadRequest"].Properties["rights"].Ref
+	if rightsReference != "#/components/schemas/AssetRights" {
+		t.Fatalf("asset upload rights are not bound to the snapshot contract: %q", rightsReference)
+	}
+	rightsRequired := document.Components.Schemas["AssetRights"].Required
+	if len(rightsRequired) != 1 || rightsRequired[0] != "source" {
+		t.Fatalf("asset rights must require source: %#v", rightsRequired)
+	}
 }
 
 func TestOpenAPISourceIsSyncedIntoServerModule(t *testing.T) {

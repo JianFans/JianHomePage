@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
 type execFake struct {
@@ -29,23 +31,30 @@ func (fake *execFake) BeginTx(context.Context) (Tx, error) {
 
 type migrationTxFake struct {
 	calls      []string
+	args       [][]any
 	failOn     int
 	failErr    error
 	committed  bool
 	rolledBack bool
+	applied    bool
+	rows       Rows
 }
 
-func (fake *migrationTxFake) ExecContext(_ context.Context, statement string, _ ...any) (ExecResult, error) {
+func (fake *migrationTxFake) ExecContext(_ context.Context, statement string, args ...any) (ExecResult, error) {
 	fake.calls = append(fake.calls, statement)
+	fake.args = append(fake.args, args)
 	if fake.failOn > 0 && len(fake.calls) == fake.failOn {
 		return nil, fake.failErr
 	}
-	return recordingResult{}, nil
+	return recordingResult{affected: 1}, nil
 }
 func (fake *migrationTxFake) QueryRowContext(context.Context, string, ...any) Row {
-	return recordingRow{}
+	return migrationBoolRow(fake.applied)
 }
 func (fake *migrationTxFake) QueryContext(context.Context, string, ...any) (Rows, error) {
+	if fake.rows != nil {
+		return fake.rows, nil
+	}
 	return &recordingRows{}, nil
 }
 func (fake *migrationTxFake) BeginTx(context.Context) (Tx, error) {
@@ -57,6 +66,20 @@ func (fake *migrationTxFake) Commit(context.Context) error {
 }
 func (fake *migrationTxFake) Rollback(context.Context) error {
 	fake.rolledBack = true
+	return nil
+}
+
+type migrationBoolRow bool
+
+func (row migrationBoolRow) Scan(dest ...any) error {
+	if len(dest) != 1 {
+		return errors.New("expected one migration marker destination")
+	}
+	value, ok := dest[0].(*bool)
+	if !ok {
+		return errors.New("expected boolean migration marker destination")
+	}
+	*value = bool(row)
 	return nil
 }
 
@@ -77,8 +100,53 @@ func TestMigrateLocksTransactionAndRunsInitialSchema(t *testing.T) {
 	if !strings.Contains(strings.Join(fake.tx.calls, "\n"), "conrelid = 'publish_jobs'::regclass") {
 		t.Fatal("publish job constraint lookup is not scoped to publish_jobs")
 	}
+	statements := strings.Join(fake.tx.calls, "\n")
+	if !strings.Contains(statements, "publishing") || !strings.Contains(statements, "target_revision") {
+		t.Fatal("publish target freeze migration was not executed")
+	}
+	if !strings.Contains(statements, "status IN ('pending', 'building')") ||
+		!strings.Contains(statements, "SET status = 'publishing'") ||
+		!strings.Contains(statements, "RAISE EXCEPTION") {
+		t.Fatal("active publish jobs are not safely upgraded or rejected")
+	}
 	if !fake.tx.committed || fake.tx.rolledBack {
 		t.Fatalf("expected committed transaction, got %#v", fake.tx)
+	}
+}
+
+func TestMigrateCanonicalizesLegacyContentChecksumsBeforePublishFreeze(t *testing.T) {
+	jsonbReadback := []byte(`{"z": 100.0, "schemaVersion": "1.0.0", "a": 1.2300}`)
+	canonical, err := snapshotdata.CanonicalJSON(jsonbReadback)
+	if err != nil {
+		t.Fatalf("canonicalize fixture: %v", err)
+	}
+	tx := &migrationTxFake{rows: &recordingRows{rows: []recordingRow{{values: []any{
+		"ver_legacy", jsonbReadback, "sha256:legacy-raw-json",
+	}}}}}
+	fake := &execFake{tx: tx}
+
+	if err := Migrate(context.Background(), fake); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	updateIndex := -1
+	freezeIndex := -1
+	for index, statement := range tx.calls {
+		if strings.Contains(statement, "UPDATE content_versions SET checksum") {
+			updateIndex = index
+		}
+		if strings.Contains(statement, "cannot safely upgrade active publish job") {
+			freezeIndex = index
+		}
+	}
+	if updateIndex < 0 {
+		t.Fatal("legacy content checksum was not upgraded")
+	}
+	if freezeIndex < 0 || updateIndex >= freezeIndex {
+		t.Fatalf("checksum upgrade must run before publish freeze migration: %#v", tx.calls)
+	}
+	if got := tx.args[updateIndex]; len(got) != 4 || got[0] != snapshotdata.Checksum(canonical) || got[1] != "ver_legacy" {
+		t.Fatalf("unexpected checksum update args %#v", got)
 	}
 }
 

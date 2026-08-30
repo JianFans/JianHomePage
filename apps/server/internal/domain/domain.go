@@ -35,10 +35,11 @@ type Principal struct {
 type ContentStatus string
 
 const (
-	StatusDraft     ContentStatus = "draft"
-	StatusInReview  ContentStatus = "in_review"
-	StatusPublished ContentStatus = "published"
-	StatusArchived  ContentStatus = "archived"
+	StatusDraft      ContentStatus = "draft"
+	StatusInReview   ContentStatus = "in_review"
+	StatusPublishing ContentStatus = "publishing"
+	StatusPublished  ContentStatus = "published"
+	StatusArchived   ContentStatus = "archived"
 )
 
 func CanTransition(from, to ContentStatus, reviewApproved bool) bool {
@@ -48,6 +49,12 @@ func CanTransition(from, to ContentStatus, reviewApproved bool) bool {
 	case from == StatusInReview && to == StatusDraft:
 		return true
 	case from == StatusInReview && to == StatusPublished:
+		return reviewApproved
+	case from == StatusInReview && to == StatusPublishing:
+		return reviewApproved
+	case from == StatusPublishing && to == StatusInReview:
+		return reviewApproved
+	case from == StatusPublishing && to == StatusPublished:
 		return reviewApproved
 	case from == StatusPublished && to == StatusArchived:
 		return true
@@ -80,6 +87,7 @@ const (
 type AssetRecord struct {
 	ID        string
 	BlobKey   string
+	SourceURL string
 	Status    AssetStatus
 	Metadata  json.RawMessage
 	Rights    json.RawMessage
@@ -115,6 +123,7 @@ type PublishJob struct {
 	ReleaseID        string
 	SnapshotKey      string
 	SnapshotChecksum string
+	TargetRevision   int64
 	BuildID          string
 	Status           PublishStatus
 	ErrorMessage     string

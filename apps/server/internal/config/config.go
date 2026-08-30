@@ -3,10 +3,11 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"yujian.me/server/internal/httpurl"
 )
 
 var (
@@ -29,6 +30,7 @@ type Config struct {
 	S3SecretAccessKey   string
 	S3SessionToken      string
 	S3UsePathStyle      bool
+	MediaPublicBaseURL  string
 	EdgeOneTriggerURL   string
 	EdgeOneStatusURL    string
 	EdgeOneToken        string
@@ -38,21 +40,22 @@ type Config struct {
 
 func Load(getenv func(string) string) (Config, error) {
 	config := Config{
-		Environment:       valueOrDefault(strings.TrimSpace(getenv("APP_ENV")), "development"),
-		Address:           valueOrDefault(strings.TrimSpace(getenv("HTTP_ADDRESS")), "127.0.0.1:8080"),
-		DatabaseURL:       strings.TrimSpace(getenv("DATABASE_URL")),
-		OIDCIssuer:        strings.TrimSpace(getenv("OIDC_ISSUER")),
-		OIDCAudience:      strings.TrimSpace(getenv("OIDC_AUDIENCE")),
-		S3Endpoint:        strings.TrimSpace(getenv("S3_ENDPOINT")),
-		S3Region:          strings.TrimSpace(getenv("S3_REGION")),
-		S3Bucket:          strings.TrimSpace(getenv("S3_BUCKET")),
-		S3AccessKeyID:     strings.TrimSpace(getenv("S3_ACCESS_KEY_ID")),
-		S3SecretAccessKey: strings.TrimSpace(getenv("S3_SECRET_ACCESS_KEY")),
-		S3SessionToken:    strings.TrimSpace(getenv("S3_SESSION_TOKEN")),
-		EdgeOneTriggerURL: strings.TrimSpace(getenv("EDGEONE_TRIGGER_URL")),
-		EdgeOneStatusURL:  strings.TrimSpace(getenv("EDGEONE_STATUS_URL")),
-		EdgeOneToken:      strings.TrimSpace(getenv("EDGEONE_TOKEN")),
-		ShutdownTimeout:   10 * time.Second,
+		Environment:        valueOrDefault(strings.TrimSpace(getenv("APP_ENV")), "development"),
+		Address:            valueOrDefault(strings.TrimSpace(getenv("HTTP_ADDRESS")), "127.0.0.1:8080"),
+		DatabaseURL:        strings.TrimSpace(getenv("DATABASE_URL")),
+		OIDCIssuer:         strings.TrimSpace(getenv("OIDC_ISSUER")),
+		OIDCAudience:       strings.TrimSpace(getenv("OIDC_AUDIENCE")),
+		S3Endpoint:         strings.TrimSpace(getenv("S3_ENDPOINT")),
+		S3Region:           strings.TrimSpace(getenv("S3_REGION")),
+		S3Bucket:           strings.TrimSpace(getenv("S3_BUCKET")),
+		S3AccessKeyID:      strings.TrimSpace(getenv("S3_ACCESS_KEY_ID")),
+		S3SecretAccessKey:  strings.TrimSpace(getenv("S3_SECRET_ACCESS_KEY")),
+		S3SessionToken:     strings.TrimSpace(getenv("S3_SESSION_TOKEN")),
+		MediaPublicBaseURL: strings.TrimSpace(getenv("MEDIA_PUBLIC_BASE_URL")),
+		EdgeOneTriggerURL:  strings.TrimSpace(getenv("EDGEONE_TRIGGER_URL")),
+		EdgeOneStatusURL:   strings.TrimSpace(getenv("EDGEONE_STATUS_URL")),
+		EdgeOneToken:       strings.TrimSpace(getenv("EDGEONE_TOKEN")),
+		ShutdownTimeout:    10 * time.Second,
 	}
 	if !isEnvironment(config.Environment) {
 		return Config{}, fmt.Errorf("%w: APP_ENV must be development, test, or production", ErrInvalidConfig)
@@ -94,8 +97,14 @@ func Load(getenv func(string) string) (Config, error) {
 		if config.DatabaseURL == "" || config.OIDCIssuer == "" || config.OIDCAudience == "" ||
 			len(config.AllowedAdminOrigins) == 0 || config.S3Endpoint == "" || config.S3Region == "" ||
 			config.S3Bucket == "" || config.S3AccessKeyID == "" || config.S3SecretAccessKey == "" ||
+			config.MediaPublicBaseURL == "" ||
 			config.EdgeOneTriggerURL == "" || config.EdgeOneStatusURL == "" || config.EdgeOneToken == "" {
 			return Config{}, ErrMissingProductionConfig
+		}
+	}
+	if config.OIDCIssuer != "" {
+		if err := validateOIDCIssuer(config.OIDCIssuer, config.Environment == "production"); err != nil {
+			return Config{}, fmt.Errorf("%w: OIDC_ISSUER: %v", ErrInvalidConfig, err)
 		}
 	}
 	for name, endpoint := range map[string]string{
@@ -107,6 +116,11 @@ func Load(getenv func(string) string) (Config, error) {
 			if err := validateEndpoint(endpoint, config.Environment == "production"); err != nil {
 				return Config{}, fmt.Errorf("%w: %s: %v", ErrInvalidConfig, name, err)
 			}
+		}
+	}
+	if config.MediaPublicBaseURL != "" {
+		if err := validatePublicBaseURL(config.MediaPublicBaseURL, config.Environment == "production"); err != nil {
+			return Config{}, fmt.Errorf("%w: MEDIA_PUBLIC_BASE_URL: %v", ErrInvalidConfig, err)
 		}
 	}
 
@@ -137,9 +151,8 @@ func parseOrigins(raw string, requireHTTPS bool) ([]string, error) {
 		if candidate == "" {
 			continue
 		}
-		parsed, err := url.Parse(candidate)
-		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
-			parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		parsed, err := httpurl.ParseAbsolute(candidate)
+		if err != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
 			return nil, fmt.Errorf("%w: ADMIN_ALLOWED_ORIGINS contains an invalid origin", ErrInvalidConfig)
 		}
 		if requireHTTPS && parsed.Scheme != "https" {
@@ -156,9 +169,31 @@ func parseOrigins(raw string, requireHTTPS bool) ([]string, error) {
 }
 
 func validateEndpoint(value string, requireHTTPS bool) error {
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil {
+	parsed, err := httpurl.ParseAbsolute(value)
+	if err != nil {
 		return errors.New("must be an absolute HTTP URL without credentials")
+	}
+	if requireHTTPS && parsed.Scheme != "https" {
+		return errors.New("must use HTTPS in production")
+	}
+	return nil
+}
+
+func validateOIDCIssuer(value string, requireHTTPS bool) error {
+	parsed, err := httpurl.ParseAbsolute(value)
+	if err != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("must be an absolute HTTP URL without credentials, query, or fragment")
+	}
+	if requireHTTPS && parsed.Scheme != "https" {
+		return errors.New("must use HTTPS in production")
+	}
+	return nil
+}
+
+func validatePublicBaseURL(value string, requireHTTPS bool) error {
+	parsed, err := httpurl.ParseAbsolute(value)
+	if err != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("must be an absolute HTTP URL without credentials, query, or fragment")
 	}
 	if requireHTTPS && parsed.Scheme != "https" {
 		return errors.New("must use HTTPS in production")

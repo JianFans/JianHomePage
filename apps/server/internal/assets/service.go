@@ -1,12 +1,14 @@
 package assets
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"time"
@@ -62,9 +64,21 @@ type storedMetadata struct {
 	ContentType  string        `json:"contentType"`
 	DeclaredSize int64         `json:"declaredSize"`
 	Checksum     string        `json:"checksum,omitempty"`
+	RetainBlob   bool          `json:"retainBlob,omitempty"`
 	Width        int           `json:"width,omitempty"`
 	Height       int           `json:"height,omitempty"`
 	Duration     time.Duration `json:"duration,omitempty"`
+}
+
+type assetRights struct {
+	Source  *localizedRightsSource `json:"source"`
+	Credit  json.RawMessage        `json:"credit,omitempty"`
+	License json.RawMessage        `json:"license,omitempty"`
+}
+
+type localizedRightsSource struct {
+	ZhCN string          `json:"zh-CN"`
+	En   json.RawMessage `json:"en,omitempty"`
 }
 
 type mediaRule struct {
@@ -73,13 +87,11 @@ type mediaRule struct {
 }
 
 var mediaRules = map[string]mediaRule{
-	"image/avif": {extension: ".avif", limit: imageLimit},
 	"image/webp": {extension: ".webp", limit: imageLimit},
-	"image/jpeg": {extension: ".jpg", limit: imageLimit},
+	"image/gif":  {extension: ".gif", limit: imageLimit},
 	"audio/mpeg": {extension: ".mp3", limit: audioLimit},
 	"audio/wav":  {extension: ".wav", limit: audioLimit},
 	"video/mp4":  {extension: ".mp4", limit: videoLimit},
-	"video/webm": {extension: ".webm", limit: videoLimit},
 }
 
 func NewService(options ServiceOptions) *Service {
@@ -112,6 +124,7 @@ func (service *Service) CreateUpload(
 	if err != nil {
 		return CreateUploadResult{}, err
 	}
+	input.Checksum = "sha256:" + strings.ToLower(strings.TrimPrefix(input.Checksum, "sha256:"))
 	id := service.newID("asset_")
 	blobKey := "assets/" + id + "/source" + extension
 	upload, err := service.blobStore.CreateUpload(ctx, ports.UploadRequest{
@@ -121,6 +134,10 @@ func (service *Service) CreateUpload(
 		Checksum:    input.Checksum,
 		ExpiresIn:   15 * time.Minute,
 	})
+	if err != nil {
+		return CreateUploadResult{}, err
+	}
+	sourceURL, err := service.blobStore.PublicURL(ctx, blobKey)
 	if err != nil {
 		return CreateUploadResult{}, err
 	}
@@ -138,6 +155,7 @@ func (service *Service) CreateUpload(
 	asset := domain.AssetRecord{
 		ID:        id,
 		BlobKey:   blobKey,
+		SourceURL: sourceURL,
 		Status:    domain.AssetPending,
 		Metadata:  metadata,
 		Rights:    append(json.RawMessage(nil), input.Rights...),
@@ -168,6 +186,10 @@ func (service *Service) CompleteUpload(
 	asset, err := service.repository.GetAsset(ctx, id)
 	if err != nil {
 		return domain.AssetRecord{}, err
+	}
+	if asset.Status == domain.AssetReady {
+		asset.SourceURL, err = service.blobStore.PublicURL(ctx, asset.BlobKey)
+		return asset, err
 	}
 	if asset.Status != domain.AssetPending {
 		return domain.AssetRecord{}, domain.ErrInvalidTransition
@@ -205,6 +227,10 @@ func (service *Service) CompleteUpload(
 		if err != nil {
 			return err
 		}
+		if current.Status == domain.AssetReady {
+			asset = current
+			return nil
+		}
 		if current.Status != domain.AssetPending {
 			return domain.ErrInvalidTransition
 		}
@@ -213,6 +239,10 @@ func (service *Service) CompleteUpload(
 		}
 		return repository.AppendAudit(ctx, assetAudit(actor, "asset.complete_upload", asset.ID, now))
 	})
+	if err != nil {
+		return domain.AssetRecord{}, err
+	}
+	asset.SourceURL, err = service.blobStore.PublicURL(ctx, asset.BlobKey)
 	if err != nil {
 		return domain.AssetRecord{}, err
 	}
@@ -238,6 +268,18 @@ func (service *Service) Delete(ctx context.Context, actor domain.Principal, id s
 			if current.Status == domain.AssetDeleted {
 				return nil
 			}
+			var metadata storedMetadata
+			if err := json.Unmarshal(current.Metadata, &metadata); err != nil {
+				return fmt.Errorf("decode asset metadata: %w", err)
+			}
+			if current.Status == domain.AssetReady {
+				metadata.RetainBlob = true
+				current.Metadata, err = json.Marshal(metadata)
+				if err != nil {
+					return err
+				}
+			}
+			asset = current
 			asset.Status = domain.AssetDeleted
 			asset.DeletedAt = &now
 			if err := repository.UpdateAsset(ctx, asset, current.Status); err != nil {
@@ -249,6 +291,13 @@ func (service *Service) Delete(ctx context.Context, actor domain.Principal, id s
 			return err
 		}
 	}
+	var metadata storedMetadata
+	if err := json.Unmarshal(asset.Metadata, &metadata); err != nil {
+		return fmt.Errorf("decode asset metadata: %w", err)
+	}
+	if metadata.RetainBlob {
+		return nil
+	}
 	if err := service.blobStore.Delete(ctx, asset.BlobKey); err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
@@ -256,29 +305,47 @@ func (service *Service) Delete(ctx context.Context, actor domain.Principal, id s
 }
 
 func validateUploadInput(input CreateUploadInput) (string, error) {
-	rule, allowed := mediaRules[strings.ToLower(input.ContentType)]
-	if !allowed || input.Size <= 0 || input.Size > rule.limit {
+	rule, allowed := mediaRules[input.ContentType]
+	if input.ContentType != strings.ToLower(input.ContentType) || !allowed || input.Size <= 0 || input.Size > rule.limit {
 		return "", domain.ErrInvalidInput
 	}
-	var rights map[string]json.RawMessage
-	if len(input.Rights) == 0 || json.Unmarshal(input.Rights, &rights) != nil || rights == nil {
+	if !validAssetRights(input.Rights) {
 		return "", domain.ErrInvalidInput
 	}
 	extension := strings.ToLower(filepath.Ext(filepath.Base(input.FileName)))
-	if input.ContentType == "image/jpeg" && extension == ".jpeg" {
-		extension = ".jpg"
-	}
 	if extension != rule.extension {
 		return "", domain.ErrInvalidInput
 	}
-	if input.Checksum != "" {
-		value := strings.TrimPrefix(input.Checksum, "sha256:")
-		decoded, err := hex.DecodeString(value)
-		if err != nil || len(decoded) != 32 || !strings.HasPrefix(input.Checksum, "sha256:") {
-			return "", domain.ErrInvalidInput
-		}
+	value := strings.TrimPrefix(input.Checksum, "sha256:")
+	decoded, err := hex.DecodeString(value)
+	if err != nil || len(decoded) != 32 || !strings.HasPrefix(input.Checksum, "sha256:") {
+		return "", domain.ErrInvalidInput
 	}
 	return rule.extension, nil
+}
+
+func validAssetRights(raw json.RawMessage) bool {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var rights assetRights
+	if decoder.Decode(&rights) != nil || decoder.Decode(&struct{}{}) != io.EOF || rights.Source == nil || rights.Source.ZhCN == "" {
+		return false
+	}
+	return validOptionalString(rights.Source.En, true) && validOptionalString(rights.Credit, false) && validOptionalString(rights.License, false)
+}
+
+func validOptionalString(raw json.RawMessage, requireNonEmpty bool) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return false
+	}
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return false
+	}
+	return !requireNonEmpty || value != ""
 }
 
 func hasPermission(actor domain.Principal, permission auth.Permission) bool {

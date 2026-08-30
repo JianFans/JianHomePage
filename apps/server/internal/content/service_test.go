@@ -2,8 +2,11 @@ package content
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,6 +109,29 @@ func TestCreateDraftValidatesSnapshotAndWritesAudit(t *testing.T) {
 	}
 }
 
+func TestCreateDraftStoresCanonicalSnapshotWithMatchingChecksum(t *testing.T) {
+	store := newMemoryStore()
+	service := newServiceForTest(store, validatorStub{})
+	raw := json.RawMessage("{\n  \"z\": 1.0e0, \"schemaVersion\": \"1.0.0\", \"a\": true\n}")
+
+	version, err := service.CreateDraft(
+		context.Background(),
+		principal("editor-1", domain.RoleEditor),
+		raw,
+	)
+	if err != nil {
+		t.Fatalf("create draft: %v", err)
+	}
+	expected := json.RawMessage(`{"a":true,"schemaVersion":"1.0.0","z":1}`)
+	if string(version.Snapshot) != string(expected) {
+		t.Fatalf("snapshot was not canonicalized: %s", version.Snapshot)
+	}
+	digest := sha256.Sum256(expected)
+	if version.Checksum != fmt.Sprintf("sha256:%x", digest) {
+		t.Fatalf("checksum %q does not match snapshot", version.Checksum)
+	}
+}
+
 func TestCreateDraftRejectsInvalidSnapshot(t *testing.T) {
 	store := newMemoryStore()
 	service := newServiceForTest(store, validatorStub{err: errors.New("invalid snapshot")})
@@ -174,6 +200,52 @@ func TestReviewRequiresReviewerAndValidTransition(t *testing.T) {
 	}
 	if rejected.Status != domain.StatusDraft || rejected.ReviewApproved {
 		t.Fatalf("unexpected rejected version %#v", rejected)
+	}
+}
+
+func TestRejectReviewEnforcesReasonContract(t *testing.T) {
+	store := newMemoryStore()
+	service := newServiceForTest(store, validatorStub{})
+	ctx := context.Background()
+	editor := principal("editor-1", domain.RoleEditor)
+	reviewer := principal("reviewer-1", domain.RoleReviewer)
+	draft, err := service.CreateDraft(ctx, editor, validSnapshot())
+	if err != nil {
+		t.Fatalf("create draft: %v", err)
+	}
+	submitted, err := service.SubmitReview(ctx, editor, draft.ID, draft.Revision)
+	if err != nil {
+		t.Fatalf("submit review: %v", err)
+	}
+
+	for _, reason := range []string{"   ", strings.Repeat("x", 1001)} {
+		if _, err := service.RejectReview(ctx, reviewer, submitted.ID, submitted.Revision, reason); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("expected invalid reason length %d, got %v", len(reason), err)
+		}
+	}
+}
+
+func TestRejectReviewCannotMutatePublishingVersion(t *testing.T) {
+	store := newMemoryStore()
+	version := domain.ContentVersion{
+		ID: "ver_publishing", Status: domain.StatusPublishing, Revision: 4,
+		Snapshot: validSnapshot(), ReviewApproved: true,
+	}
+	store.versions[version.ID] = version
+	service := newServiceForTest(store, validatorStub{})
+
+	_, err := service.RejectReview(
+		context.Background(),
+		principal("reviewer-1", domain.RoleReviewer),
+		version.ID,
+		version.Revision,
+		"late review change",
+	)
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("expected publishing version to be frozen, got %v", err)
+	}
+	if stored := store.versions[version.ID]; stored.Status != domain.StatusPublishing || stored.Revision != version.Revision {
+		t.Fatalf("publishing version was mutated: %#v", stored)
 	}
 }
 

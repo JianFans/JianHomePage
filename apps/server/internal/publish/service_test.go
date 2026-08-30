@@ -3,6 +3,7 @@ package publish
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -11,10 +12,12 @@ import (
 
 	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/ports"
+	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
 type memoryRepository struct {
 	versions            map[string]domain.ContentVersion
+	assets              map[string]domain.AssetRecord
 	jobs                map[string]domain.PublishJob
 	idempotency         map[string]string
 	pointers            map[string]domain.PublishPointer
@@ -22,6 +25,7 @@ type memoryRepository struct {
 	successfulByVersion map[string]string
 	updateErr           error
 	updateFailures      int
+	beforeUpdate        func(*memoryRepository, domain.PublishJob)
 	lockCalls           int
 	lockHook            func(*memoryRepository)
 }
@@ -29,11 +33,20 @@ type memoryRepository struct {
 func newMemoryRepository() *memoryRepository {
 	return &memoryRepository{
 		versions:            make(map[string]domain.ContentVersion),
+		assets:              make(map[string]domain.AssetRecord),
 		jobs:                make(map[string]domain.PublishJob),
 		idempotency:         make(map[string]string),
 		pointers:            make(map[string]domain.PublishPointer),
 		successfulByVersion: make(map[string]string),
 	}
+}
+
+func (repository *memoryRepository) GetAsset(_ context.Context, id string) (domain.AssetRecord, error) {
+	asset, exists := repository.assets[id]
+	if !exists {
+		return domain.AssetRecord{}, domain.ErrNotFound
+	}
+	return asset, nil
 }
 
 func (repository *memoryRepository) WithinTransaction(ctx context.Context, run func(Repository) error) error {
@@ -85,6 +98,15 @@ func (repository *memoryRepository) GetPublishJobByIdempotencyKey(_ context.Cont
 	return repository.jobs[id], nil
 }
 
+func (repository *memoryRepository) GetActivePublishJob(context.Context) (domain.PublishJob, error) {
+	for _, job := range repository.jobs {
+		if job.Status == domain.PublishPending || job.Status == domain.PublishBuilding {
+			return job, nil
+		}
+	}
+	return domain.PublishJob{}, domain.ErrNotFound
+}
+
 func (repository *memoryRepository) GetSuccessfulPublishByVersion(_ context.Context, versionID string) (domain.PublishJob, error) {
 	id, exists := repository.successfulByVersion[versionID]
 	if !exists {
@@ -93,7 +115,7 @@ func (repository *memoryRepository) GetSuccessfulPublishByVersion(_ context.Cont
 	return repository.jobs[id], nil
 }
 
-func (repository *memoryRepository) UpdatePublishJob(_ context.Context, job domain.PublishJob) error {
+func (repository *memoryRepository) UpdatePublishJob(_ context.Context, job domain.PublishJob, expectedStatus domain.PublishStatus) error {
 	if repository.updateFailures > 0 {
 		repository.updateFailures--
 		return repository.updateErr
@@ -101,11 +123,46 @@ func (repository *memoryRepository) UpdatePublishJob(_ context.Context, job doma
 	if _, exists := repository.jobs[job.ID]; !exists {
 		return domain.ErrNotFound
 	}
+	if repository.beforeUpdate != nil {
+		repository.beforeUpdate(repository, job)
+		repository.beforeUpdate = nil
+	}
+	if repository.jobs[job.ID].Status != expectedStatus {
+		return domain.ErrConflict
+	}
 	repository.jobs[job.ID] = job
 	if job.Status == domain.PublishSucceeded {
 		repository.successfulByVersion[job.VersionID] = job.ID
 	}
 	return nil
+}
+
+func TestLateTriggerFailureDoesNotDowngradeConcurrentBuildingJob(t *testing.T) {
+	repository := newMemoryRepository()
+	job := domain.PublishJob{
+		ID: "pub_1", IdempotencyKey: "idem-concurrent-trigger", Operation: domain.PublishOperationPublish,
+		VersionID: "ver_new", ReleaseID: "rel_new", Status: domain.PublishPending,
+	}
+	repository.jobs[job.ID] = job
+	repository.beforeUpdate = func(repository *memoryRepository, _ domain.PublishJob) {
+		concurrent := repository.jobs[job.ID]
+		concurrent.Status = domain.PublishBuilding
+		concurrent.BuildID = "build-concurrent"
+		repository.jobs[job.ID] = concurrent
+	}
+	trigger := &buildTriggerFake{triggerErr: errors.New("late provider timeout"), statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+
+	actual, err := service.trigger(context.Background(), job, job.ReleaseID)
+	if err != nil {
+		t.Fatalf("concurrent progress should win over late trigger failure: %v", err)
+	}
+	if actual.Status != domain.PublishBuilding || actual.BuildID != "build-concurrent" {
+		t.Fatalf("late trigger result downgraded concurrent progress: %#v", actual)
+	}
+	if stored := repository.jobs[job.ID]; stored.Status != domain.PublishBuilding || stored.BuildID != "build-concurrent" {
+		t.Fatalf("stored job was downgraded: %#v", stored)
+	}
 }
 
 func (repository *memoryRepository) GetPublishPointer(_ context.Context, slot string) (domain.PublishPointer, error) {
@@ -173,6 +230,10 @@ func (store *blobStoreFake) SignedReadURL(context.Context, string, time.Duration
 	panic("not used")
 }
 
+func (store *blobStoreFake) PublicURL(_ context.Context, key string) (string, error) {
+	return "/media/" + key, nil
+}
+
 type buildTriggerFake struct {
 	triggerCalls int
 	triggerErr   error
@@ -232,12 +293,328 @@ func publisher() domain.Principal {
 }
 
 func approvedVersion(id, releaseID string) domain.ContentVersion {
+	snapshot, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"` + releaseID + `"}`))
+	if err != nil {
+		panic(err)
+	}
 	return domain.ContentVersion{
 		ID:             id,
 		Status:         domain.StatusInReview,
 		Revision:       3,
-		Snapshot:       []byte(`{"schemaVersion":"1.0.0","releaseId":"` + releaseID + `"}`),
+		Snapshot:       snapshot,
+		Checksum:       snapshotdata.Checksum(snapshot),
 		ReviewApproved: true,
+	}
+}
+
+func managedVersion(t *testing.T, status domain.ContentStatus) domain.ContentVersion {
+	return managedVersionWithSource(t, status, "/media/assets/asset_managed/source.webp")
+}
+
+func managedVersionWithSource(t *testing.T, status domain.ContentStatus, source string) domain.ContentVersion {
+	t.Helper()
+	payloadChecksum := snapshotdata.Checksum([]byte("payload"))
+	payload, err := json.Marshal(map[string]any{
+		"schemaVersion": "1.0.0",
+		"releaseId":     "rel_managed",
+		"assets": []map[string]any{{
+			"id": "asset_managed", "src": source, "mimeType": "image/webp",
+			"byteSize": 7, "checksum": payloadChecksum, "rights": map[string]any{
+				"source": map[string]string{"zh-CN": "authorized"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("encode managed snapshot: %v", err)
+	}
+	snapshot, err := snapshotdata.CanonicalJSON(payload)
+	if err != nil {
+		t.Fatalf("canonicalize managed snapshot: %v", err)
+	}
+	return domain.ContentVersion{
+		ID: "ver_managed", Status: status, Revision: 3,
+		Snapshot: snapshot, Checksum: snapshotdata.Checksum(snapshot), ReviewApproved: true,
+	}
+}
+
+func managedRights() json.RawMessage {
+	return json.RawMessage(`{"source":{"zh-CN":"authorized"}}`)
+}
+
+func TestPublishRejectsBrowserNormalizedManagedAssetURLBypass(t *testing.T) {
+	for _, source := range []string{
+		`https://media.example.com/assets\asset_managed\source.webp`,
+		`https://media.example.com/assets%5Casset_managed%5Csource.webp`,
+		`https://media.example.com/assets/asset_managed/ignored/../source.webp`,
+		`https://media.example.com/assets/asset_managed/ignored/%2e%2e/source.webp`,
+		`https://media.example.com/assets/asset_managed/source.webp `,
+		`https://media.example.com/assets/asset_managed/source.webp  `,
+		`https:///assets/asset_managed/source.webp`,
+		`https://media.example.com/assets%2Fasset_managed%2Fsource.webp`,
+		`https://media.example.com/assets/asset_managed/source%2Ewebp`,
+	} {
+		t.Run(source, func(t *testing.T) {
+			repository := newMemoryRepository()
+			target := managedVersionWithSource(t, domain.StatusInReview, source)
+			repository.versions[target.ID] = target
+			repository.assets["asset_managed"] = domain.AssetRecord{
+				ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetReady,
+				Rights: managedRights(),
+			}
+			blobs := newBlobStoreFake()
+			blobs.objects["assets/asset_managed/source.webp"] = ports.BlobMetadata{
+				ContentType: "image/webp", Size: 7, Checksum: snapshotdata.Checksum([]byte("payload")),
+			}
+			trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+			service := publishServiceForTest(repository, blobs, trigger)
+
+			_, err := service.Publish(context.Background(), publisher(), target.ID, "idem-backslash-bypass")
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("expected ambiguous managed URL rejection, got %v", err)
+			}
+			if trigger.triggerCalls != 0 {
+				t.Fatalf("ambiguous managed URL triggered %d builds", trigger.triggerCalls)
+			}
+		})
+	}
+}
+
+func TestPublishRejectsManagedAssetURLOutsideConfiguredProvider(t *testing.T) {
+	for _, source := range []string{
+		"https://attacker.example/assets/asset_managed/source.webp",
+		"https://attacker.example/other/source.webp",
+	} {
+		t.Run(source, func(t *testing.T) {
+			repository := newMemoryRepository()
+			target := managedVersionWithSource(t, domain.StatusInReview, source)
+			repository.versions[target.ID] = target
+			repository.assets["asset_managed"] = domain.AssetRecord{
+				ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetReady,
+				Rights: managedRights(),
+			}
+			blobs := newBlobStoreFake()
+			blobs.objects["assets/asset_managed/source.webp"] = ports.BlobMetadata{
+				ContentType: "image/webp", Size: 7, Checksum: snapshotdata.Checksum([]byte("payload")),
+			}
+			trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+			service := publishServiceForTest(repository, blobs, trigger)
+
+			_, err := service.Publish(context.Background(), publisher(), target.ID, "idem-managed-provider")
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("expected provider URL mismatch rejection, got %v", err)
+			}
+			if trigger.triggerCalls != 0 {
+				t.Fatalf("provider URL mismatch triggered %d builds", trigger.triggerCalls)
+			}
+		})
+	}
+}
+
+func TestPublishRejectsManagedAssetRightsMismatch(t *testing.T) {
+	repository := newMemoryRepository()
+	target := managedVersion(t, domain.StatusInReview)
+	repository.versions[target.ID] = target
+	repository.assets["asset_managed"] = domain.AssetRecord{
+		ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetReady,
+		Rights: json.RawMessage(`{"source":{"zh-CN":"different"}}`),
+	}
+	blobs := newBlobStoreFake()
+	blobs.objects["assets/asset_managed/source.webp"] = ports.BlobMetadata{
+		ContentType: "image/webp", Size: 7, Checksum: snapshotdata.Checksum([]byte("payload")),
+	}
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, blobs, trigger)
+
+	_, err := service.Publish(context.Background(), publisher(), target.ID, "idem-managed-rights")
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected rights mismatch rejection, got %v", err)
+	}
+	if trigger.triggerCalls != 0 {
+		t.Fatalf("rights mismatch triggered %d builds", trigger.triggerCalls)
+	}
+}
+
+func TestPublishFreezesApprovedVersionBeforeTrigger(t *testing.T) {
+	repository := newMemoryRepository()
+	target := approvedVersion("ver_new", "rel_new")
+	repository.versions[target.ID] = target
+	service := publishServiceForTest(repository, newBlobStoreFake(), &buildTriggerFake{statuses: make(map[string]ports.BuildRun)})
+
+	job, err := service.Publish(context.Background(), publisher(), target.ID, "idem-freeze-target")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	frozen := repository.versions[target.ID]
+	if frozen.Status != domain.ContentStatus("publishing") || frozen.Revision != target.Revision+1 {
+		t.Fatalf("publish target was not frozen: %#v", frozen)
+	}
+	if job.TargetRevision != frozen.Revision {
+		t.Fatalf("job target revision %d does not match frozen revision %d", job.TargetRevision, frozen.Revision)
+	}
+}
+
+func TestPublishValidatesManagedAssetLifecycleAndBlobMetadata(t *testing.T) {
+	payloadChecksum := snapshotdata.Checksum([]byte("payload"))
+	tests := []struct {
+		name       string
+		asset      *domain.AssetRecord
+		metadata   ports.BlobMetadata
+		shouldPass bool
+	}{
+		{
+			name:       "ready matching asset",
+			asset:      &domain.AssetRecord{ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetReady},
+			metadata:   ports.BlobMetadata{ContentType: "image/webp", Size: 7, Checksum: payloadChecksum},
+			shouldPass: true,
+		},
+		{
+			name:     "pending asset",
+			asset:    &domain.AssetRecord{ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetPending},
+			metadata: ports.BlobMetadata{ContentType: "image/webp", Size: 7, Checksum: payloadChecksum},
+		},
+		{
+			name:     "deleted asset",
+			asset:    &domain.AssetRecord{ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetDeleted},
+			metadata: ports.BlobMetadata{ContentType: "image/webp", Size: 7, Checksum: payloadChecksum},
+		},
+		{
+			name:     "missing asset record",
+			metadata: ports.BlobMetadata{ContentType: "image/webp", Size: 7, Checksum: payloadChecksum},
+		},
+		{
+			name:     "blob key mismatch",
+			asset:    &domain.AssetRecord{ID: "asset_managed", BlobKey: "assets/asset_other/source.webp", Status: domain.AssetReady},
+			metadata: ports.BlobMetadata{ContentType: "image/webp", Size: 7, Checksum: payloadChecksum},
+		},
+		{
+			name:     "blob MIME mismatch",
+			asset:    &domain.AssetRecord{ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetReady},
+			metadata: ports.BlobMetadata{ContentType: "image/gif", Size: 7, Checksum: payloadChecksum},
+		},
+		{
+			name:     "blob size mismatch",
+			asset:    &domain.AssetRecord{ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetReady},
+			metadata: ports.BlobMetadata{ContentType: "image/webp", Size: 8, Checksum: payloadChecksum},
+		},
+		{
+			name:     "blob checksum mismatch",
+			asset:    &domain.AssetRecord{ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetReady},
+			metadata: ports.BlobMetadata{ContentType: "image/webp", Size: 7, Checksum: "sha256:mismatch"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := newMemoryRepository()
+			target := managedVersion(t, domain.StatusInReview)
+			repository.versions[target.ID] = target
+			if test.asset != nil {
+				asset := *test.asset
+				asset.Rights = managedRights()
+				repository.assets[asset.ID] = asset
+			}
+			blobs := newBlobStoreFake()
+			blobs.objects["assets/asset_managed/source.webp"] = test.metadata
+			trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+			service := publishServiceForTest(repository, blobs, trigger)
+
+			_, err := service.Publish(context.Background(), publisher(), target.ID, "idem-managed-asset")
+			if test.shouldPass {
+				if err != nil {
+					t.Fatalf("publish ready managed asset: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("expected invalid managed asset, got %v", err)
+			}
+			if trigger.triggerCalls != 0 {
+				t.Fatalf("invalid managed asset triggered %d builds", trigger.triggerCalls)
+			}
+		})
+	}
+}
+
+func TestRollbackAllowsDeletedManagedAssetWhenRetainedBlobStillMatches(t *testing.T) {
+	repository := newMemoryRepository()
+	target := managedVersion(t, domain.StatusArchived)
+	repository.versions[target.ID] = target
+	payloadChecksum := snapshotdata.Checksum([]byte("payload"))
+	repository.assets["asset_managed"] = domain.AssetRecord{
+		ID: "asset_managed", BlobKey: "assets/asset_managed/source.webp", Status: domain.AssetDeleted,
+		Rights: managedRights(),
+	}
+	historical := domain.PublishJob{
+		ID: "pub_history", VersionID: target.ID, SnapshotKey: "snapshots/rel_managed/" + target.Checksum + ".json",
+		SnapshotChecksum: target.Checksum, Status: domain.PublishSucceeded,
+	}
+	repository.jobs[historical.ID] = historical
+	repository.successfulByVersion[target.ID] = historical.ID
+	blobs := newBlobStoreFake()
+	blobs.objects["assets/asset_managed/source.webp"] = ports.BlobMetadata{
+		ContentType: "image/webp", Size: 7, Checksum: payloadChecksum,
+	}
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, blobs, trigger)
+
+	if _, err := service.Rollback(context.Background(), publisher(), target.ID, "idem-deleted-managed-rollback"); err != nil {
+		t.Fatalf("rollback retained managed asset: %v", err)
+	}
+	if trigger.triggerCalls != 1 {
+		t.Fatalf("rollback did not trigger exactly one build: %d", trigger.triggerCalls)
+	}
+}
+
+func TestRefreshFailsJobWhenFrozenTargetRevisionChanges(t *testing.T) {
+	repository := newMemoryRepository()
+	target := approvedVersion("ver_new", "rel_new")
+	repository.versions[target.ID] = target
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+	job, err := service.Publish(context.Background(), publisher(), target.ID, "idem-mutated-target")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	mutated := repository.versions[target.ID]
+	mutated.Revision++
+	repository.versions[target.ID] = mutated
+	trigger.statuses[job.BuildID] = ports.BuildRun{ID: job.BuildID, Status: domain.PublishSucceeded}
+
+	completed, err := service.RefreshStatus(context.Background(), publisher(), job.ID)
+	if err != nil {
+		t.Fatalf("refresh should finalize the job as failed: %v", err)
+	}
+	if completed.Status != domain.PublishFailed || repository.jobs[job.ID].Status != domain.PublishFailed {
+		t.Fatalf("mutated target did not fail publish job: %#v", completed)
+	}
+	if _, exists := repository.pointers[productionSlot]; exists {
+		t.Fatal("mutated target changed the production pointer")
+	}
+	recovered := repository.versions[target.ID]
+	if recovered.Status != domain.StatusDraft || recovered.ReviewApproved {
+		t.Fatalf("mutated frozen target was not returned for review: %#v", recovered)
+	}
+}
+
+func TestFailedBuildReleasesFrozenPublishTarget(t *testing.T) {
+	repository := newMemoryRepository()
+	target := approvedVersion("ver_new", "rel_new")
+	repository.versions[target.ID] = target
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+	job, err := service.Publish(context.Background(), publisher(), target.ID, "idem-release-target")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	trigger.statuses[job.BuildID] = ports.BuildRun{ID: job.BuildID, Status: domain.PublishFailed, Error: "build failed"}
+
+	completed, err := service.RefreshStatus(context.Background(), publisher(), job.ID)
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	released := repository.versions[target.ID]
+	if completed.Status != domain.PublishFailed || released.Status != domain.StatusInReview || released.Revision != target.Revision+2 {
+		t.Fatalf("failed build did not release frozen target: job=%#v version=%#v", completed, released)
 	}
 }
 
@@ -265,6 +642,75 @@ func TestPublishIsIdempotentAndWritesImmutableSnapshotOnce(t *testing.T) {
 	}
 	if first.SnapshotKey == "" || first.SnapshotChecksum == "" {
 		t.Fatalf("missing immutable snapshot data %#v", first)
+	}
+}
+
+func TestPublishRejectsAnotherActiveProductionJob(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.versions["ver_one"] = approvedVersion("ver_one", "rel_one")
+	repository.versions["ver_two"] = approvedVersion("ver_two", "rel_two")
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+
+	first, err := service.Publish(context.Background(), publisher(), "ver_one", "idem-active-one")
+	if err != nil {
+		t.Fatalf("first publish: %v", err)
+	}
+	if first.Status != domain.PublishBuilding {
+		t.Fatalf("unexpected first job status %q", first.Status)
+	}
+
+	if _, err := service.Publish(context.Background(), publisher(), "ver_two", "idem-active-two"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected active production job conflict, got %v", err)
+	}
+	if trigger.triggerCalls != 1 {
+		t.Fatalf("second publish reached build trigger: %d calls", trigger.triggerCalls)
+	}
+}
+
+func TestReconcileRecoversPendingJobAfterTriggerPersistenceFailure(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.versions["ver_new"] = approvedVersion("ver_new", "rel_new")
+	repository.updateFailures = 1
+	repository.updateErr = errors.New("database unavailable")
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+
+	if _, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-reconcile-trigger"); err == nil {
+		t.Fatal("expected initial publish persistence failure")
+	}
+	if trigger.triggerCalls != 1 {
+		t.Fatalf("unexpected initial trigger calls %d", trigger.triggerCalls)
+	}
+
+	if err := service.Reconcile(context.Background()); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	job := repository.jobs["pub_1"]
+	if job.Status != domain.PublishBuilding || job.BuildID != "build-1" {
+		t.Fatalf("pending job was not recovered: %#v", job)
+	}
+	if trigger.triggerCalls != 2 || trigger.requests[0].IdempotencyKey != trigger.requests[1].IdempotencyKey {
+		t.Fatalf("recovery did not reuse the provider idempotency key: %#v", trigger.requests)
+	}
+}
+
+func TestReconcileFinalizesBuildingJobWithoutAdminRefresh(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.versions["ver_new"] = approvedVersion("ver_new", "rel_new")
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+	job, err := service.Publish(context.Background(), publisher(), "ver_new", "idem-reconcile-status")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	trigger.statuses[job.BuildID] = ports.BuildRun{ID: job.BuildID, Status: domain.PublishSucceeded}
+
+	if err := service.Reconcile(context.Background()); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if repository.jobs[job.ID].Status != domain.PublishSucceeded || repository.pointers[productionSlot].VersionID != "ver_new" {
+		t.Fatalf("building job was not finalized: job=%#v pointer=%#v", repository.jobs[job.ID], repository.pointers[productionSlot])
 	}
 }
 
@@ -395,7 +841,7 @@ func TestRefreshSuccessAtomicallySwitchesPointerAndArchivesOldVersion(t *testing
 	if repository.versions[newVersion.ID].Status != domain.StatusPublished {
 		t.Fatal("new version was not published")
 	}
-	if repository.lockCalls != 1 {
+	if repository.lockCalls != 2 {
 		t.Fatalf("expected publish slot lock, got %d calls", repository.lockCalls)
 	}
 }
@@ -421,7 +867,7 @@ func TestRefreshSuccessRechecksJobAfterWaitingForPublishSlotLock(t *testing.T) {
 		repository.versions[target.ID] = published
 		repository.pointers[productionSlot] = domain.PublishPointer{Slot: productionSlot, VersionID: target.ID}
 	}
-	expectedRevision := target.Revision + 1
+	expectedRevision := target.Revision + 2
 	expectedAudits := len(repository.audits)
 
 	completed, err := service.RefreshStatus(context.Background(), publisher(), job.ID)
@@ -448,7 +894,7 @@ func TestRollbackReusesHistoricalSnapshotWithoutBlobRewrite(t *testing.T) {
 		ID:               "pub_history",
 		VersionID:        target.ID,
 		SnapshotKey:      "snapshots/rel_old/sha256-old.json",
-		SnapshotChecksum: "sha256:old",
+		SnapshotChecksum: target.Checksum,
 		Status:           domain.PublishSucceeded,
 	}
 	repository.jobs[historical.ID] = historical
@@ -469,6 +915,47 @@ func TestRollbackReusesHistoricalSnapshotWithoutBlobRewrite(t *testing.T) {
 	}
 }
 
+func TestRollbackRewritesLegacySnapshotWhenCanonicalChecksumChanged(t *testing.T) {
+	repository := newMemoryRepository()
+	canonical, err := canonicalSnapshot([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_old","value":0.50}`))
+	if err != nil {
+		t.Fatalf("canonicalize target: %v", err)
+	}
+	target := approvedVersion("ver_old", "rel_old")
+	target.Status = domain.StatusArchived
+	target.Snapshot = canonical.JSON
+	target.Checksum = canonical.Checksum
+	repository.versions[target.ID] = target
+	legacyJSON := []byte(`{"releaseId":"rel_old","schemaVersion":"1.0.0","value":0.50}`)
+	historical := domain.PublishJob{
+		ID:               "pub_history",
+		VersionID:        target.ID,
+		SnapshotKey:      "snapshots/rel_old/legacy.json",
+		SnapshotChecksum: snapshotdata.Checksum(legacyJSON),
+		Status:           domain.PublishSucceeded,
+	}
+	repository.jobs[historical.ID] = historical
+	repository.successfulByVersion[target.ID] = historical.ID
+	blobs := newBlobStoreFake()
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, blobs, trigger)
+
+	job, err := service.Rollback(context.Background(), publisher(), target.ID, "idem-rollback-legacy-number")
+	if err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	wantedKey := "snapshots/rel_old/" + canonical.Checksum + ".json"
+	if job.SnapshotKey != wantedKey || job.SnapshotChecksum != canonical.Checksum {
+		t.Fatalf("rollback did not use current canonical snapshot: %#v", job)
+	}
+	if blobs.putCalls != 1 || blobs.objects[wantedKey].Checksum != canonical.Checksum {
+		t.Fatalf("canonical snapshot was not persisted: calls=%d objects=%#v", blobs.putCalls, blobs.objects)
+	}
+	if len(trigger.requests) != 1 || trigger.requests[0].SnapshotChecksum != canonical.Checksum {
+		t.Fatalf("build trigger received stale checksum: %#v", trigger.requests)
+	}
+}
+
 func TestRollbackSuccessWritesRollbackAudit(t *testing.T) {
 	repository := newMemoryRepository()
 	target := approvedVersion("ver_old", "rel_old")
@@ -478,7 +965,7 @@ func TestRollbackSuccessWritesRollbackAudit(t *testing.T) {
 		ID:               "pub_history",
 		VersionID:        target.ID,
 		SnapshotKey:      "snapshots/rel_old/sha256-old.json",
-		SnapshotChecksum: "sha256:old",
+		SnapshotChecksum: target.Checksum,
 		Status:           domain.PublishSucceeded,
 	}
 	repository.jobs[historical.ID] = historical
@@ -498,6 +985,38 @@ func TestRollbackSuccessWritesRollbackAudit(t *testing.T) {
 	lastAudit := repository.audits[len(repository.audits)-1]
 	if lastAudit.Action != "rollback.succeeded" {
 		t.Fatalf("expected rollback success audit, got %q", lastAudit.Action)
+	}
+}
+
+func TestRollbackFailureWritesRollbackAudit(t *testing.T) {
+	repository := newMemoryRepository()
+	target := approvedVersion("ver_old", "rel_old")
+	target.Status = domain.StatusArchived
+	repository.versions[target.ID] = target
+	historical := domain.PublishJob{
+		ID:               "pub_history",
+		VersionID:        target.ID,
+		SnapshotKey:      "snapshots/rel_old/sha256-old.json",
+		SnapshotChecksum: target.Checksum,
+		Status:           domain.PublishSucceeded,
+	}
+	repository.jobs[historical.ID] = historical
+	repository.successfulByVersion[target.ID] = historical.ID
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+
+	job, err := service.Rollback(context.Background(), publisher(), target.ID, "idem-rollback-failed-audit")
+	if err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	trigger.statuses[job.BuildID] = ports.BuildRun{ID: job.BuildID, Status: domain.PublishFailed, Error: "build failed"}
+	if _, err := service.RefreshStatus(context.Background(), publisher(), job.ID); err != nil {
+		t.Fatalf("refresh rollback: %v", err)
+	}
+
+	lastAudit := repository.audits[len(repository.audits)-1]
+	if lastAudit.Action != "rollback.failed" {
+		t.Fatalf("expected rollback failure audit, got %q", lastAudit.Action)
 	}
 }
 

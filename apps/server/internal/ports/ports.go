@@ -37,6 +37,7 @@ type BlobStore interface {
 	Put(context.Context, string, io.Reader, BlobMetadata) error
 	Delete(context.Context, string) error
 	SignedReadURL(context.Context, string, time.Duration) (string, error)
+	PublicURL(context.Context, string) (string, error)
 }
 
 type BuildRequest struct {
@@ -82,7 +83,7 @@ type Repository interface {
 	CreatePublishJob(context.Context, domain.PublishJob) error
 	GetPublishJob(context.Context, string) (domain.PublishJob, error)
 	GetPublishJobByIdempotencyKey(context.Context, string) (domain.PublishJob, error)
-	UpdatePublishJob(context.Context, domain.PublishJob) error
+	UpdatePublishJob(context.Context, domain.PublishJob, domain.PublishStatus) error
 	GetPublishPointer(context.Context, string) (domain.PublishPointer, error)
 	SetPublishPointer(context.Context, domain.PublishPointer) error
 	AppendAudit(context.Context, domain.AuditEntry) error

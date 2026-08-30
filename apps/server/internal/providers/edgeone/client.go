@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/httpurl"
 	"yujian.me/server/internal/ports"
 )
 
@@ -108,13 +109,22 @@ func (client *Client) Status(ctx context.Context, buildID string) (ports.BuildRu
 		return ports.BuildRun{}, domain.ErrInvalidInput
 	}
 	endpoint := *client.statusURL
-	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/" + url.PathEscape(buildID)
-	endpoint.RawPath = strings.TrimRight(endpoint.RawPath, "/") + "/" + url.PathEscape(buildID)
+	basePath := strings.TrimRight(endpoint.Path, "/")
+	baseRawPath := strings.TrimRight(endpoint.EscapedPath(), "/")
+	endpoint.Path = basePath + "/" + buildID
+	endpoint.RawPath = baseRawPath + "/" + url.PathEscape(buildID)
 	response, err := client.do(ctx, http.MethodGet, &endpoint, nil, "")
 	if err != nil {
 		return ports.BuildRun{}, err
 	}
-	return decodeBuildRun(response)
+	run, err := decodeBuildRun(response)
+	if err != nil {
+		return ports.BuildRun{}, err
+	}
+	if run.ID != buildID {
+		return ports.BuildRun{}, errors.New("provider response build id mismatch")
+	}
+	return run, nil
 }
 
 func (client *Client) do(ctx context.Context, method string, endpoint *url.URL, body []byte, idempotencyKey string) ([]byte, error) {
@@ -176,12 +186,9 @@ func parseEndpoint(value string, requireHTTPS bool) (*url.URL, error) {
 	if strings.TrimSpace(value) == "" {
 		return nil, errors.New("URL is required")
 	}
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Path == "" && parsed.RawQuery != "" {
+	parsed, err := httpurl.ParseAbsolute(value)
+	if err != nil || parsed.Path == "" && parsed.RawQuery != "" {
 		return nil, errors.New("URL must be absolute")
-	}
-	if parsed.Scheme != "https" && parsed.Scheme != "http" {
-		return nil, errors.New("URL scheme must be http or https")
 	}
 	if requireHTTPS && parsed.Scheme != "https" {
 		return nil, errors.New("HTTPS is required")

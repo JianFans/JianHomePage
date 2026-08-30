@@ -10,6 +10,7 @@ import (
 
 	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/domain"
+	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
 type recordingResult struct{ affected int64 }
@@ -69,6 +70,7 @@ func (rows *recordingRows) Close() error           { return nil }
 type recordingExecutor struct {
 	execQueries []string
 	execArgs    [][]any
+	rowQueries  []string
 	row         Row
 	rows        Rows
 	result      ExecResult
@@ -82,7 +84,8 @@ func (executor *recordingExecutor) ExecContext(_ context.Context, query string, 
 	return executor.result, executor.execErr
 }
 
-func (executor *recordingExecutor) QueryRowContext(context.Context, string, ...any) Row {
+func (executor *recordingExecutor) QueryRowContext(_ context.Context, query string, _ ...any) Row {
+	executor.rowQueries = append(executor.rowQueries, query)
 	return executor.row
 }
 
@@ -113,8 +116,9 @@ func (tx *recordingTx) Rollback(context.Context) error {
 
 func TestContentRepositoryGetVersionMapsRowAndNoRows(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	snapshot := []byte(`{"schemaVersion":"1.0.0"}`)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"ver_1", "draft", int64(2), []byte(`{"schemaVersion":"1.0.0"}`), "sha256:test", false,
+		"ver_1", "draft", int64(2), snapshot, snapshotdata.Checksum(snapshot), false,
 		"editor-1", "editor-1", now, now,
 	}}}
 	repository := NewContentRepository(executor)
@@ -129,6 +133,35 @@ func TestContentRepositoryGetVersionMapsRowAndNoRows(t *testing.T) {
 	executor.row = recordingRow{err: sql.ErrNoRows}
 	if _, err := repository.GetVersion(context.Background(), "missing"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestContentRepositoryCanonicalizesJSONBReadback(t *testing.T) {
+	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	expected := []byte(`{"a":1.23,"schemaVersion":"1.0.0","z":100}`)
+	executor := &recordingExecutor{row: recordingRow{values: []any{
+		"ver_1", "draft", int64(2), []byte(`{"z":100.0,"schemaVersion":"1.0.0","a":1.2300}`), snapshotdata.Checksum(expected), false,
+		"editor-1", "editor-1", now, now,
+	}}}
+
+	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_1")
+	if err != nil {
+		t.Fatalf("get version: %v", err)
+	}
+	if string(version.Snapshot) != string(expected) {
+		t.Fatalf("snapshot was not canonicalized: %s", version.Snapshot)
+	}
+}
+
+func TestContentRepositoryRejectsSnapshotChecksumMismatch(t *testing.T) {
+	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	executor := &recordingExecutor{row: recordingRow{values: []any{
+		"ver_1", "draft", int64(2), []byte(`{"schemaVersion":"1.0.0"}`), "sha256:wrong", false,
+		"editor-1", "editor-1", now, now,
+	}}}
+
+	if _, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_1"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected checksum conflict, got %v", err)
 	}
 }
 
@@ -201,7 +234,7 @@ func TestRepositoryTransactionRollsBackOnCallbackError(t *testing.T) {
 func TestPublishRepositoryReadsHistoricalSuccessfulJob(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"pub_1", "idem-1", "publish", "ver_old", "rel_old", "snapshots/rel/sha.json", "sha256:test", "build-1", "succeeded", "", "publisher", now, now,
+		"pub_1", "idem-1", "publish", "ver_old", "rel_old", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "succeeded", "", "publisher", now, now,
 	}}}
 	job, err := NewPublishRepository(executor).GetSuccessfulPublishByVersion(context.Background(), "ver_old")
 	if err != nil {
@@ -212,6 +245,23 @@ func TestPublishRepositoryReadsHistoricalSuccessfulJob(t *testing.T) {
 	}
 	if len(executor.execQueries) != 0 {
 		t.Fatalf("query should use QueryRow, got exec calls %#v", executor.execQueries)
+	}
+}
+
+func TestPublishRepositoryReadsActiveProductionJob(t *testing.T) {
+	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	executor := &recordingExecutor{row: recordingRow{values: []any{
+		"pub_active", "idem-active", "publish", "ver_new", "rel_new", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "building", "", "publisher", now, now,
+	}}}
+	job, err := NewPublishRepository(executor).GetActivePublishJob(context.Background())
+	if err != nil {
+		t.Fatalf("get active job: %v", err)
+	}
+	if job.ID != "pub_active" || job.Status != domain.PublishBuilding {
+		t.Fatalf("unexpected active job %#v", job)
+	}
+	if len(executor.rowQueries) != 1 || !strings.Contains(executor.rowQueries[0], "status IN ('pending', 'building')") {
+		t.Fatalf("expected active status query, got %#v", executor.rowQueries)
 	}
 }
 
@@ -239,6 +289,34 @@ func TestPublishRepositoryMapsUniqueViolationToConflict(t *testing.T) {
 	err := NewPublishRepository(executor).CreatePublishJob(context.Background(), domain.PublishJob{ID: "pub_1"})
 	if !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected conflict, got %v", err)
+	}
+}
+
+func TestPublishRepositoryUpdateUsesStatusCompareAndSwap(t *testing.T) {
+	executor := &recordingExecutor{result: recordingResult{affected: 1}}
+	job := domain.PublishJob{ID: "pub_1", Status: domain.PublishBuilding}
+	if err := NewPublishRepository(executor).UpdatePublishJob(context.Background(), job, domain.PublishPending); err != nil {
+		t.Fatalf("update publish job: %v", err)
+	}
+	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "WHERE id = $12 AND status = $13") {
+		t.Fatalf("expected status compare-and-swap query, got %#v", executor.execQueries)
+	}
+	if executor.execArgs[0][12] != domain.PublishPending {
+		t.Fatalf("unexpected expected status %#v", executor.execArgs[0])
+	}
+}
+
+func TestPublishRepositoryMapsStaleStatusToConflict(t *testing.T) {
+	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	executor := &recordingExecutor{
+		result: recordingResult{affected: 0},
+		row: recordingRow{values: []any{
+			"pub_1", "idem-1", "publish", "ver_new", "rel_new", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "succeeded", "", "publisher", now, now,
+		}},
+	}
+	job := domain.PublishJob{ID: "pub_1", Status: domain.PublishBuilding}
+	if err := NewPublishRepository(executor).UpdatePublishJob(context.Background(), job, domain.PublishPending); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected stale status conflict, got %v", err)
 	}
 }
 
