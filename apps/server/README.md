@@ -33,6 +33,7 @@
 | `S3_SECRET_ACCESS_KEY` | 空 | 对象存储访问密钥；不得写入日志。 |
 | `S3_SESSION_TOKEN` | 空 | 可选临时凭据 Token。 |
 | `S3_USE_PATH_STYLE` | `false` | 服务商要求 path-style URL 时设置为 `true`。 |
+| `MEDIA_PUBLIC_BASE_URL` | 空 | 生产环境必填；素材的稳定 HTTPS 公开基址，例如接入 EdgeOne 的 `https://media.yujian.me`。不得包含凭据、查询参数或片段。 |
 | `EDGEONE_TRIGGER_URL` | 空 | EdgeOne 构建触发端点。 |
 | `EDGEONE_STATUS_URL` | 空 | EdgeOne 构建状态端点，按 `/{buildId}` 查询。 |
 | `EDGEONE_TOKEN` | 空 | 仅通过环境变量提供的 Bearer Token。 |
@@ -59,7 +60,7 @@ $env:ALLOW_DEV_IDENTITY = "true"
 go run ./cmd/api
 ```
 
-服务入口提供 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 checksum。生产环境不会自动降级到内存仓储；启动时按顺序加载配置、连接并探测 PostgreSQL、在同一事务中执行迁移、构造 S3 与 EdgeOne 适配器、注册路由并启动 HTTP Server。任一步失败都会关闭已打开的数据库并拒绝启动。
+服务入口提供 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 SHA-256；上传成功后可通过与内容契约一致的 `/media/*` 路径读取，便于本地管理端直接预览。生产环境不会自动降级到内存仓储；启动时按顺序加载配置、连接并探测 PostgreSQL、在同一事务中执行迁移、构造 S3 与 EdgeOne 适配器、注册路由并启动 HTTP Server。任一步失败都会关闭已打开的数据库并拒绝启动。
 
 生产运行示例：
 
@@ -75,6 +76,7 @@ $env:S3_REGION = "ap-singapore"
 $env:S3_BUCKET = "yujian-media"
 $env:S3_ACCESS_KEY_ID = "..."
 $env:S3_SECRET_ACCESS_KEY = "..."
+$env:MEDIA_PUBLIC_BASE_URL = "https://media.yujian.me"
 $env:EDGEONE_TRIGGER_URL = "https://gateway.example.com/builds"
 $env:EDGEONE_STATUS_URL = "https://gateway.example.com/builds"
 $env:EDGEONE_TOKEN = "..."
@@ -82,6 +84,8 @@ go run ./cmd/api
 ```
 
 EdgeOne 可将 `/api/*` 回源至该进程。管理端跨域请求只接受 `ADMIN_ALLOWED_ORIGINS` 中的精确 Origin；未知来源和非 HTTPS 生产来源会被拒绝。
+
+COS 桶还需单独配置浏览器直传 CORS：Origin 与 `ADMIN_ALLOWED_ORIGINS` 保持一致，允许 `PUT`、`HEAD`，并放行 `Content-Type`、`X-Amz-Checksum-Sha256` 请求头。公开读取建议通过 `MEDIA_PUBLIC_BASE_URL` 对应的 EdgeOne 域名，不直接暴露带凭据或签名参数的存储端点。
 
 ## 管理 API 示例
 
@@ -105,7 +109,9 @@ Content-Type: application/json
 {"snapshot":{}}
 ```
 
-发布和回滚必须携带长度至少为 8 的 `Idempotency-Key`。重复使用同一个键只返回同一个逻辑任务，不重复写快照或触发构建。
+创建素材上传时必须提交 `sha256:<64 位十六进制摘要>`。客户端上传至签名 URL 时还需原样携带响应中的校验头；完成上传后，素材响应的 `src` 是可直接写入内容快照的稳定公开地址。
+
+发布和回滚必须携带长度至少为 8 的 `Idempotency-Key`。重复使用同一个键只返回同一个逻辑任务，不重复写快照或触发构建。同一时刻只允许一个生产发布或回滚任务处于 `pending`、`building` 状态。
 
 错误响应统一为：
 
@@ -129,6 +135,8 @@ Content-Type: application/json
 6. 构建失败只标记任务失败，保留上一成功指针。
 7. 回滚重新触发历史快照，不覆盖历史对象。
 
+服务启动后每 15 秒自动对账一次活动任务：`pending` 任务会安全重试同一个构建幂等键，`building` 任务会自动查询 EdgeOne 并完成指针切换。管理端的手动刷新接口仅用于即时查看，不是发布完成的必要条件。
+
 通知器失败只产生告警，不回滚已经成功切换的发布指针。
 
 ## EdgeOne 适配器
@@ -151,6 +159,8 @@ Content-Type: application/json
 
 - 所有管理路径使用 Bearer 鉴权，写操作由 RBAC 再次校验。
 - 请求正文启用未知字段拒绝和大小上限；外部链接及媒体资源由内容契约校验。
-- 上传使用 15 分钟签名 URL，完成时再次校验实际大小、MIME 和 checksum。
+- 上传使用 15 分钟签名 URL，签名和完成确认都校验 SHA-256、实际大小与 MIME；不信任客户端自定义 metadata 中的摘要。
+- `MEDIA_PUBLIC_BASE_URL` 应指向 EdgeOne 加速的 COS 公开读取域名。内容快照只保存该稳定地址，不保存短期签名 URL 或服务商内部端点。
+- 首次部署包含 `0003_publish_target_freeze` 的版本前，应等待 `pending`、`building` 发布任务结束。迁移会自动冻结 checksum 一致的单个活跃任务；如果检测到多个任务或历史数字格式导致 checksum 不一致，服务会拒绝启动。此时应先用旧版本确认并结束活跃任务，再重新部署；不得手改 checksum 或跳过迁移。
 - 审核、发布、回滚、资源删除都写入审计日志。
 - 生产部署应通过 HTTPS、密钥服务和独立数据库运行，并为 `/healthz` 配置存活探针。

@@ -58,7 +58,7 @@ pnpm verify
 
 静态输出位于 `apps/web/.output/public`。EdgeOne Pages 的构建参数、缓存策略和冒烟检查见 [apps/web/EDGEONE.md](apps/web/EDGEONE.md)。
 
-静态构建默认读取 `content/fixtures/homepage.json`。发布工作流可设置 `CONTENT_SNAPSHOT_PATH`（相对仓库根目录或绝对路径）注入已经审核的不可变快照；构建会在启动阶段执行 canonical JSON Schema 和跨记录引用校验。
+本地静态构建默认读取 `content/fixtures/homepage.json`。EdgeOne 正式构建使用 `pnpm verify:edgeone`，必须通过 `CONTENT_SNAPSHOT_PATH`（相对仓库根目录或绝对路径）注入已经审核的不可变快照，并拒绝直接指向开发 fixture 的路径。构建会在启动阶段执行 canonical JSON Schema 和跨记录引用校验。
 
 ## 生产接入
 
