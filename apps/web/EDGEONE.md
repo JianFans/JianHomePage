@@ -24,7 +24,7 @@
 - 构建开始后不再修改同一快照。
 - 回滚时重新构建或恢复指定快照，不读取数据库当前状态。
 - 首页浏览器端不得根据 `CONTENT_SNAPSHOT_PATH` 或服务商 API 动态取数。
-- 素材 `src` 使用内容服务返回的稳定 HTTPS 地址，建议统一位于 EdgeOne 加速的 `https://media.yujian.me`；不得把 COS 内部端点或短期签名 URL 写入快照。
+- 素材 `src` 使用内容服务返回并持久化的稳定 HTTPS 地址，建议统一位于 EdgeOne 加速的 `https://media.yujian.me`；不得把 COS 内部端点或短期签名 URL 写入快照，发布时也不得按当前源站配置重算历史地址。
 
 构建启动时会读取并解析选定快照；文件不存在、JSON 无效、不符合 canonical JSON Schema、包含非法 URL 或存在悬空内容引用时直接失败，避免发布错误快照。
 
@@ -68,6 +68,6 @@ GET https://yujian.me/sitemap.xml  -> 200, application/xml
 
 ## 动态服务接入
 
-后续 Go 服务建议使用独立源站域名，并在 EdgeOne 中配置 `/api/*` 或专用子域名的回源规则。`MEDIA_PUBLIC_BASE_URL` 配置为 EdgeOne 媒体域名，源站可使用腾讯云 COS；域名、对象存储和构建触发器都通过适配器配置，不把腾讯云 SDK 类型写入内容领域模型，以便迁移服务商。
+后续 Go 服务建议使用独立源站域名，并在 EdgeOne 中配置 `/api/*` 或专用子域名的回源规则。`MEDIA_PUBLIC_BASE_URL` 配置为长期稳定的 EdgeOne 媒体域名，源站可使用腾讯云 COS；域名、对象存储和构建触发器都通过适配器配置，不把腾讯云 SDK 类型写入内容领域模型。迁移服务商时切换 EdgeOne 回源并保持公开媒体域名不变，历史快照无需改写。
 
 发布服务会在后台自动对账 EdgeOne 构建任务。即使管理端关闭，`pending` 任务仍会按原幂等键恢复，`building` 任务也会继续查询并完成生产指针切换；管理端刷新操作只用于缩短状态展示延迟。

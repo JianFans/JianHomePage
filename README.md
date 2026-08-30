@@ -12,7 +12,7 @@
 - `zh-CN` / `en` 双语：优先读取 `localStorage`，其次读取浏览器语言，无法识别时回退到默认语言并显示非阻断提示。
 - 单实例音乐试听：封面播放入口、底部 Dock、进度控制、上一首/下一首和平台降级入口。
 - 静态 SEO：canonical、Open Graph、JSON-LD、`robots.txt` 和 `sitemap.xml`。
-- Nuxt 管理端：快照编辑、审核、素材上传、发布状态和回滚操作台。
+- Nuxt 管理端：快照编辑、审核、发布状态和回滚操作台。
 - Go 内容服务：PostgreSQL、OIDC、S3 兼容对象存储、EdgeOne 构建触发与后台任务对账。
 - 验证体系：ESLint、TypeScript、Vitest 覆盖率、Playwright、axe、Go test、Go vet、Go 覆盖率、容器检查、静态产物校验和独立的生产依赖审计。
 
@@ -23,7 +23,7 @@
 | 模块 | 技术 | 职责 |
 | --- | --- | --- |
 | `apps/web` | Nuxt、Vue、Vue I18n | 从构建快照生成公开静态站点 |
-| `apps/admin` | Nuxt、Vue | 内容编辑、审核、素材与发布操作台 |
+| `apps/admin` | Nuxt、Vue | 内容编辑、审核与发布操作台 |
 | `apps/server` | Go | 内容版本、素材、鉴权、审计和发布编排 |
 | `packages/schema` | JSON Schema、TypeScript | 内容快照的唯一规范及生成类型 |
 | `content/fixtures` | JSON | 仅供本地开发和测试的样例快照 |
@@ -48,7 +48,7 @@
 - `generated.ts`、`generated.go` 等生成文件不得手工修改。
 - 公开页面必须从构建时快照渲染，不能在浏览器中调用运行时内容 API。
 - 正式构建必须使用已审核快照，不能直接使用 `content/fixtures`。
-- 素材地址使用稳定 HTTPS 地址或仓库内 `/media/*` 路径，不能保存短期签名 URL。
+- 素材地址使用稳定 HTTPS 地址或仓库内 `/media/*` 路径，不能保存短期签名 URL。生产地址在素材创建时持久化，后续发布不根据当前服务商配置重算。
 - QQ 音乐、网易云音乐、Bilibili、微博、抖音等第三方站点只作为外链目标。
 - PostgreSQL、OIDC、S3/COS 与 EdgeOne 通过明确接口和配置接入，领域层不依赖服务商 SDK 类型。
 
@@ -178,7 +178,7 @@ docker rm --force yujian-server-local
 
 生产运行时通过平台密钥和环境变量注入真实依赖，不把 `.env`、凭据或公开站静态产物写入镜像。
 
-首次部署包含 `0003_publish_target_freeze.sql` 的版本前，必须确认没有 `pending` 或 `building` 发布任务。不要手工修改 checksum，也不要跳过迁移。
+首次部署包含 `0003_publish_target_freeze.sql` 的版本前，必须确认没有 `pending` 或 `building` 发布任务。升级已有数据库时，`0004_asset_source_url.sql` 会使用当前 `MEDIA_PUBLIC_BASE_URL` 回填旧素材；迁移完成前不得切换公开媒体域名。为兼容滚动升级和旧二进制回滚，本版本暂不把 `source_url` 收紧为 `NOT NULL`；旧实例全部退出并度过回滚窗口后，再由后续迁移完成约束收紧。不要手工修改 checksum，也不要跳过迁移。
 
 ### 上线检查清单
 
@@ -187,6 +187,7 @@ docker rm --force yujian-server-local
 - 前端、Go、覆盖率、E2E、容器扫描和生产依赖审计通过。
 - 已准备非 fixture 的审核快照并配置 `CONTENT_SNAPSHOT_PATH`。
 - PostgreSQL、OIDC、COS、媒体域名和 EdgeOne 参数已配置。
+- `MEDIA_PUBLIC_BASE_URL` 指向长期稳定的 EdgeOne 媒体域名；迁移对象存储源站时保持该公开域名不变。
 - COS 直传 CORS 允许管理端 Origin、`PUT`、`HEAD`、`Content-Type` 和 `X-Amz-Checksum-Sha256`。
 - EdgeOne 已配置 `yujian.me`、TLS、`/api/*` 回源和媒体域名。
 - 数据库迁移、`GET /healthz`、首页、素材、发布和回滚已在真实环境冒烟。
