@@ -23,6 +23,14 @@ updates:
         update-types:
           - minor
           - patch
+    # @nuxt/test-utils 4.x 仅兼容 Vitest 4，支持 Vitest 5 后再移除。
+    ignore:
+      - dependency-name: vitest
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "@vitest/coverage-v8"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: gomod
     directory: /apps/server

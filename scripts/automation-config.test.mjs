@@ -84,6 +84,20 @@ test('Dependabot 覆盖所有依赖生态并按周执行', async () => {
     assert.ok(updates.has(key), `Dependabot 缺少 ${key}`)
     assert.equal(updates.get(key).schedule.interval, 'weekly')
   }
+
+  const npmUpdate = updates.get('npm:/')
+  const ignoredMajorUpdates = new Map(npmUpdate.ignore.map(rule => [
+    rule['dependency-name'],
+    rule['update-types'],
+  ]))
+
+  for (const dependency of ['vitest', '@vitest/coverage-v8']) {
+    assert.deepEqual(
+      ignoredMajorUpdates.get(dependency),
+      ['version-update:semver-major'],
+      `Dependabot 应暂缓 ${dependency} 的不兼容主版本升级`,
+    )
+  }
 })
 
 test('Go API 镜像采用多阶段非 root 构建并排除无关文件', async () => {
