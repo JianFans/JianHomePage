@@ -28,7 +28,7 @@
     "@nuxt/test-utils": "4.2.0",
     "@playwright/test": "1.62.1",
     "@types/node": "26.4.1",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "5.0.0",
     "@vue/test-utils": "2.5.0",
     "happy-dom": "20.14.0",
     "vitest": "4.1.11",
