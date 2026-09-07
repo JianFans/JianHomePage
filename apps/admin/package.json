@@ -20,7 +20,7 @@
     "@vitest/coverage-v8": "4.1.11",
     "@vue/test-utils": "2.5.0",
     "happy-dom": "20.14.0",
-    "vitest": "4.1.11",
+    "vitest": "5.0.0",
     "vue-tsc": "3.3.11"
   }
 }
