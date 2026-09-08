@@ -17,6 +17,14 @@ ajv.addFormat('date-time', { type: 'string', validate: isRFC3339DateTime })
 ajv.addFormat('https-url', { type: 'string', validate: isHTTPSURL })
 const validateSchema = ajv.compile(schema)
 
+export type ContentSnapshotIssueSource = 'schema' | 'semantic'
+
+export interface ContentSnapshotIssue {
+  path: string
+  source: ContentSnapshotIssueSource
+  code: string
+}
+
 export class ContentSnapshotValidationError extends Error {
   readonly issues: readonly string[]
 
@@ -28,10 +36,18 @@ export class ContentSnapshotValidationError extends Error {
 }
 
 export function validateContentSnapshot(value: unknown): readonly string[] {
+  return diagnoseContentSnapshot(value).map(issue => issue.path)
+}
+
+export function diagnoseContentSnapshot(value: unknown): readonly ContentSnapshotIssue[] {
   if (!validateSchema(value)) {
-    return (validateSchema.errors ?? []).map(formatSchemaIssue)
+    return (validateSchema.errors ?? []).map(error => ({
+      path: formatSchemaIssue(error),
+      source: 'schema',
+      code: error.keyword,
+    }))
   }
-  return validateSemantics(value as unknown as YujianContentSnapshot)
+  return diagnoseSemantics(value as unknown as YujianContentSnapshot)
 }
 
 export function assertContentSnapshot(value: unknown): asserts value is YujianContentSnapshot {
@@ -53,8 +69,8 @@ function formatSchemaIssue(error: ErrorObject): string {
   return error.instancePath || '/'
 }
 
-function validateSemantics(snapshot: YujianContentSnapshot): string[] {
-  const issues: string[] = []
+function diagnoseSemantics(snapshot: YujianContentSnapshot): ContentSnapshotIssue[] {
+  const issues: ContentSnapshotIssue[] = []
   const assets = indexRecords(snapshot.assets, '/assets', issues)
   const heroes = indexRecords(snapshot.heroSlides, '/heroSlides', issues)
   const releases = indexRecords(snapshot.releases, '/releases', issues)
@@ -81,11 +97,11 @@ function validateSemantics(snapshot: YujianContentSnapshot): string[] {
   return issues
 }
 
-function indexRecords<T extends { id: string }>(records: readonly T[], base: string, issues: string[]): Map<string, T> {
+function indexRecords<T extends { id: string }>(records: readonly T[], base: string, issues: ContentSnapshotIssue[]): Map<string, T> {
   const result = new Map<string, T>()
   records.forEach((record, index) => {
     if (result.has(record.id)) {
-      issues.push(`${base}/${index}/id`)
+      addSemanticIssue(issues, `${base}/${index}/id`, 'duplicate-id')
     } else {
       result.set(record.id, record)
     }
@@ -153,12 +169,12 @@ function renderedContentIds(snapshot: YujianContentSnapshot, indexes: HomepageIn
   return result
 }
 
-function validateHomepage(snapshot: YujianContentSnapshot, indexes: HomepageIndexes, issues: string[]) {
+function validateHomepage(snapshot: YujianContentSnapshot, indexes: HomepageIndexes, issues: ContentSnapshotIssue[]) {
   snapshot.homepage.sections.forEach((section, sectionIndex) => {
     const base = `/homepage/sections/${sectionIndex}/itemIds`
     if (section.type === 'artist') {
       section.itemIds.forEach((id, itemIndex) => {
-        if (id !== snapshot.artist.id) issues.push(`${base}/${itemIndex}`)
+        if (id !== snapshot.artist.id) addSemanticIssue(issues, `${base}/${itemIndex}`, 'missing-reference')
       })
       return
     }
@@ -180,7 +196,7 @@ function validateHeroes(
   assets: ReadonlyMap<string, Asset>,
   releases: ReadonlyMap<string, Release>,
   contentIds: ReadonlySet<string>,
-  issues: string[],
+  issues: ContentSnapshotIssue[],
 ) {
   records.forEach((record, index) => {
     const base = `/heroSlides/${index}`
@@ -196,7 +212,7 @@ function validateReleases(
   records: readonly Release[],
   assets: ReadonlyMap<string, Asset>,
   tracks: ReadonlyMap<string, Track>,
-  issues: string[],
+  issues: ContentSnapshotIssue[],
 ) {
   records.forEach((record, index) => {
     const base = `/releases/${index}`
@@ -204,7 +220,7 @@ function validateReleases(
     record.trackIds.forEach((trackId, trackIndex) => {
       requireReference(trackId, tracks, `${base}/trackIds/${trackIndex}`, issues)
       const track = tracks.get(trackId)
-      if (track && track.releaseId !== record.id) issues.push(`${base}/trackIds/${trackIndex}`)
+      if (track && track.releaseId !== record.id) addSemanticIssue(issues, `${base}/trackIds/${trackIndex}`, 'missing-reference')
     })
   })
 }
@@ -213,7 +229,7 @@ function validateTracks(
   records: readonly Track[],
   assets: ReadonlyMap<string, Asset>,
   releases: ReadonlyMap<string, Release>,
-  issues: string[],
+  issues: ContentSnapshotIssue[],
 ) {
   records.forEach((record, index) => {
     const base = `/tracks/${index}`
@@ -222,7 +238,7 @@ function validateTracks(
   })
 }
 
-function validateVideos(records: readonly Video[], assets: ReadonlyMap<string, Asset>, issues: string[]) {
+function validateVideos(records: readonly Video[], assets: ReadonlyMap<string, Asset>, issues: ContentSnapshotIssue[]) {
   records.forEach((record, index) => {
     const base = `/videos/${index}`
     requireAssetKind(record.posterAssetId, assets, ['image', 'gif'], `${base}/posterAssetId`, issues)
@@ -230,7 +246,7 @@ function validateVideos(records: readonly Video[], assets: ReadonlyMap<string, A
   })
 }
 
-function validateEvents(records: readonly Event[], assets: ReadonlyMap<string, Asset>, issues: string[]) {
+function validateEvents(records: readonly Event[], assets: ReadonlyMap<string, Asset>, issues: ContentSnapshotIssue[]) {
   records.forEach((record, index) => {
     if (record.posterAssetId) requireAssetKind(record.posterAssetId, assets, ['image', 'gif'], `/events/${index}/posterAssetId`, issues)
   })
@@ -240,7 +256,7 @@ function validateMoments(
   records: readonly Moment[],
   assets: ReadonlyMap<string, Asset>,
   contentIds: ReadonlySet<string>,
-  issues: string[],
+  issues: ContentSnapshotIssue[],
 ) {
   records.forEach((record, index) => {
     requireAssetKind(record.assetId, assets, ['image', 'gif'], `/moments/${index}/assetId`, issues)
@@ -252,13 +268,13 @@ function validateInternalTarget(
   target: HeroSlide['target'] | Moment['target'],
   contentIds: ReadonlySet<string>,
   path: string,
-  issues: string[],
+  issues: ContentSnapshotIssue[],
 ) {
-  if (target?.kind === 'internal' && !contentIds.has(target.contentId)) issues.push(path)
+  if (target?.kind === 'internal' && !contentIds.has(target.contentId)) addSemanticIssue(issues, path, 'hidden-target')
 }
 
-function requireReference(id: string, records: ReadonlyMap<string, unknown>, path: string, issues: string[]) {
-  if (!records.has(id)) issues.push(path)
+function requireReference(id: string, records: ReadonlyMap<string, unknown>, path: string, issues: ContentSnapshotIssue[]) {
+  if (!records.has(id)) addSemanticIssue(issues, path, 'missing-reference')
 }
 
 function requireAssetKind(
@@ -266,10 +282,14 @@ function requireAssetKind(
   assets: ReadonlyMap<string, Asset>,
   allowedKinds: readonly Asset['kind'][],
   path: string,
-  issues: string[],
+  issues: ContentSnapshotIssue[],
 ) {
   const asset = assets.get(id)
-  if (!asset || !allowedKinds.includes(asset.kind)) issues.push(path)
+  if (!asset || !allowedKinds.includes(asset.kind)) addSemanticIssue(issues, path, 'asset-kind')
+}
+
+function addSemanticIssue(issues: ContentSnapshotIssue[], path: string, code: string): void {
+  issues.push({ path, source: 'semantic', code })
 }
 
 function escapePointer(value: string): string {

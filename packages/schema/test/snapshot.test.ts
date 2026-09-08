@@ -6,7 +6,7 @@ import Ajv2020 from 'ajv/dist/2020.js'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import schema from '../schema/content-snapshot.schema.json'
-import { validateContentSnapshot } from '../src/validate'
+import { diagnoseContentSnapshot, validateContentSnapshot } from '../src/validate'
 
 const fixture = JSON.parse(
   readFileSync(new URL('../../../content/fixtures/homepage.json', import.meta.url), 'utf8'),
@@ -95,6 +95,33 @@ describe('首页快照契约', () => {
     asset.mimeType = 'image/webp'
 
     expect(validateContentSnapshot(invalid)).toContain(`/tracks/${trackIndex}/previewAssetId`)
+  })
+
+  it('为 Schema 和语义错误返回稳定的结构化诊断', () => {
+    const missing = structuredClone(fixture)
+    delete missing.site.brand
+
+    expect(diagnoseContentSnapshot(missing)).toContainEqual({
+      path: '/site/brand',
+      source: 'schema',
+      code: 'required',
+    })
+
+    const brokenReference = structuredClone(fixture)
+    brokenReference.releases[0].coverAssetId = 'asset_missing'
+
+    expect(diagnoseContentSnapshot(brokenReference)).toContainEqual({
+      path: '/releases/0/coverAssetId',
+      source: 'semantic',
+      code: 'asset-kind',
+    })
+  })
+
+  it('保留路径数组校验 API', () => {
+    const invalid = structuredClone(fixture)
+    invalid.releases[0].coverAssetId = 'asset_missing'
+
+    expect(validateContentSnapshot(invalid)).toContain('/releases/0/coverAssetId')
   })
 
   it('拒绝把音频素材用作封面', () => {
