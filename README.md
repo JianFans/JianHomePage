@@ -12,7 +12,7 @@
 - `zh-CN` / `en` 双语：优先读取 `localStorage`，其次读取浏览器语言，无法识别时回退到默认语言并显示非阻断提示。
 - 单实例音乐试听：封面播放入口、底部 Dock、进度控制、上一首/下一首和平台降级入口。
 - 静态 SEO：canonical、Open Graph、JSON-LD、`robots.txt` 和 `sitemap.xml`。
-- Nuxt 管理端：快照编辑、审核、发布状态和回滚操作台。
+- Nuxt 管理端：快照即时契约诊断、内容摘要、本地导入导出、审核、发布状态和回滚操作台。
 - Go 内容服务：PostgreSQL、OIDC、S3 兼容对象存储、EdgeOne 构建触发与后台任务对账。
 - 验证体系：ESLint、TypeScript、Vitest 覆盖率、Playwright、axe、Go test、Go vet、Go 覆盖率、容器检查、静态产物校验和独立的生产依赖审计。
 
@@ -105,6 +105,8 @@ go run ./cmd/api
 | `pnpm verify:edgeone` | 使用正式内容快照执行 EdgeOne 发布门禁 |
 | `pnpm fixture:images` | 重新生成开发图片 fixture |
 | `pnpm fixture:audio` | 重新生成开发音频 fixture |
+
+管理端编辑器直接复用 `packages/schema` 的 canonical 校验规则。只有完整通过 Schema 与跨记录语义校验的快照才能保存或导出；本地 JSON 导入不会上传文件，也不会把会话 Token、API 地址或发布状态写入导出内容。详细限制见 [apps/admin/README.md](apps/admin/README.md)。
 
 ## 内容快照
 
