@@ -154,7 +154,7 @@ expect(valid.summary).toMatchObject({
   videos: 3,
   events: 2,
   moments: 3,
-  assets: 13,
+  assets: 15,
   previews: 3,
 })
 
@@ -316,7 +316,7 @@ git commit --no-gpg-sign -m "feat(内容工作台): 接入实时校验状态"
 测试合法摘要和错误诊断两种状态：
 
 ```ts
-expect(validWrapper.get('[data-testid="snapshot-summary"]').text()).toContain('13')
+expect(validWrapper.get('[data-testid="snapshot-summary"]').text()).toContain('15')
 expect(invalidWrapper.get('[data-testid="snapshot-issues"]').text()).toContain('/site/brand')
 expect(invalidWrapper.findAll('[data-testid="snapshot-issue"]')).toHaveLength(8)
 ```
