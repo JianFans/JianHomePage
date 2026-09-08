@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { Download, FileUp } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
+import SnapshotInsights from '../components/SnapshotInsights.vue'
 import { useAdminWorkspace } from '../composables/useAdminWorkspace'
 import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
 
 const workspace = reactive(useAdminWorkspace())
 const locale = ref<'zh-CN' | 'en'>('zh-CN')
+const snapshotFileInput = ref<HTMLInputElement | null>(null)
 
 const copy = computed(() => locale.value === 'en'
   ? {
@@ -33,6 +36,10 @@ const copy = computed(() => locale.value === 'en'
       noJob: 'No publish job',
       tokenHint: 'Kept in this tab only',
       invalidJSON: 'JSON needs an object root',
+      importSnapshot: 'Import JSON',
+      exportSnapshot: 'Export snapshot',
+      validSnapshot: 'Valid',
+      issueCount: (count: number) => `${count} issues`,
     }
   : {
       brand: '遇健我',
@@ -60,6 +67,10 @@ const copy = computed(() => locale.value === 'en'
       noJob: '暂无发布任务',
       tokenHint: '仅保存在当前标签页',
       invalidJSON: 'JSON 根节点必须是对象',
+      importSnapshot: '导入 JSON',
+      exportSnapshot: '导出快照',
+      validSnapshot: '有效',
+      issueCount: (count: number) => `${count} 项错误`,
     })
 
 const statusLabel = computed(() => workspace.version?.status || '—')
@@ -67,10 +78,38 @@ const publishStatusLabel = computed(() => workspace.publishJob?.status || copy.v
 const previewText = computed(() => workspace.parsedEditor.snapshot
   ? JSON.stringify(workspace.parsedEditor.snapshot, null, 2)
   : workspace.parsedEditor.error || copy.value.invalidJSON)
+const validationLabel = computed(() => workspace.editorAnalysis.issues.length
+  ? copy.value.issueCount(workspace.editorAnalysis.issues.length)
+  : copy.value.validSnapshot)
 
 function toggleLocale() {
   locale.value = locale.value === 'zh-CN' ? 'en' : 'zh-CN'
   if (import.meta.client) persistAdminLocale(locale.value)
+}
+
+function openSnapshotImport() {
+  snapshotFileInput.value?.click()
+}
+
+async function handleSnapshotFile(event: Event) {
+  const input = event.currentTarget as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) await workspace.importSnapshot(file)
+  input.value = ''
+}
+
+function downloadSnapshot() {
+  const exported = workspace.exportSnapshot()
+  if (!exported) return
+  const url = URL.createObjectURL(new Blob([exported.contents], { type: exported.mimeType }))
+  try {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = exported.filename
+    anchor.click()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }
 
 onMounted(() => {
@@ -205,12 +244,53 @@ onMounted(() => {
                 {{ copy.editor }}
               </h2>
             </div>
-            <div
-              v-if="workspace.version"
-              class="meta-stack"
-            >
-              <span>{{ copy.revision }} {{ workspace.version.revision }}</span>
-              <span>{{ statusLabel }}</span>
+            <div class="editor-heading-actions">
+              <div
+                v-if="workspace.version"
+                class="meta-stack"
+              >
+                <span>{{ copy.revision }} {{ workspace.version.revision }}</span>
+                <span>{{ statusLabel }}</span>
+              </div>
+              <div class="editor-tools">
+                <span
+                  class="status-pill"
+                  :class="{ 'status-pill--valid': !workspace.editorAnalysis.issues.length }"
+                  data-testid="snapshot-validation"
+                  aria-live="polite"
+                >{{ validationLabel }}</span>
+                <button
+                  class="icon-tool"
+                  type="button"
+                  :aria-label="copy.importSnapshot"
+                  :title="copy.importSnapshot"
+                  data-testid="snapshot-import"
+                  @click="openSnapshotImport"
+                >
+                  <FileUp :size="17" aria-hidden="true" />
+                </button>
+                <button
+                  class="icon-tool"
+                  type="button"
+                  :aria-label="copy.exportSnapshot"
+                  :title="copy.exportSnapshot"
+                  :disabled="!workspace.editorAnalysis.snapshot"
+                  data-testid="snapshot-export"
+                  @click="downloadSnapshot"
+                >
+                  <Download :size="17" aria-hidden="true" />
+                </button>
+                <input
+                  ref="snapshotFileInput"
+                  class="sr-only"
+                  type="file"
+                  accept="application/json,.json"
+                  :aria-label="copy.importSnapshot"
+                  tabindex="-1"
+                  data-testid="snapshot-file-input"
+                  @change="handleSnapshotFile"
+                >
+              </div>
             </div>
           </div>
           <textarea
@@ -261,6 +341,10 @@ onMounted(() => {
             </div>
             <span class="preview-badge">JSON</span>
           </div>
+          <SnapshotInsights
+            :analysis="workspace.editorAnalysis"
+            :locale="locale"
+          />
           <pre
             class="json-preview"
             data-testid="snapshot-preview"
@@ -399,7 +483,7 @@ h2 { margin-bottom: 0; font-size: 1rem; font-weight: 500; }
 .connection { margin-bottom: 1rem; }
 .connection-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
 label { display: grid; gap: .45rem; color: var(--muted); font-size: .78rem; }
-label small { color: #697272; }
+label small { color: var(--muted); }
 input, textarea { width: 100%; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-radius: 0; padding: .7rem .75rem; }
 input:focus, textarea:focus { border-color: var(--accent); outline: 0; }
 .inline-control { display: flex; gap: .5rem; }
@@ -409,11 +493,17 @@ input:focus, textarea:focus { border-color: var(--accent); outline: 0; }
 .json-editor { resize: vertical; }
 .json-preview { overflow: auto; margin: 0; color: #b6c0bd; background: #0f1314; border: 1px solid var(--border); padding: 1rem; white-space: pre-wrap; word-break: break-word; }
 .preview-badge, .status-pill { color: var(--muted); border: 1px solid var(--border); padding: .25rem .45rem; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+.status-pill--valid { color: #aec3b5; border-color: #496455; }
 .status-pill--succeeded { color: #aec3b5; border-color: #496455; }
 .status-pill--failed { color: var(--danger); border-color: #714d47; }
 .status-dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--border); }
 .status-dot--active { background: var(--warm); }
 .meta-stack { display: grid; gap: .2rem; text-align: right; color: var(--muted); font-size: .72rem; }
+.editor-heading-actions { display: flex; align-items: start; justify-content: end; gap: .75rem; }
+.editor-tools { display: flex; align-items: center; gap: .4rem; }
+.icon-tool { width: 2.75rem; min-width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border: 1px solid var(--border); color: var(--muted); background: transparent; }
+.icon-tool:hover:not(:disabled) { color: var(--text); border-color: var(--accent); background: var(--surface-soft); }
+.icon-tool:disabled { cursor: not-allowed; opacity: .38; }
 .action-row { display: flex; gap: .55rem; margin-top: 1rem; }
 .action-row--wrap { flex-wrap: wrap; }
 .button { min-height: 2.75rem; border: 1px solid var(--border); background: transparent; color: var(--text); padding: .6rem .85rem; }
@@ -437,6 +527,7 @@ input:focus, textarea:focus { border-color: var(--accent); outline: 0; }
   .workspace { width: min(100% - 1.5rem, 90rem); padding-top: 1.5rem; }
   .topbar { align-items: start; flex-direction: column; }
   .connection-grid, .workspace-grid, .workflow-grid { grid-template-columns: 1fr; }
+  .editor-heading-actions { flex-wrap: wrap; }
   .json-editor, .json-preview { min-height: 20rem; }
 }
 </style>
