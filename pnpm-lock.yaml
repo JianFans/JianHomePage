@@ -70,8 +70,8 @@ importers:
   apps/web:
     dependencies:
       '@lucide/vue':
-        specifier: 1.40.0
-        version: 1.40.0(vue@3.5.42(typescript@6.0.3))
+        specifier: 1.41.0
+        version: 1.41.0(vue@3.5.42(typescript@6.0.3))
       '@nuxt/image':
         specifier: 2.1.0
         version: 2.1.0(@types/node@26.4.1)(magic-string@1.2.3)(magicast@0.5.4)(rolldown@1.2.6)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.6)(rollup@4.63.1)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0)))(unstorage@1.17.5(db0@0.3.4)(ioredis@5.11.1(supports-color@10.2.2)))
@@ -743,8 +743,8 @@ packages:
   '@kwsites/promise-deferred@1.1.1':
     resolution: {integrity: sha512-GaHYm+c0O9MjZRu0ongGBRbinu8gVAMd2UZjji6jVmqKtZluZnptXGWhz1E8j8D2HJ3f/yMxKAUC0b+57wncIw==}
 
-  '@lucide/vue@1.40.0':
-    resolution: {integrity: sha512-d4Qpgu0yn5SqebZm62ySuIWeXq1QFBfNcjhxIVspxa16OMQCnQGNpwim+pyj1CIz9DiTPhGLoIHRhgKV068j2A==}
+  '@lucide/vue@1.41.0':
+    resolution: {integrity: sha512-ciHtudHTeqMDzJKPI36AGboypCk8Jz3qFin3oU0nJfPc5MwXmqLXIEQvXE+yI6Sz5SnxVqREgm8rVN4KdDlnVQ==}
     peerDependencies:
       vue: '>=3.0.1'
 
@@ -4602,7 +4602,7 @@ snapshots:
 
   '@kwsites/promise-deferred@1.1.1': {}
 
-  '@lucide/vue@1.40.0(vue@3.5.42(typescript@6.0.3))':
+  '@lucide/vue@1.41.0(vue@3.5.42(typescript@6.0.3))':
     dependencies:
       vue: 3.5.42(typescript@6.0.3)
 
