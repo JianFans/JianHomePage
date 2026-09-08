@@ -1,8 +1,11 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { defineComponent, reactive } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import fixtureData from '../../../../content/fixtures/homepage.json'
 import { useAdminWorkspace } from '../../composables/useAdminWorkspace'
 import type { AdminPublishJob, AdminVersion } from '../../utils/admin-api'
+
+const fixture = fixtureData as unknown as Record<string, unknown>
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -27,7 +30,7 @@ function version(overrides: Partial<AdminVersion> = {}): AdminVersion {
     id: 'ver_1',
     status: 'draft',
     revision: 1,
-    snapshot: { schemaVersion: '1.0.0' },
+    snapshot: structuredClone(fixture),
     checksum: 'sha256:version',
     ...overrides,
   }
@@ -61,6 +64,43 @@ describe('管理工作区', () => {
     expect(workspace.canSave).toBe(false)
   })
 
+  it('分析、导入和导出完整快照', async () => {
+    const { workspace } = await mountWorkspace()
+    const contents = JSON.stringify(fixture)
+
+    workspace.editorText = contents
+    expect(workspace.editorAnalysis.issues).toHaveLength(0)
+    expect(workspace.canSave).toBe(true)
+    expect(workspace.exportSnapshot()).toMatchObject({
+      filename: 'rel_fixture_20260829.json',
+      mimeType: 'application/json',
+    })
+
+    workspace.editorText = '{}'
+    expect(workspace.canSave).toBe(false)
+    expect(workspace.exportSnapshot()).toBeNull()
+
+    await workspace.importSnapshot({
+      name: 'draft.json',
+      size: contents.length,
+      text: async () => contents,
+    })
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.workflow).toMatchObject({ status: 'success', message: '已导入快照' })
+  })
+
+  it('拒绝无法读取的导入文件', async () => {
+    const { workspace } = await mountWorkspace()
+
+    await workspace.importSnapshot({
+      name: 'draft.txt',
+      size: 2,
+      text: async () => '{}',
+    })
+
+    expect(workspace.workflow).toMatchObject({ status: 'error', message: '请选择 JSON 文件' })
+  })
+
   it('完成草稿、审核、发布和状态刷新流程', async () => {
     let currentVersion = version()
     let currentJob = publishJob()
@@ -72,7 +112,10 @@ describe('管理工作区', () => {
         return jsonResponse(currentVersion, 201)
       }
       if (url.endsWith('/api/v1/versions/ver_1') && method === 'PUT') {
-        currentVersion = version({ revision: 2, snapshot: { schemaVersion: '1.1.0' } })
+        currentVersion = version({
+          revision: 2,
+          snapshot: { ...structuredClone(fixture), releaseId: 'rel_fixture_revision_2' },
+        })
         return jsonResponse(currentVersion)
       }
       if (url.endsWith('/review')) {
@@ -96,11 +139,11 @@ describe('管理工作区', () => {
     vi.stubGlobal('fetch', fetcher)
     const { workspace } = await mountWorkspace()
 
-    workspace.editorText = '{"schemaVersion":"1.0.0"}'
+    workspace.editorText = JSON.stringify(fixture)
     await workspace.saveDraft()
     expect(workspace.canSubmitReview).toBe(true)
 
-    workspace.editorText = '{"schemaVersion":"1.1.0"}'
+    workspace.editorText = JSON.stringify({ ...fixture, releaseId: 'rel_fixture_revision_2' })
     await workspace.saveDraft()
     expect(workspace.version?.revision).toBe(2)
 

@@ -7,6 +7,13 @@ import {
 } from '../utils/admin-api'
 import { idleWorkflow, workflowError, workflowSuccess, type WorkflowState } from '../utils/admin-workflow'
 import { createOperationKeyStore, type PublishOperation } from '../utils/idempotency'
+import {
+  analyzeSnapshotText,
+  createSnapshotExport,
+  readSnapshotImport,
+  type SnapshotExport,
+  type SnapshotImportFile,
+} from '../utils/snapshot-workbench'
 
 export function useAdminWorkspace() {
   const runtime = useRuntimeConfig()
@@ -21,9 +28,10 @@ export function useAdminWorkspace() {
   const workflow = ref<WorkflowState>(idleWorkflow())
   const operationKeys = createOperationKeyStore()
 
+  const editorAnalysis = computed(() => analyzeSnapshotText(editorText.value))
   const parsedEditor = computed(() => parseSnapshotJSON(editorText.value))
   const busy = computed(() => ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
-  const canSave = computed(() => Boolean(parsedEditor.value.snapshot) && !busy.value)
+  const canSave = computed(() => Boolean(editorAnalysis.value.snapshot) && !busy.value)
   const canSubmitReview = computed(() => version.value?.status === 'draft' && !busy.value)
   const canApprove = computed(() => version.value?.status === 'in_review' && !version.value.reviewApproved && !busy.value)
   const canPublish = computed(() => version.value?.status === 'in_review' && version.value.reviewApproved === true && !busy.value)
@@ -61,17 +69,34 @@ export function useAdminWorkspace() {
   }
 
   async function saveDraft() {
-    if (!parsedEditor.value.snapshot) {
-      workflow.value = workflowError({ message: parsedEditor.value.error || '快照无效' })
+    const snapshot = editorAnalysis.value.snapshot as unknown as Record<string, unknown> | null
+    if (!snapshot) {
+      workflow.value = workflowError({
+        message: parsedEditor.value.error || issueMessage(editorAnalysis.value.issues[0]) || '快照无效',
+      })
       return
     }
     if (version.value) {
-      const result = await run('saving', () => api().updateVersion(version.value!.id, version.value!.revision, parsedEditor.value.snapshot!), '草稿已保存')
+      const result = await run('saving', () => api().updateVersion(version.value!.id, version.value!.revision, snapshot), '草稿已保存')
       if (result) setVersion(result)
       return
     }
-    const result = await run('saving', () => api().createVersion(parsedEditor.value.snapshot!), '草稿已创建')
+    const result = await run('saving', () => api().createVersion(snapshot), '草稿已创建')
     if (result) setVersion(result)
+  }
+
+  async function importSnapshot(file: SnapshotImportFile) {
+    try {
+      editorText.value = await readSnapshotImport(file)
+      workflow.value = workflowSuccess('已导入快照')
+    } catch (error) {
+      workflow.value = workflowError(error)
+    }
+  }
+
+  function exportSnapshot(): SnapshotExport | null {
+    const snapshot = editorAnalysis.value.snapshot
+    return snapshot ? createSnapshotExport(snapshot) : null
   }
 
   async function submitReview() {
@@ -137,6 +162,7 @@ export function useAdminWorkspace() {
     editorText,
     rejectReason,
     workflow,
+    editorAnalysis,
     parsedEditor,
     busy,
     canSave,
@@ -146,6 +172,8 @@ export function useAdminWorkspace() {
     canRollback,
     loadVersion,
     saveDraft,
+    importSnapshot,
+    exportSnapshot,
     submitReview,
     approveReview,
     rejectReview,
@@ -153,4 +181,11 @@ export function useAdminWorkspace() {
     refreshPublish,
     rollback,
   }
+}
+
+function issueMessage(issue: { path: string; code: string } | undefined): string {
+  if (!issue) return ''
+  if (issue.code === 'invalid-json') return 'JSON 格式无效'
+  if (issue.code === 'object-root') return '快照必须是 JSON 对象'
+  return `快照无效：${issue.path}`
 }
