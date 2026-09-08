@@ -267,7 +267,10 @@ onMounted(() => {
                   data-testid="snapshot-import"
                   @click="openSnapshotImport"
                 >
-                  <FileUp :size="17" aria-hidden="true" />
+                  <FileUp
+                    :size="17"
+                    aria-hidden="true"
+                  />
                 </button>
                 <button
                   class="icon-tool"
@@ -278,7 +281,10 @@ onMounted(() => {
                   data-testid="snapshot-export"
                   @click="downloadSnapshot"
                 >
-                  <Download :size="17" aria-hidden="true" />
+                  <Download
+                    :size="17"
+                    aria-hidden="true"
+                  />
                 </button>
                 <input
                   ref="snapshotFileInput"

@@ -89,7 +89,10 @@ function issueLabel(code: string): string {
   <section class="snapshot-insights">
     <template v-if="analysis.summary">
       <div class="insight-heading insight-heading--valid">
-        <CircleCheck :size="16" aria-hidden="true" />
+        <CircleCheck
+          :size="16"
+          aria-hidden="true"
+        />
         <span>{{ copy.valid }}</span>
       </div>
       <dl
@@ -108,7 +111,10 @@ function issueLabel(code: string): string {
 
     <template v-else>
       <div class="insight-heading insight-heading--invalid">
-        <CircleX :size="16" aria-hidden="true" />
+        <CircleX
+          :size="16"
+          aria-hidden="true"
+        />
         <span>{{ copy.issues }}</span>
       </div>
       <ol
