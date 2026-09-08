@@ -117,6 +117,40 @@ describe('首页快照契约', () => {
     })
   })
 
+  it('固化所有公开语义诊断代码', () => {
+    const duplicate = structuredClone(fixture)
+    duplicate.assets[1].id = duplicate.assets[0].id
+    expect(diagnoseContentSnapshot(duplicate)).toContainEqual({
+      path: '/assets/1/id',
+      source: 'semantic',
+      code: 'duplicate-id',
+    })
+
+    const missingReference = structuredClone(fixture)
+    const musicSectionIndex = missingReference.homepage.sections.findIndex(
+      (section: { type: string }) => section.type === 'music',
+    )
+    missingReference.homepage.sections[musicSectionIndex].itemIds[0] = 'release_missing'
+    expect(diagnoseContentSnapshot(missingReference)).toContainEqual({
+      path: `/homepage/sections/${musicSectionIndex}/itemIds/0`,
+      source: 'semantic',
+      code: 'missing-reference',
+    })
+
+    const hiddenTarget = structuredClone(fixture)
+    const hero = hiddenTarget.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
+    const musicSection = hiddenTarget.homepage.sections.find(
+      (section: { type: string }) => section.type === 'music',
+    )
+    hero.target.contentId = 'release_02'
+    musicSection.limit = 1
+    expect(diagnoseContentSnapshot(hiddenTarget)).toContainEqual({
+      path: '/heroSlides/2/target/contentId',
+      source: 'semantic',
+      code: 'hidden-target',
+    })
+  })
+
   it('保留路径数组校验 API', () => {
     const invalid = structuredClone(fixture)
     invalid.releases[0].coverAssetId = 'asset_missing'
