@@ -31,7 +31,7 @@
 - 修改：`packages/schema/test/snapshot.test.ts`
 - 修改：`packages/schema/src/validate.ts`
 
-- [ ] **步骤 1：编写失败的结构化诊断测试**
+- [x] **步骤 1：编写失败的结构化诊断测试**
 
 在 Schema 测试中导入 `diagnoseContentSnapshot`，添加以下行为：
 
@@ -61,7 +61,7 @@ it('保留路径数组校验 API', () => {
 })
 ```
 
-- [ ] **步骤 2：运行测试并确认正确失败**
+- [x] **步骤 2：运行测试并确认正确失败**
 
 运行：
 
@@ -71,7 +71,7 @@ pnpm --filter @yujian/schema test -- snapshot.test.ts
 
 预期：FAIL，提示 `diagnoseContentSnapshot` 尚未导出。
 
-- [ ] **步骤 3：实现最少结构化诊断**
+- [x] **步骤 3：实现最少结构化诊断**
 
 在 `validate.ts` 中定义：
 
@@ -102,7 +102,7 @@ export function validateContentSnapshot(value: unknown): readonly string[] {
 
 把语义校验的内部累加值改为 `ContentSnapshotIssue[]`，并通过统一辅助函数加入 `duplicate-id`、`missing-reference`、`asset-kind` 和 `hidden-target`。不要改变原有遍历顺序和校验条件。
 
-- [ ] **步骤 4：运行 Schema 测试和类型检查**
+- [x] **步骤 4：运行 Schema 测试和类型检查**
 
 ```bash
 pnpm --filter @yujian/schema test
@@ -111,7 +111,7 @@ pnpm --filter @yujian/schema typecheck
 
 预期：全部通过，0 失败。
 
-- [ ] **步骤 5：提交任务 1**
+- [x] **步骤 5：提交任务 1**
 
 ```bash
 git add packages/schema/src/validate.ts packages/schema/test/snapshot.test.ts
@@ -127,7 +127,7 @@ git commit --no-gpg-sign -m "feat(内容契约): 添加结构化快照诊断"
 - 创建：`apps/admin/utils/snapshot-workbench.ts`
 - 创建：`apps/admin/test/unit/snapshot-workbench.test.ts`
 
-- [ ] **步骤 1：声明工作区依赖**
+- [x] **步骤 1：声明工作区依赖**
 
 在管理端依赖中加入：
 
@@ -140,7 +140,7 @@ git commit --no-gpg-sign -m "feat(内容契约): 添加结构化快照诊断"
 
 运行 `pnpm install --lockfile-only` 更新锁文件。
 
-- [ ] **步骤 2：编写失败的工作台纯函数测试**
+- [x] **步骤 2：编写失败的工作台纯函数测试**
 
 测试必须读取 `content/fixtures/homepage.json`，并验证：
 
@@ -174,7 +174,7 @@ expect(analyzeSnapshotText(exported.contents).issues).toHaveLength(0)
 
 同时覆盖空文件、超过 `2 * 1024 * 1024` 字节、文件读取失败和不安全 `releaseId` 文件名回退。
 
-- [ ] **步骤 3：运行测试并确认正确失败**
+- [x] **步骤 3：运行测试并确认正确失败**
 
 ```bash
 pnpm --filter @yujian/admin test -- snapshot-workbench.test.ts
@@ -182,7 +182,7 @@ pnpm --filter @yujian/admin test -- snapshot-workbench.test.ts
 
 预期：FAIL，提示 `snapshot-workbench.ts` 不存在。
 
-- [ ] **步骤 4：实现工作台纯函数**
+- [x] **步骤 4：实现工作台纯函数**
 
 实现以下稳定接口：
 
@@ -219,7 +219,7 @@ export interface SnapshotExport {
 
 `analyzeSnapshotText()` 先解析 JSON，再调用 `diagnoseContentSnapshot()`；只有 0 个问题时才返回类型化快照和摘要。`readSnapshotImport()` 只接受大小合规的 `.json` 文件。`createSnapshotExport()` 输出格式化 JSON 和末尾换行。
 
-- [ ] **步骤 5：运行工作台测试和管理端类型检查**
+- [x] **步骤 5：运行工作台测试和管理端类型检查**
 
 ```bash
 pnpm --filter @yujian/admin test -- snapshot-workbench.test.ts
@@ -228,7 +228,7 @@ pnpm --filter @yujian/admin typecheck
 
 预期：全部通过，0 失败。
 
-- [ ] **步骤 6：提交任务 2**
+- [x] **步骤 6：提交任务 2**
 
 ```bash
 git add apps/admin/package.json apps/admin/utils/snapshot-workbench.ts apps/admin/test/unit/snapshot-workbench.test.ts pnpm-lock.yaml
@@ -242,7 +242,7 @@ git commit --no-gpg-sign -m "feat(内容工作台): 添加快照分析与文件�
 - 修改：`apps/admin/composables/useAdminWorkspace.ts`
 - 修改：`apps/admin/test/unit/admin-workspace.test.ts`
 
-- [ ] **步骤 1：编写失败的组合式函数测试**
+- [x] **步骤 1：编写失败的组合式函数测试**
 
 使用完整 fixture 作为有效快照，验证：
 
@@ -267,7 +267,7 @@ expect(fetcher).not.toHaveBeenCalled()
 
 更新现有草稿流程测试，不再用不完整的 `{ schemaVersion }` 伪快照。
 
-- [ ] **步骤 2：运行测试并确认正确失败**
+- [x] **步骤 2：运行测试并确认正确失败**
 
 ```bash
 pnpm --filter @yujian/admin test -- admin-workspace.test.ts
@@ -275,7 +275,7 @@ pnpm --filter @yujian/admin test -- admin-workspace.test.ts
 
 预期：FAIL，提示 `editorAnalysis`、`importSnapshot` 或 `exportSnapshot` 不存在。
 
-- [ ] **步骤 3：实现状态接入**
+- [x] **步骤 3：实现状态接入**
 
 用 `analyzeSnapshotText(editorText.value)` 替换仅解析 JSON 的状态。`canSave` 必须依赖完整有效快照；`saveDraft()` 使用分析后的快照。新增：
 
@@ -286,7 +286,7 @@ function exportSnapshot(): SnapshotExport | null
 
 导入失败写入现有 `workflowError` 状态；导出无效内容时返回 `null`，不触发网络请求。
 
-- [ ] **步骤 4：运行管理端单元测试和类型检查**
+- [x] **步骤 4：运行管理端单元测试和类型检查**
 
 ```bash
 pnpm --filter @yujian/admin test
@@ -295,7 +295,7 @@ pnpm --filter @yujian/admin typecheck
 
 预期：全部通过，0 失败。
 
-- [ ] **步骤 5：提交任务 3**
+- [x] **步骤 5：提交任务 3**
 
 ```bash
 git add apps/admin/composables/useAdminWorkspace.ts apps/admin/test/unit/admin-workspace.test.ts
@@ -311,7 +311,7 @@ git commit --no-gpg-sign -m "feat(内容工作台): 接入实时校验状态"
 - 修改：`apps/admin/pages/index.vue`
 - 修改：`apps/admin/test/unit/admin-shell.test.ts`
 
-- [ ] **步骤 1：编写失败的 Insights 组件测试**
+- [x] **步骤 1：编写失败的 Insights 组件测试**
 
 测试合法摘要和错误诊断两种状态：
 
@@ -323,11 +323,11 @@ expect(invalidWrapper.findAll('[data-testid="snapshot-issue"]')).toHaveLength(8)
 
 组件 props 使用 `analysis` 和 `locale`，诊断超过 8 项时显示剩余数量。
 
-- [ ] **步骤 2：编写失败的页面交互测试**
+- [x] **步骤 2：编写失败的页面交互测试**
 
 更新管理端页面测试，验证导入输入、导出按钮、可访问名称和状态标记存在。为下载测试 stub `URL.createObjectURL`、`URL.revokeObjectURL` 和锚点点击，并确认创建的 Blob MIME 为 `application/json`。
 
-- [ ] **步骤 3：运行测试并确认正确失败**
+- [x] **步骤 3：运行测试并确认正确失败**
 
 ```bash
 pnpm --filter @yujian/admin test -- snapshot-insights.test.ts admin-shell.test.ts
@@ -335,7 +335,7 @@ pnpm --filter @yujian/admin test -- snapshot-insights.test.ts admin-shell.test.t
 
 预期：FAIL，提示组件和工具栏尚不存在。
 
-- [ ] **步骤 4：实现组件与页面交互**
+- [x] **步骤 4：实现组件与页面交互**
 
 `SnapshotInsights.vue` 使用数字网格展示摘要，用有序列表展示最多 8 条诊断。页面从 `@lucide/vue` 使用 `FileUp`、`Download` 和 `CircleCheck` 图标，并提供可访问文本。
 
@@ -354,7 +354,7 @@ URL.revokeObjectURL(url)
 
 样式保持低饱和深色；工具栏可换行，图标按钮最小高度为 44 px，诊断路径允许换行且不撑破窄屏。
 
-- [ ] **步骤 5：运行管理端验证**
+- [x] **步骤 5：运行管理端验证**
 
 ```bash
 pnpm --filter @yujian/admin test
@@ -364,7 +364,7 @@ pnpm --filter @yujian/admin build
 
 预期：全部通过，0 失败。
 
-- [ ] **步骤 6：提交任务 4**
+- [x] **步骤 6：提交任务 4**
 
 ```bash
 git add apps/admin/components/SnapshotInsights.vue apps/admin/pages/index.vue apps/admin/test/unit/snapshot-insights.test.ts apps/admin/test/unit/admin-shell.test.ts
@@ -378,11 +378,11 @@ git commit --no-gpg-sign -m "feat(内容工作台): 展示摘要与校验诊断"
 - 修改：`apps/admin/README.md`
 - 修改：`README.md`
 
-- [ ] **步骤 1：更新文档**
+- [x] **步骤 1：更新文档**
 
 记录即时校验、本地导入导出、摘要字段、2 MiB 限制，以及“客户端检查不能替代服务端最终校验”。根 README 只增加稳定能力入口，详细行为放在管理端 README。
 
-- [ ] **步骤 2：运行文档自检**
+- [x] **步骤 2：运行文档自检**
 
 ```bash
 rg -n "TODO|待定|稍后补充" README.md apps/admin/README.md docs/superpowers/specs/2026-09-08-content-workbench-foundation-design.md docs/superpowers/plans/2026-09-08-content-workbench-foundation.md
@@ -391,7 +391,7 @@ git diff --check
 
 预期：没有新增占位符，`git diff --check` 退出码为 0。
 
-- [ ] **步骤 3：提交文档**
+- [x] **步骤 3：提交文档**
 
 ```bash
 git add README.md apps/admin/README.md
@@ -399,7 +399,7 @@ git diff --cached --check
 git commit --no-gpg-sign -m "docs(内容工作台): 补充快照维护说明"
 ```
 
-- [ ] **步骤 4：运行完整门禁**
+- [x] **步骤 4：运行完整门禁**
 
 ```bash
 pnpm lint
@@ -417,11 +417,11 @@ git diff --check
 
 预期：所有命令退出码为 0，测试 0 失败，生成命令不留下未提交文件。
 
-- [ ] **步骤 5：执行 findings-first 自审**
+- [x] **步骤 5：执行 findings-first 自审**
 
 比较 `master...HEAD`，按架构、正确性、安全、性能、可访问性、测试和范围逐项审查。任何 Critical 或 Important 问题必须先修复、补充失败测试并重新运行相关门禁。
 
-- [ ] **步骤 6：确认分支状态**
+- [x] **步骤 6：确认分支状态**
 
 ```bash
 git status --short --branch
