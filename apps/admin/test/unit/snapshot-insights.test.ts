@@ -65,4 +65,22 @@ describe('快照摘要与诊断', () => {
     expect(wrapper.get('[data-testid="snapshot-issue-source"]').text()).toBe('Schema')
     expect(wrapper.get('[data-testid="snapshot-issue"]').text()).toContain('数值过小')
   })
+
+  it('本地化数组重复约束', async () => {
+    const wrapper = mount(SnapshotInsights, {
+      props: {
+        locale: 'zh-CN',
+        analysis: {
+          snapshot: null,
+          summary: null,
+          issues: [{ path: '/site/supportedLocales', source: 'schema', code: 'uniqueItems' }],
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="snapshot-issue"]').text()).toContain('项目重复')
+
+    await wrapper.setProps({ locale: 'en' })
+    expect(wrapper.get('[data-testid="snapshot-issue"]').text()).toContain('Duplicate items')
+  })
 })
