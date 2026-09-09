@@ -1,4 +1,5 @@
 import { createIdempotencyKey } from './idempotency'
+import type { AdminLocale } from './admin-locale'
 
 export interface AdminVersion {
   id: string
@@ -53,15 +54,33 @@ export function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, '')
 }
 
-export function parseSnapshotJSON(value: string): { snapshot: Record<string, unknown> | null; error: string | null } {
+export type SnapshotJSONErrorCode = 'invalid-json' | 'object-root'
+
+export function snapshotJSONErrorMessage(code: SnapshotJSONErrorCode, locale: AdminLocale = 'zh-CN'): string {
+  const messages = locale === 'en'
+    ? {
+        'invalid-json': 'Invalid JSON',
+        'object-root': 'Snapshot must be a JSON object',
+      }
+    : {
+        'invalid-json': 'JSON 格式无效',
+        'object-root': '快照必须是 JSON 对象',
+      }
+  return messages[code]
+}
+
+export function parseSnapshotJSON(
+  value: string,
+  locale: AdminLocale = 'zh-CN',
+): { snapshot: Record<string, unknown> | null; error: string | null } {
   try {
     const parsed: unknown = JSON.parse(value)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { snapshot: null, error: '快照必须是 JSON 对象' }
+      return { snapshot: null, error: snapshotJSONErrorMessage('object-root', locale) }
     }
     return { snapshot: parsed as Record<string, unknown>, error: null }
   } catch {
-    return { snapshot: null, error: 'JSON 格式无效' }
+    return { snapshot: null, error: snapshotJSONErrorMessage('invalid-json', locale) }
   }
 }
 

@@ -36,6 +36,7 @@ describe('管理端页面', () => {
 
   it('从本地文件导入快照', async () => {
     const wrapper = await mountSuspended(AdminPage)
+    vi.useFakeTimers()
     const input = wrapper.get('[data-testid="snapshot-file-input"]')
     const contents = JSON.stringify(fixtureData)
     const file = new File([contents], 'draft.json', { type: 'application/json' })
@@ -43,6 +44,7 @@ describe('管理端页面', () => {
 
     await input.trigger('change')
     await flushPromises()
+    await vi.advanceTimersByTimeAsync(1000)
 
     expect((wrapper.get('.json-editor').element as HTMLTextAreaElement).value).toContain('rel_fixture_20260829')
     expect(wrapper.get('[data-testid="snapshot-validation"]').text()).toMatch(/有效|valid/i)
@@ -77,6 +79,7 @@ describe('管理端页面', () => {
     vi.useFakeTimers()
 
     await wrapper.get('.json-editor').setValue(JSON.stringify(fixtureData))
+    await vi.advanceTimersByTimeAsync(1000)
     await wrapper.get('[data-testid="snapshot-export"]').trigger('click')
 
     expect(createObjectURL).toHaveBeenCalledOnce()
@@ -117,6 +120,24 @@ describe('管理端页面', () => {
     expect(wrapper.get('h1').text()).toBe('Content workspace')
     expect(document.documentElement.lang).toBe('en')
     expect(wrapper.get('.json-editor').attributes('aria-label')).toBe('JSON snapshot editor')
+  })
+
+  it('防抖并本地化字段提示和预览', async () => {
+    const wrapper = await mountSuspended(AdminPage)
+    if (wrapper.get('h1').text() !== 'Content workspace') {
+      await wrapper.get('.rail-locale').trigger('click')
+    }
+    vi.useFakeTimers()
+
+    await wrapper.get('.json-editor').setValue('{')
+
+    expect(wrapper.find('.field-error').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="snapshot-preview"]').text()).toBe('{}')
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(wrapper.get('.field-error').text()).toBe('Invalid JSON')
+    expect(wrapper.get('[data-testid="snapshot-preview"]').text()).toBe('Invalid JSON')
   })
 
   it('应用壳提供 Nuxt 页面挂载点', () => {

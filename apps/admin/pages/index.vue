@@ -6,8 +6,8 @@ import SnapshotInsights from '../components/SnapshotInsights.vue'
 import { useAdminWorkspace } from '../composables/useAdminWorkspace'
 import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
 
-const workspace = reactive(useAdminWorkspace())
 const locale = ref<'zh-CN' | 'en'>('zh-CN')
+const workspace = reactive(useAdminWorkspace(locale))
 const snapshotFileInput = ref<HTMLInputElement | null>(null)
 
 useHead(() => ({
@@ -41,7 +41,6 @@ const copy = computed(() => locale.value === 'en'
       status: 'Status',
       noJob: 'No publish job',
       tokenHint: 'Kept in this tab only',
-      invalidJSON: 'JSON needs an object root',
       importSnapshot: 'Import JSON',
       exportSnapshot: 'Export snapshot',
       validSnapshot: 'Valid',
@@ -73,7 +72,6 @@ const copy = computed(() => locale.value === 'en'
       status: '状态',
       noJob: '暂无发布任务',
       tokenHint: '仅保存在当前标签页',
-      invalidJSON: 'JSON 根节点必须是对象',
       importSnapshot: '导入 JSON',
       exportSnapshot: '导出快照',
       validSnapshot: '有效',
@@ -84,7 +82,7 @@ const statusLabel = computed(() => workspace.version?.status || '—')
 const publishStatusLabel = computed(() => workspace.publishJob?.status || copy.value.noJob)
 const previewText = computed(() => workspace.parsedEditor.snapshot
   ? JSON.stringify(workspace.parsedEditor.snapshot, null, 2)
-  : workspace.parsedEditor.error || copy.value.invalidJSON)
+  : workspace.parsedEditor.error || '')
 const validationLabel = computed(() => workspace.editorAnalysis.issues.length
   ? copy.value.issueCount(workspace.editorAnalysis.issues.length)
   : copy.value.validSnapshot)

@@ -115,11 +115,17 @@ pnpm --filter @yujian/admin test -- snapshot-insights.test.ts admin-shell.test.t
 
 - [x] **步骤 3：实现最小双语修复**
 
-在诊断映射中加入：
+按语言分别在诊断映射中加入：
 
 ```ts
-exclusiveMinimum: 'Value must be above minimum'
-exclusiveMinimum: '数值必须大于下限'
+const issueLabels = {
+  en: {
+    exclusiveMinimum: 'Value must be above minimum',
+  },
+  'zh-CN': {
+    exclusiveMinimum: '数值必须大于下限',
+  },
+}
 ```
 
 页面文案加入 `editorLabel`，并通过响应式 `useHead()` 同步 `<html lang>`。

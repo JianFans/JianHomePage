@@ -1,9 +1,10 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { defineComponent, reactive } from 'vue'
+import { defineComponent, nextTick, reactive, ref, type Ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fixtureData from '../../../../content/fixtures/homepage.json'
 import { useAdminWorkspace } from '../../composables/useAdminWorkspace'
 import type { AdminPublishJob, AdminVersion } from '../../utils/admin-api'
+import type { AdminLocale } from '../../utils/admin-locale'
 
 const fixture = fixtureData as unknown as Record<string, unknown>
 
@@ -24,10 +25,10 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
-async function mountWorkspace() {
+async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN')) {
   const host = defineComponent({
     setup() {
-      return { workspace: reactive(useAdminWorkspace()) }
+      return { workspace: reactive(useAdminWorkspace(locale)) }
     },
     template: '<div />',
   })
@@ -58,6 +59,7 @@ function publishJob(overrides: Partial<AdminPublishJob> = {}): AdminPublishJob {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -76,9 +78,11 @@ describe('管理工作区', () => {
 
   it('分析、导入和导出完整快照', async () => {
     const { workspace } = await mountWorkspace()
+    vi.useFakeTimers()
     const contents = JSON.stringify(fixture)
 
     workspace.editorText = contents
+    await vi.advanceTimersByTimeAsync(1000)
     expect(workspace.editorAnalysis.issues).toHaveLength(0)
     expect(workspace.canSave).toBe(true)
     expect(workspace.exportSnapshot()).toMatchObject({
@@ -87,6 +91,7 @@ describe('管理工作区', () => {
     })
 
     workspace.editorText = '{}'
+    await vi.advanceTimersByTimeAsync(1000)
     expect(workspace.canSave).toBe(false)
     expect(workspace.exportSnapshot()).toBeNull()
 
@@ -95,8 +100,47 @@ describe('管理工作区', () => {
       size: contents.length,
       text: async () => contents,
     })
+    await vi.advanceTimersByTimeAsync(1000)
     expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
     expect(workspace.workflow).toMatchObject({ status: 'success', message: '已导入快照' })
+  })
+
+  it('防抖界面分析并用当前语言校验保存内容', async () => {
+    const locale = ref<AdminLocale>('en')
+    const { workspace } = await mountWorkspace(locale)
+    vi.useFakeTimers()
+
+    workspace.editorText = JSON.stringify(fixture)
+    await nextTick()
+
+    expect(workspace.editorAnalysis.snapshot).toBeNull()
+    expect(workspace.canSave).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.canSave).toBe(true)
+
+    workspace.editorText = '[]'
+    await nextTick()
+
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.canSave).toBe(true)
+    expect(workspace.exportSnapshot()).toBeNull()
+
+    await workspace.saveDraft()
+
+    expect(workspace.workflow).toMatchObject({ status: 'error', message: 'Snapshot must be a JSON object' })
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(workspace.editorAnalysis.snapshot).toBeNull()
+    expect(workspace.parsedEditor.error).toBe('Snapshot must be a JSON object')
+    expect(workspace.canSave).toBe(false)
+
+    locale.value = 'zh-CN'
+    await nextTick()
+    expect(workspace.parsedEditor.error).toBe('快照必须是 JSON 对象')
   })
 
   it('拒绝无法读取的导入文件', async () => {

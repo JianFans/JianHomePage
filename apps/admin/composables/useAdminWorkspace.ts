@@ -1,7 +1,8 @@
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref, watch, type Ref } from 'vue'
 import {
   createAdminApi,
   parseSnapshotJSON,
+  snapshotJSONErrorMessage,
   type AdminPublishJob,
   type AdminVersion,
 } from '../utils/admin-api'
@@ -18,7 +19,9 @@ import {
 } from '../utils/snapshot-workbench'
 import type { AdminLocale } from '../utils/admin-locale'
 
-export function useAdminWorkspace() {
+const EDITOR_ANALYSIS_DEBOUNCE_MS = 250
+
+export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<AdminLocale>('zh-CN')) {
   const runtime = useRuntimeConfig()
   const apiBaseUrl = ref(String(runtime.public.apiBaseUrl || ''))
   const token = ref('')
@@ -32,9 +35,22 @@ export function useAdminWorkspace() {
   const importing = ref(false)
   const operationKeys = createOperationKeyStore()
   let importSequence = 0
+  let editorAnalysisTimer: ReturnType<typeof setTimeout> | undefined
 
-  const editorAnalysis = computed(() => analyzeSnapshotText(editorText.value))
-  const parsedEditor = computed(() => parseSnapshotJSON(editorText.value))
+  const debouncedEditorText = ref(editorText.value)
+  watch(editorText, (value) => {
+    if (editorAnalysisTimer) clearTimeout(editorAnalysisTimer)
+    editorAnalysisTimer = setTimeout(() => {
+      debouncedEditorText.value = value
+      editorAnalysisTimer = undefined
+    }, EDITOR_ANALYSIS_DEBOUNCE_MS)
+  }, { flush: 'sync' })
+  onScopeDispose(() => {
+    if (editorAnalysisTimer) clearTimeout(editorAnalysisTimer)
+  })
+
+  const editorAnalysis = computed(() => analyzeSnapshotText(debouncedEditorText.value))
+  const parsedEditor = computed(() => parseSnapshotJSON(debouncedEditorText.value, locale.value))
   const busy = computed(() => importing.value || ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
   const canSave = computed(() => Boolean(editorAnalysis.value.snapshot) && !busy.value)
   const canSubmitReview = computed(() => version.value?.status === 'draft' && !busy.value)
@@ -74,10 +90,13 @@ export function useAdminWorkspace() {
   }
 
   async function saveDraft() {
-    const snapshot = editorAnalysis.value.snapshot as unknown as Record<string, unknown> | null
+    const currentAnalysis = analyzeSnapshotText(editorText.value)
+    const snapshot = currentAnalysis.snapshot as unknown as Record<string, unknown> | null
     if (!snapshot) {
       workflow.value = workflowError({
-        message: parsedEditor.value.error || issueMessage(editorAnalysis.value.issues[0]) || '快照无效',
+        message: parseSnapshotJSON(editorText.value, locale.value).error
+          || issueMessage(currentAnalysis.issues[0], locale.value)
+          || invalidSnapshotMessage(locale.value),
       })
       return
     }
@@ -109,7 +128,7 @@ export function useAdminWorkspace() {
   }
 
   function exportSnapshot(): SnapshotExport | null {
-    const snapshot = editorAnalysis.value.snapshot
+    const snapshot = analyzeSnapshotText(editorText.value).snapshot
     return snapshot ? createSnapshotExport(snapshot) : null
   }
 
@@ -198,11 +217,16 @@ export function useAdminWorkspace() {
   }
 }
 
-function issueMessage(issue: { path: string; code: string } | undefined): string {
+function issueMessage(issue: { path: string; code: string } | undefined, locale: AdminLocale): string {
   if (!issue) return ''
-  if (issue.code === 'invalid-json') return 'JSON 格式无效'
-  if (issue.code === 'object-root') return '快照必须是 JSON 对象'
-  return `快照无效：${issue.path}`
+  if (issue.code === 'invalid-json' || issue.code === 'object-root') {
+    return snapshotJSONErrorMessage(issue.code, locale)
+  }
+  return locale === 'en' ? `Invalid snapshot: ${issue.path}` : `快照无效：${issue.path}`
+}
+
+function invalidSnapshotMessage(locale: AdminLocale): string {
+  return locale === 'en' ? 'Snapshot is invalid' : '快照无效'
 }
 
 function snapshotImportErrorMessage(code: SnapshotImportErrorCode, locale: AdminLocale): string {

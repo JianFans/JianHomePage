@@ -50,7 +50,7 @@ it('为 Schema 和语义错误返回稳定的结构化诊断', () => {
   expect(diagnoseContentSnapshot(brokenReference)).toContainEqual({
     path: '/releases/0/coverAssetId',
     source: 'semantic',
-    code: 'asset-kind',
+    code: 'missing-reference',
   })
 })
 

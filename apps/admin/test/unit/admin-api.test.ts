@@ -53,6 +53,8 @@ describe('admin API client', () => {
 
   it('rejects non-object snapshots before a write', () => {
     expect(parseSnapshotJSON('[]')).toEqual({ snapshot: null, error: '快照必须是 JSON 对象' })
+    expect(parseSnapshotJSON('[]', 'en')).toEqual({ snapshot: null, error: 'Snapshot must be a JSON object' })
+    expect(parseSnapshotJSON('{', 'en')).toEqual({ snapshot: null, error: 'Invalid JSON' })
     expect(parseSnapshotJSON('{"releaseId":"rel_1"}')).toEqual({ snapshot: { releaseId: 'rel_1' }, error: null })
   })
 })
