@@ -1,9 +1,25 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { defineComponent, reactive } from 'vue'
+import { defineComponent, nextTick, reactive, ref, type Ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import fixtureData from '../../../../content/fixtures/homepage.json'
 import { useAdminWorkspace } from '../../composables/useAdminWorkspace'
 import type { AdminPublishJob, AdminVersion } from '../../utils/admin-api'
+import type { AdminLocale } from '../../utils/admin-locale'
 
+const fixture = fixtureData as unknown as Record<string, unknown>
+
+/** 创建可由并发导入测试手动完成或拒绝的 Promise。 */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+/** 构造工作区 API 流程测试使用的 JSON 响应。 */
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -11,10 +27,12 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
-async function mountWorkspace() {
+/** 在 Nuxt 测试作用域中挂载组合式函数并返回可解包状态。 */
+async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN')) {
   const host = defineComponent({
+    /** 向测试宿主暴露由 Vue 自动解包的工作区状态。 */
     setup() {
-      return { workspace: reactive(useAdminWorkspace()) }
+      return { workspace: reactive(useAdminWorkspace(locale)) }
     },
     template: '<div />',
   })
@@ -22,17 +40,19 @@ async function mountWorkspace() {
   return { wrapper, workspace: wrapper.vm.workspace }
 }
 
+/** 创建具有合法快照的版本测试对象。 */
 function version(overrides: Partial<AdminVersion> = {}): AdminVersion {
   return {
     id: 'ver_1',
     status: 'draft',
     revision: 1,
-    snapshot: { schemaVersion: '1.0.0' },
+    snapshot: structuredClone(fixture),
     checksum: 'sha256:version',
     ...overrides,
   }
 }
 
+/** 创建可按场景覆盖状态的发布任务测试对象。 */
 function publishJob(overrides: Partial<AdminPublishJob> = {}): AdminPublishJob {
   return {
     id: 'pub_1',
@@ -45,6 +65,7 @@ function publishJob(overrides: Partial<AdminPublishJob> = {}): AdminPublishJob {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -61,6 +82,138 @@ describe('管理工作区', () => {
     expect(workspace.canSave).toBe(false)
   })
 
+  it('分析、导入和导出完整快照', async () => {
+    const { workspace } = await mountWorkspace()
+    vi.useFakeTimers()
+    const contents = JSON.stringify(fixture)
+
+    workspace.editorText = contents
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(workspace.editorAnalysis.issues).toHaveLength(0)
+    expect(workspace.canSave).toBe(true)
+    expect(workspace.exportSnapshot()).toMatchObject({
+      filename: 'rel_fixture_20260829.json',
+      mimeType: 'application/json',
+    })
+
+    workspace.editorText = '{}'
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(workspace.canSave).toBe(false)
+    expect(workspace.exportSnapshot()).toBeNull()
+
+    await workspace.importSnapshot({
+      name: 'draft.json',
+      size: contents.length,
+      text: async () => contents,
+    })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.workflow).toMatchObject({ status: 'success', message: '已导入快照' })
+  })
+
+  it('防抖界面分析并用当前语言校验保存内容', async () => {
+    const locale = ref<AdminLocale>('en')
+    const { workspace } = await mountWorkspace(locale)
+    vi.useFakeTimers()
+
+    workspace.editorText = JSON.stringify(fixture)
+    await nextTick()
+
+    expect(workspace.editorAnalysis.snapshot).toBeNull()
+    expect(workspace.canSave).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.canSave).toBe(true)
+
+    workspace.editorText = '[]'
+    await nextTick()
+
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.canSave).toBe(true)
+    expect(workspace.exportSnapshot()).toBeNull()
+
+    await workspace.saveDraft()
+
+    expect(workspace.workflow).toMatchObject({ status: 'error', message: 'Snapshot must be a JSON object' })
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(workspace.editorAnalysis.snapshot).toBeNull()
+    expect(workspace.parsedEditor.error).toBe('Snapshot must be a JSON object')
+    expect(workspace.canSave).toBe(false)
+
+    locale.value = 'zh-CN'
+    await nextTick()
+    expect(workspace.parsedEditor.error).toBe('快照必须是 JSON 对象')
+  })
+
+  it('拒绝无法读取的导入文件', async () => {
+    const { workspace } = await mountWorkspace()
+
+    await workspace.importSnapshot({
+      name: 'draft.txt',
+      size: 2,
+      text: async () => '{}',
+    }, 'en')
+
+    expect(workspace.workflow).toMatchObject({ status: 'error', message: 'Choose a JSON file' })
+  })
+
+  it('只提交最后一次异步导入的结果，并在导入期间关闭保存门禁', async () => {
+    const { workspace } = await mountWorkspace()
+    const first = deferred<string>()
+    const second = deferred<string>()
+    const firstContents = JSON.stringify({ ...fixture, releaseId: 'rel_first' })
+    const secondContents = JSON.stringify({ ...fixture, releaseId: 'rel_second' })
+
+    const firstImport = workspace.importSnapshot({
+      name: 'first.json',
+      size: firstContents.length,
+      text: () => first.promise,
+    })
+    const secondImport = workspace.importSnapshot({
+      name: 'second.json',
+      size: secondContents.length,
+      text: () => second.promise,
+    })
+
+    expect(workspace.importing).toBe(true)
+    expect(workspace.canSave).toBe(false)
+
+    second.resolve(secondContents)
+    await secondImport
+    first.resolve(firstContents)
+    await firstImport
+
+    expect(workspace.importing).toBe(false)
+    expect(workspace.editorText).toBe(secondContents)
+    expect(workspace.workflow).toMatchObject({ status: 'success', message: '已导入快照' })
+  })
+
+  it('忽略过期导入的成功结果并保留最新导入错误', async () => {
+    const { workspace } = await mountWorkspace()
+    const stale = deferred<string>()
+    const staleContents = JSON.stringify({ ...fixture, releaseId: 'rel_stale' })
+    const staleImport = workspace.importSnapshot({
+      name: 'stale.json',
+      size: staleContents.length,
+      text: () => stale.promise,
+    })
+
+    await workspace.importSnapshot({
+      name: 'latest.txt',
+      size: 2,
+      text: async () => '{}',
+    }, 'en')
+    stale.resolve(staleContents)
+    await staleImport
+
+    expect(workspace.editorText).toBe('{}')
+    expect(workspace.workflow).toMatchObject({ status: 'error', message: 'Choose a JSON file' })
+  })
+
   it('完成草稿、审核、发布和状态刷新流程', async () => {
     let currentVersion = version()
     let currentJob = publishJob()
@@ -72,7 +225,10 @@ describe('管理工作区', () => {
         return jsonResponse(currentVersion, 201)
       }
       if (url.endsWith('/api/v1/versions/ver_1') && method === 'PUT') {
-        currentVersion = version({ revision: 2, snapshot: { schemaVersion: '1.1.0' } })
+        currentVersion = version({
+          revision: 2,
+          snapshot: { ...structuredClone(fixture), releaseId: 'rel_fixture_revision_2' },
+        })
         return jsonResponse(currentVersion)
       }
       if (url.endsWith('/review')) {
@@ -96,11 +252,11 @@ describe('管理工作区', () => {
     vi.stubGlobal('fetch', fetcher)
     const { workspace } = await mountWorkspace()
 
-    workspace.editorText = '{"schemaVersion":"1.0.0"}'
+    workspace.editorText = JSON.stringify(fixture)
     await workspace.saveDraft()
     expect(workspace.canSubmitReview).toBe(true)
 
-    workspace.editorText = '{"schemaVersion":"1.1.0"}'
+    workspace.editorText = JSON.stringify({ ...fixture, releaseId: 'rel_fixture_revision_2' })
     await workspace.saveDraft()
     expect(workspace.version?.revision).toBe(2)
 

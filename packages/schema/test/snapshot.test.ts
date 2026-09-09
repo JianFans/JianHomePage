@@ -6,7 +6,7 @@ import Ajv2020 from 'ajv/dist/2020.js'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import schema from '../schema/content-snapshot.schema.json'
-import { validateContentSnapshot } from '../src/validate'
+import { diagnoseContentSnapshot, validateContentSnapshot } from '../src/validate'
 
 const fixture = JSON.parse(
   readFileSync(new URL('../../../content/fixtures/homepage.json', import.meta.url), 'utf8'),
@@ -97,12 +97,125 @@ describe('首页快照契约', () => {
     expect(validateContentSnapshot(invalid)).toContain(`/tracks/${trackIndex}/previewAssetId`)
   })
 
+  it('为 Schema 和语义错误返回稳定的结构化诊断', () => {
+    const missing = structuredClone(fixture)
+    delete missing.site.brand
+
+    expect(diagnoseContentSnapshot(missing)).toContainEqual({
+      path: '/site/brand',
+      source: 'schema',
+      code: 'required',
+    })
+
+    const brokenReference = structuredClone(fixture)
+    brokenReference.releases[0].coverAssetId = 'asset_missing'
+
+    expect(diagnoseContentSnapshot(brokenReference)).toContainEqual({
+      path: '/releases/0/coverAssetId',
+      source: 'semantic',
+      code: 'missing-reference',
+    })
+  })
+
+  it('只返回判别联合当前分支的 Schema 错误', () => {
+    const invalid = structuredClone(fixture)
+    const sectionIndex = invalid.homepage.sections.findIndex(
+      (section: { type: string }) => section.type === 'music',
+    )
+    invalid.homepage.sections[sectionIndex].limit = 0
+
+    expect(diagnoseContentSnapshot(invalid)).toEqual([{
+      path: `/homepage/sections/${sectionIndex}/limit`,
+      source: 'schema',
+      code: 'minimum',
+    }])
+  })
+
+  it('将判别联合错误定位到具体判别字段', () => {
+    const invalid = structuredClone(fixture)
+    delete invalid.homepage.sections[0].type
+
+    expect(diagnoseContentSnapshot(invalid)).toEqual([{
+      path: '/homepage/sections/0/type',
+      source: 'schema',
+      code: 'discriminator',
+    }])
+  })
+
+  it('固化所有公开语义诊断代码', () => {
+    const duplicate = structuredClone(fixture)
+    duplicate.assets[1].id = duplicate.assets[0].id
+    expect(diagnoseContentSnapshot(duplicate)).toContainEqual({
+      path: '/assets/1/id',
+      source: 'semantic',
+      code: 'duplicate-id',
+    })
+
+    const missingReference = structuredClone(fixture)
+    const musicSectionIndex = missingReference.homepage.sections.findIndex(
+      (section: { type: string }) => section.type === 'music',
+    )
+    missingReference.homepage.sections[musicSectionIndex].itemIds[0] = 'release_missing'
+    expect(diagnoseContentSnapshot(missingReference)).toContainEqual({
+      path: `/homepage/sections/${musicSectionIndex}/itemIds/0`,
+      source: 'semantic',
+      code: 'missing-reference',
+    })
+
+    const mismatchedReference = structuredClone(fixture)
+    const release = mismatchedReference.releases[0]
+    const foreignTrack = mismatchedReference.tracks.find(
+      (track: { releaseId: string }) => track.releaseId !== release.id,
+    )
+    release.trackIds[0] = foreignTrack.id
+    expect(diagnoseContentSnapshot(mismatchedReference)).toContainEqual({
+      path: '/releases/0/trackIds/0',
+      source: 'semantic',
+      code: 'reference-mismatch',
+    })
+
+    const missingTarget = structuredClone(fixture)
+    const missingTargetHero = missingTarget.heroSlides.find(
+      (slide: { id: string }) => slide.id === 'hero_release',
+    )
+    missingTargetHero.target.contentId = 'content_missing'
+    expect(diagnoseContentSnapshot(missingTarget)).toContainEqual({
+      path: '/heroSlides/2/target/contentId',
+      source: 'semantic',
+      code: 'missing-reference',
+    })
+
+    const hiddenTarget = structuredClone(fixture)
+    const hero = hiddenTarget.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
+    const musicSection = hiddenTarget.homepage.sections.find(
+      (section: { type: string }) => section.type === 'music',
+    )
+    hero.target.contentId = 'release_02'
+    musicSection.limit = 1
+    expect(diagnoseContentSnapshot(hiddenTarget)).toContainEqual({
+      path: '/heroSlides/2/target/contentId',
+      source: 'semantic',
+      code: 'hidden-target',
+    })
+  })
+
+  it('保留路径数组校验 API', () => {
+    const invalid = structuredClone(fixture)
+    invalid.releases[0].coverAssetId = 'asset_missing'
+
+    expect(validateContentSnapshot(invalid)).toContain('/releases/0/coverAssetId')
+  })
+
   it('拒绝把音频素材用作封面', () => {
     const invalid = structuredClone(fixture)
     const audioAsset = invalid.assets.find((asset: { kind: string }) => asset.kind === 'audio')
     invalid.releases[0].coverAssetId = audioAsset.id
 
-    expect(validateContentSnapshot(invalid)).toContain('/releases/0/coverAssetId')
+    expect(diagnoseContentSnapshot(invalid)).toContainEqual({
+      path: '/releases/0/coverAssetId',
+      source: 'semantic',
+      code: 'asset-kind',
+    })
   })
 
   it('拒绝指向被板块 limit 截断内容的内部目标', () => {

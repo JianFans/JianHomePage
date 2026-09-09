@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createAdminApi, normalizeBaseUrl, parseSnapshotJSON } from '../../utils/admin-api'
 
+/** 构造管理 API 客户端测试使用的 JSON 响应。 */
 function response(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
@@ -53,6 +54,8 @@ describe('admin API client', () => {
 
   it('rejects non-object snapshots before a write', () => {
     expect(parseSnapshotJSON('[]')).toEqual({ snapshot: null, error: '快照必须是 JSON 对象' })
+    expect(parseSnapshotJSON('[]', 'en')).toEqual({ snapshot: null, error: 'Snapshot must be a JSON object' })
+    expect(parseSnapshotJSON('{', 'en')).toEqual({ snapshot: null, error: 'Invalid JSON' })
     expect(parseSnapshotJSON('{"releaseId":"rel_1"}')).toEqual({ snapshot: { releaseId: 'rel_1' }, error: null })
   })
 })
