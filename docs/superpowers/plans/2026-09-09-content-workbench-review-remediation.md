@@ -142,7 +142,7 @@ fix(内容工作台): 完善双语诊断与语言状态
 
 ### 任务 3：完整门禁与分支复审
 
-- [ ] **步骤 1：运行完整验证**
+- [x] **步骤 1：运行完整验证**
 
 ```bash
 pnpm verify
@@ -153,13 +153,13 @@ pnpm test:coverage:go
 pnpm test:automation
 ```
 
-- [ ] **步骤 2：检查提交和工作树**
+- [x] **步骤 2：检查提交和工作树**
 
 ```bash
 git diff --check master..HEAD
 git status --short --branch
 ```
 
-- [ ] **步骤 3：复审 `master..HEAD`**
+- [x] **步骤 3：复审 `master..HEAD`**
 
 按 findings-first 重新检查正确性、安全边界、契约兼容、i18n、无障碍和真实云环境剩余风险。
