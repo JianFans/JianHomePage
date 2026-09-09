@@ -264,6 +264,7 @@ onMounted(() => {
                   type="button"
                   :aria-label="copy.importSnapshot"
                   :title="copy.importSnapshot"
+                  :disabled="workspace.busy"
                   data-testid="snapshot-import"
                   @click="openSnapshotImport"
                 >
@@ -303,6 +304,7 @@ onMounted(() => {
             v-model="workspace.editorText"
             class="json-editor"
             aria-label="JSON 快照编辑器"
+            :disabled="workspace.importing"
             spellcheck="false"
           />
           <p

@@ -29,11 +29,13 @@ export function useAdminWorkspace() {
   const editorText = ref('{}')
   const rejectReason = ref('')
   const workflow = ref<WorkflowState>(idleWorkflow())
+  const importing = ref(false)
   const operationKeys = createOperationKeyStore()
+  let importSequence = 0
 
   const editorAnalysis = computed(() => analyzeSnapshotText(editorText.value))
   const parsedEditor = computed(() => parseSnapshotJSON(editorText.value))
-  const busy = computed(() => ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
+  const busy = computed(() => importing.value || ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
   const canSave = computed(() => Boolean(editorAnalysis.value.snapshot) && !busy.value)
   const canSubmitReview = computed(() => version.value?.status === 'draft' && !busy.value)
   const canApprove = computed(() => version.value?.status === 'in_review' && !version.value.reviewApproved && !busy.value)
@@ -89,13 +91,20 @@ export function useAdminWorkspace() {
   }
 
   async function importSnapshot(file: SnapshotImportFile, locale: AdminLocale = 'zh-CN') {
+    const sequence = ++importSequence
+    importing.value = true
     try {
-      editorText.value = await readSnapshotImport(file)
+      const contents = await readSnapshotImport(file)
+      if (sequence !== importSequence) return
+      editorText.value = contents
       workflow.value = workflowSuccess(locale === 'en' ? 'Snapshot imported' : '已导入快照')
     } catch (error) {
+      if (sequence !== importSequence) return
       workflow.value = error instanceof SnapshotImportError
         ? workflowError({ message: snapshotImportErrorMessage(error.code, locale) })
         : workflowError(error)
+    } finally {
+      if (sequence === importSequence) importing.value = false
     }
   }
 
@@ -167,6 +176,7 @@ export function useAdminWorkspace() {
     editorText,
     rejectReason,
     workflow,
+    importing,
     editorAnalysis,
     parsedEditor,
     busy,

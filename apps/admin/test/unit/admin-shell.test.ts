@@ -1,9 +1,17 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fixtureData from '../../../../content/fixtures/homepage.json'
 import App from '../../app.vue'
 import AdminPage from '../../pages/index.vue'
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -36,6 +44,27 @@ describe('管理端页面', () => {
 
     expect((wrapper.get('.json-editor').element as HTMLTextAreaElement).value).toContain('rel_fixture_20260829')
     expect(wrapper.get('[data-testid="snapshot-validation"]').text()).toMatch(/有效|valid/i)
+  })
+
+  it('导入期间禁用重复导入、编辑和保存', async () => {
+    const wrapper = await mountSuspended(AdminPage)
+    const input = wrapper.get('[data-testid="snapshot-file-input"]')
+    const pendingContents = deferred<string>()
+    const file = new File(['pending'], 'draft.json', { type: 'application/json' })
+    vi.spyOn(file, 'text').mockReturnValue(pendingContents.promise)
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+
+    await input.trigger('change')
+
+    expect(wrapper.get('[data-testid="snapshot-import"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.json-editor').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.button--primary').attributes('disabled')).toBeDefined()
+
+    pendingContents.resolve(JSON.stringify(fixtureData))
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="snapshot-import"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('.json-editor').attributes('disabled')).toBeUndefined()
   })
 
   it('导出合法快照并释放临时 URL', async () => {

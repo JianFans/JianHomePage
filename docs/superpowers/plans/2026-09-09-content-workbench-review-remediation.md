@@ -22,7 +22,7 @@
 
 ### 任务 1：阻止异步导入覆盖新操作
 
-- [ ] **步骤 1：编写失败的组合式函数测试**
+- [x] **步骤 1：编写失败的组合式函数测试**
 
 使用两个可控 Promise 启动连续导入，先完成后发导入，再完成先发导入：
 
@@ -47,7 +47,7 @@ expect(workspace.importing).toBe(true)
 expect(workspace.canSave).toBe(false)
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：
 
@@ -57,7 +57,7 @@ pnpm --filter @yujian/admin test -- admin-workspace.test.ts
 
 预期：旧导入覆盖新内容，且 `importing` 尚不存在。
 
-- [ ] **步骤 3：实现导入代次和状态门禁**
+- [x] **步骤 3：实现导入代次和状态门禁**
 
 在 `useAdminWorkspace()` 内维护单调代次：
 
@@ -81,14 +81,14 @@ async function importSnapshot(file: SnapshotImportFile, locale: AdminLocale = 'z
 
 错误状态也只允许最新代次写入。`busy` 包含 `importing`，页面在导入期间禁用导入按钮和编辑器。
 
-- [ ] **步骤 4：运行窄测试验证通过**
+- [x] **步骤 4：运行窄测试验证通过**
 
 ```bash
 pnpm --filter @yujian/admin test -- admin-workspace.test.ts admin-shell.test.ts
 pnpm --filter @yujian/admin typecheck
 ```
 
-- [ ] **步骤 5：原子提交**
+- [x] **步骤 5：原子提交**
 
 ```text
 fix(内容工作台): 防止异步导入覆盖新内容

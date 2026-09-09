@@ -7,6 +7,16 @@ import type { AdminPublishJob, AdminVersion } from '../../utils/admin-api'
 
 const fixture = fixtureData as unknown as Record<string, unknown>
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -98,6 +108,59 @@ describe('管理工作区', () => {
       text: async () => '{}',
     }, 'en')
 
+    expect(workspace.workflow).toMatchObject({ status: 'error', message: 'Choose a JSON file' })
+  })
+
+  it('只提交最后一次异步导入的结果，并在导入期间关闭保存门禁', async () => {
+    const { workspace } = await mountWorkspace()
+    const first = deferred<string>()
+    const second = deferred<string>()
+    const firstContents = JSON.stringify({ ...fixture, releaseId: 'rel_first' })
+    const secondContents = JSON.stringify({ ...fixture, releaseId: 'rel_second' })
+
+    const firstImport = workspace.importSnapshot({
+      name: 'first.json',
+      size: firstContents.length,
+      text: () => first.promise,
+    })
+    const secondImport = workspace.importSnapshot({
+      name: 'second.json',
+      size: secondContents.length,
+      text: () => second.promise,
+    })
+
+    expect(workspace.importing).toBe(true)
+    expect(workspace.canSave).toBe(false)
+
+    second.resolve(secondContents)
+    await secondImport
+    first.resolve(firstContents)
+    await firstImport
+
+    expect(workspace.importing).toBe(false)
+    expect(workspace.editorText).toBe(secondContents)
+    expect(workspace.workflow).toMatchObject({ status: 'success', message: '已导入快照' })
+  })
+
+  it('忽略过期导入的成功结果并保留最新导入错误', async () => {
+    const { workspace } = await mountWorkspace()
+    const stale = deferred<string>()
+    const staleContents = JSON.stringify({ ...fixture, releaseId: 'rel_stale' })
+    const staleImport = workspace.importSnapshot({
+      name: 'stale.json',
+      size: staleContents.length,
+      text: () => stale.promise,
+    })
+
+    await workspace.importSnapshot({
+      name: 'latest.txt',
+      size: 2,
+      text: async () => '{}',
+    }, 'en')
+    stale.resolve(staleContents)
+    await staleImport
+
+    expect(workspace.editorText).toBe('{}')
     expect(workspace.workflow).toMatchObject({ status: 'error', message: 'Choose a JSON file' })
   })
 
