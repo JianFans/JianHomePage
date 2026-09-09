@@ -66,6 +66,24 @@ describe('快照摘要与诊断', () => {
     expect(wrapper.get('[data-testid="snapshot-issue"]').text()).toContain('数值过小')
   })
 
+  it('本地化严格最小值约束', async () => {
+    const wrapper = mount(SnapshotInsights, {
+      props: {
+        locale: 'zh-CN',
+        analysis: {
+          snapshot: null,
+          summary: null,
+          issues: [{ path: '/tracks/0/durationSeconds', source: 'schema', code: 'exclusiveMinimum' }],
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="snapshot-issue"]').text()).toContain('数值必须大于下限')
+
+    await wrapper.setProps({ locale: 'en' })
+    expect(wrapper.get('[data-testid="snapshot-issue"]').text()).toContain('Value must be above minimum')
+  })
+
   it('本地化数组重复约束', async () => {
     const wrapper = mount(SnapshotInsights, {
       props: {

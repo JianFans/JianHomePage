@@ -99,13 +99,16 @@ describe('管理端页面', () => {
   it('允许在当前标签页切换管理界面语言', async () => {
     const wrapper = await mountSuspended(AdminPage)
     const localeButton = wrapper.get('.rail-locale')
-    const initialTitle = wrapper.get('h1').text()
 
-    await localeButton.trigger('click')
+    if (wrapper.get('h1').text() !== 'Content workspace') {
+      await localeButton.trigger('click')
+    }
+    await flushPromises()
 
     expect(wrapper.get('[data-testid="snapshot-validation"]').text()).toMatch(/错误|issue/i)
-    expect(wrapper.get('h1').text()).toMatch(/内容工作台|Content workspace/)
-    expect(wrapper.get('h1').text()).not.toBe(initialTitle)
+    expect(wrapper.get('h1').text()).toBe('Content workspace')
+    expect(document.documentElement.lang).toBe('en')
+    expect(wrapper.get('.json-editor').attributes('aria-label')).toBe('JSON snapshot editor')
   })
 
   it('应用壳提供 Nuxt 页面挂载点', () => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useHead } from '#imports'
 import { Download, FileUp } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import SnapshotInsights from '../components/SnapshotInsights.vue'
@@ -8,6 +9,10 @@ import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
 const workspace = reactive(useAdminWorkspace())
 const locale = ref<'zh-CN' | 'en'>('zh-CN')
 const snapshotFileInput = ref<HTMLInputElement | null>(null)
+
+useHead(() => ({
+  htmlAttrs: { lang: locale.value },
+}))
 
 const copy = computed(() => locale.value === 'en'
   ? {
@@ -22,6 +27,7 @@ const copy = computed(() => locale.value === 'en'
       versionId: 'Version ID',
       load: 'Load',
       editor: 'Snapshot editor',
+      editorLabel: 'JSON snapshot editor',
       preview: 'Preview',
       save: 'Save draft',
       submit: 'Submit review',
@@ -53,6 +59,7 @@ const copy = computed(() => locale.value === 'en'
       versionId: '版本 ID',
       load: '载入',
       editor: '快照编辑',
+      editorLabel: 'JSON 快照编辑器',
       preview: '预览',
       save: '保存草稿',
       submit: '提交审核',
@@ -303,7 +310,7 @@ onMounted(() => {
           <textarea
             v-model="workspace.editorText"
             class="json-editor"
-            aria-label="JSON 快照编辑器"
+            :aria-label="copy.editorLabel"
             :disabled="workspace.importing"
             spellcheck="false"
           />

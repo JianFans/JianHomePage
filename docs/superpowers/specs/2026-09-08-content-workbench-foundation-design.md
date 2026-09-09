@@ -70,7 +70,7 @@ export function diagnoseContentSnapshot(value: unknown): readonly ContentSnapsho
 
 - `path` 使用 JSON Pointer，根节点为 `/`。
 - Schema 问题的 `code` 使用稳定的 Ajv keyword，例如 `required`、`type`、`format`。
-- 语义问题使用仓库定义的稳定代码：`duplicate-id`、`missing-reference`、`asset-kind`、`hidden-target`。
+- 语义问题使用仓库定义的稳定代码：`duplicate-id`、`missing-reference`、`reference-mismatch`、`asset-kind`、`hidden-target`。
 - 诊断顺序保持确定性，与 Schema 遍历和快照记录顺序一致。
 - `validateContentSnapshot()` 继续返回路径数组，避免破坏已有调用方。
 - `assertContentSnapshot()` 继续抛出 `ContentSnapshotValidationError`，其 `issues` 仍为路径数组。

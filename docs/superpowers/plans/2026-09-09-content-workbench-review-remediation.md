@@ -96,7 +96,7 @@ fix(内容工作台): 防止异步导入覆盖新内容
 
 ### 任务 2：补齐诊断和英文无障碍状态
 
-- [ ] **步骤 1：编写失败的组件与页面测试**
+- [x] **步骤 1：编写失败的组件与页面测试**
 
 诊断组件使用 `exclusiveMinimum`，分别断言中文和英文标签。页面切换英文后断言：
 
@@ -105,7 +105,7 @@ expect(document.documentElement.lang).toBe('en')
 expect(wrapper.get('.json-editor').attributes('aria-label')).toBe('JSON snapshot editor')
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```bash
 pnpm --filter @yujian/admin test -- snapshot-insights.test.ts admin-shell.test.ts
@@ -113,7 +113,7 @@ pnpm --filter @yujian/admin test -- snapshot-insights.test.ts admin-shell.test.t
 
 预期：诊断回退为通用文案，文档语言和编辑器名称仍为中文。
 
-- [ ] **步骤 3：实现最小双语修复**
+- [x] **步骤 3：实现最小双语修复**
 
 在诊断映射中加入：
 
@@ -124,7 +124,7 @@ exclusiveMinimum: '数值必须大于下限'
 
 页面文案加入 `editorLabel`，并通过响应式 `useHead()` 同步 `<html lang>`。
 
-- [ ] **步骤 4：运行管理端完整验证**
+- [x] **步骤 4：运行管理端完整验证**
 
 ```bash
 pnpm --filter @yujian/admin test
@@ -132,7 +132,7 @@ pnpm --filter @yujian/admin typecheck
 pnpm --filter @yujian/admin build
 ```
 
-- [ ] **步骤 5：同步契约文档并原子提交**
+- [x] **步骤 5：同步契约文档并原子提交**
 
 把 `reference-mismatch` 加入稳定语义代码清单，并标记本计划完成。
 
