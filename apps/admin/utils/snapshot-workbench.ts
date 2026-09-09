@@ -41,6 +41,22 @@ export interface SnapshotExport {
   mimeType: 'application/json'
 }
 
+export type SnapshotImportErrorCode =
+  | 'invalid-extension'
+  | 'empty-file'
+  | 'file-too-large'
+  | 'read-failed'
+
+export class SnapshotImportError extends Error {
+  readonly code: SnapshotImportErrorCode
+
+  constructor(code: SnapshotImportErrorCode) {
+    super(code)
+    this.name = 'SnapshotImportError'
+    this.code = code
+  }
+}
+
 export function analyzeSnapshotText(text: string): SnapshotAnalysis {
   let value: unknown
   try {
@@ -68,23 +84,23 @@ export function analyzeSnapshotText(text: string): SnapshotAnalysis {
 
 export async function readSnapshotImport(file: SnapshotImportFile): Promise<string> {
   if (!file.name.toLowerCase().endsWith('.json')) {
-    throw new Error('请选择 JSON 文件')
+    throw new SnapshotImportError('invalid-extension')
   }
   if (file.size <= 0) {
-    throw new Error('JSON 文件不能为空')
+    throw new SnapshotImportError('empty-file')
   }
   if (file.size > MAX_SNAPSHOT_IMPORT_BYTES) {
-    throw new Error('JSON 文件不能超过 2 MiB')
+    throw new SnapshotImportError('file-too-large')
   }
 
   let contents: string
   try {
     contents = await file.text()
   } catch {
-    throw new Error('无法读取 JSON 文件')
+    throw new SnapshotImportError('read-failed')
   }
   if (!contents.trim()) {
-    throw new Error('JSON 文件不能为空')
+    throw new SnapshotImportError('empty-file')
   }
   return contents
 }

@@ -96,9 +96,9 @@ describe('管理工作区', () => {
       name: 'draft.txt',
       size: 2,
       text: async () => '{}',
-    })
+    }, 'en')
 
-    expect(workspace.workflow).toMatchObject({ status: 'error', message: '请选择 JSON 文件' })
+    expect(workspace.workflow).toMatchObject({ status: 'error', message: 'Choose a JSON file' })
   })
 
   it('完成草稿、审核、发布和状态刷新流程', async () => {

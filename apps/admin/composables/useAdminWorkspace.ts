@@ -11,9 +11,12 @@ import {
   analyzeSnapshotText,
   createSnapshotExport,
   readSnapshotImport,
+  SnapshotImportError,
   type SnapshotExport,
+  type SnapshotImportErrorCode,
   type SnapshotImportFile,
 } from '../utils/snapshot-workbench'
+import type { AdminLocale } from '../utils/admin-locale'
 
 export function useAdminWorkspace() {
   const runtime = useRuntimeConfig()
@@ -85,12 +88,14 @@ export function useAdminWorkspace() {
     if (result) setVersion(result)
   }
 
-  async function importSnapshot(file: SnapshotImportFile) {
+  async function importSnapshot(file: SnapshotImportFile, locale: AdminLocale = 'zh-CN') {
     try {
       editorText.value = await readSnapshotImport(file)
-      workflow.value = workflowSuccess('已导入快照')
+      workflow.value = workflowSuccess(locale === 'en' ? 'Snapshot imported' : '已导入快照')
     } catch (error) {
-      workflow.value = workflowError(error)
+      workflow.value = error instanceof SnapshotImportError
+        ? workflowError({ message: snapshotImportErrorMessage(error.code, locale) })
+        : workflowError(error)
     }
   }
 
@@ -188,4 +193,21 @@ function issueMessage(issue: { path: string; code: string } | undefined): string
   if (issue.code === 'invalid-json') return 'JSON 格式无效'
   if (issue.code === 'object-root') return '快照必须是 JSON 对象'
   return `快照无效：${issue.path}`
+}
+
+function snapshotImportErrorMessage(code: SnapshotImportErrorCode, locale: AdminLocale): string {
+  const messages = locale === 'en'
+    ? {
+        'invalid-extension': 'Choose a JSON file',
+        'empty-file': 'JSON file cannot be empty',
+        'file-too-large': 'JSON file cannot exceed 2 MiB',
+        'read-failed': 'Unable to read JSON file',
+      }
+    : {
+        'invalid-extension': '请选择 JSON 文件',
+        'empty-file': 'JSON 文件不能为空',
+        'file-too-large': 'JSON 文件不能超过 2 MiB',
+        'read-failed': '无法读取 JSON 文件',
+      }
+  return messages[code]
 }

@@ -62,8 +62,19 @@ function issueLabel(code: string): string {
         type: 'Incorrect field type',
         format: 'Incorrect value format',
         pattern: 'Incorrect value format',
+        minimum: 'Value below minimum',
+        maximum: 'Value above maximum',
+        minLength: 'Text is too short',
+        maxLength: 'Text is too long',
+        minItems: 'Too few items',
+        maxItems: 'Too many items',
+        enum: 'Unsupported value',
+        const: 'Unexpected value',
+        oneOf: 'Value does not match a supported form',
+        discriminator: 'Unsupported content type',
         'duplicate-id': 'Duplicate identifier',
         'missing-reference': 'Reference not found',
+        'reference-mismatch': 'Reference belongs elsewhere',
         'asset-kind': 'Asset type mismatch',
         'hidden-target': 'Target is not visible',
       }
@@ -75,13 +86,30 @@ function issueLabel(code: string): string {
         type: '字段类型错误',
         format: '字段格式错误',
         pattern: '字段格式错误',
+        minimum: '数值过小',
+        maximum: '数值过大',
+        minLength: '文本过短',
+        maxLength: '文本过长',
+        minItems: '项目过少',
+        maxItems: '项目过多',
+        enum: '不支持的值',
+        const: '值与内容类型不匹配',
+        oneOf: '值不符合支持的结构',
+        discriminator: '不支持的内容类型',
         'duplicate-id': '标识重复',
         'missing-reference': '引用不存在',
+        'reference-mismatch': '引用归属不一致',
         'asset-kind': '素材类型不匹配',
         'hidden-target': '目标未在首页展示',
       }
   return labels[code as keyof typeof labels]
     ?? (props.locale === 'en' ? 'Content contract mismatch' : '内容契约不匹配')
+}
+
+function issueSourceLabel(source: SnapshotAnalysis['issues'][number]['source']): string {
+  if (source === 'schema') return 'Schema'
+  if (source === 'semantic') return props.locale === 'en' ? 'Semantic' : '语义'
+  return props.locale === 'en' ? 'Input' : '输入'
 }
 </script>
 
@@ -122,12 +150,18 @@ function issueLabel(code: string): string {
         data-testid="snapshot-issues"
       >
         <li
-          v-for="issue in visibleIssues"
-          :key="`${issue.path}:${issue.code}`"
+          v-for="(issue, index) in visibleIssues"
+          :key="`${issue.path}:${issue.code}:${index}`"
           data-testid="snapshot-issue"
         >
           <code>{{ issue.path }}</code>
-          <span>{{ issueLabel(issue.code) }}</span>
+          <span class="issue-detail">
+            <small
+              class="issue-source"
+              data-testid="snapshot-issue-source"
+            >{{ issueSourceLabel(issue.source) }}</small>
+            <span class="issue-label">{{ issueLabel(issue.code) }}</span>
+          </span>
         </li>
       </ol>
       <p
@@ -203,7 +237,9 @@ function issueLabel(code: string): string {
   color: #b6c0bd;
 }
 
-.issue-list span { color: var(--danger); text-align: right; }
+.issue-detail { display: flex; align-items: center; justify-content: end; gap: .4rem; text-align: right; }
+.issue-source { color: var(--muted); border: 1px solid var(--border); padding: .1rem .3rem; font-size: .62rem; letter-spacing: .04em; }
+.issue-label { color: var(--danger); }
 .issue-overflow { margin: 0; padding: .65rem .8rem; color: var(--muted); font-size: .72rem; }
 
 @media (max-width: 520px) {
@@ -212,6 +248,6 @@ function issueLabel(code: string): string {
   .summary-grid div:nth-last-child(-n + 4) { border-bottom: 1px solid var(--border); }
   .summary-grid div:nth-last-child(-n + 2) { border-bottom: 0; }
   .issue-list li { grid-template-columns: 1fr; gap: .2rem; }
-  .issue-list span { text-align: left; }
+  .issue-detail { justify-content: start; text-align: left; }
 }
 </style>

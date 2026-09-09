@@ -7,6 +7,7 @@ import AdminPage from '../../pages/index.vue'
 
 afterEach(() => {
   vi.restoreAllMocks()
+  localStorage.clear()
 })
 
 describe('管理端页面', () => {
@@ -50,6 +51,20 @@ describe('管理端页面', () => {
     expect((createObjectURL.mock.calls[0]?.[0] as Blob).type).toBe('application/json')
     expect(click).toHaveBeenCalledOnce()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:snapshot')
+  })
+
+  it('按当前界面语言显示导入错误', async () => {
+    const wrapper = await mountSuspended(AdminPage)
+    if (wrapper.get('h1').text() !== 'Content workspace') {
+      await wrapper.get('.rail-locale').trigger('click')
+    }
+    const input = wrapper.get('[data-testid="snapshot-file-input"]')
+    const file = new File(['{}'], 'draft.txt', { type: 'text/plain' })
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+
+    await input.trigger('change')
+
+    expect(wrapper.get('.notice').text()).toContain('Choose a JSON file')
   })
 
   it('允许在当前标签页切换管理界面语言', async () => {

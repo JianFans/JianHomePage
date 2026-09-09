@@ -94,7 +94,7 @@ function openSnapshotImport() {
 async function handleSnapshotFile(event: Event) {
   const input = event.currentTarget as HTMLInputElement
   const file = input.files?.[0]
-  if (file) await workspace.importSnapshot(file)
+  if (file) await workspace.importSnapshot(file, locale.value)
   input.value = ''
 }
 

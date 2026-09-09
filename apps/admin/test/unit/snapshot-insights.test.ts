@@ -49,4 +49,20 @@ describe('快照摘要与诊断', () => {
     expect(wrapper.findAll('[data-testid="snapshot-issue"]')).toHaveLength(8)
     expect(wrapper.text()).toContain('另有 2 项')
   })
+
+  it('展示诊断来源和常见数值约束', () => {
+    const wrapper = mount(SnapshotInsights, {
+      props: {
+        locale: 'zh-CN',
+        analysis: {
+          snapshot: null,
+          summary: null,
+          issues: [{ path: '/homepage/sections/1/limit', source: 'schema', code: 'minimum' }],
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="snapshot-issue-source"]').text()).toBe('Schema')
+    expect(wrapper.get('[data-testid="snapshot-issue"]').text()).toContain('数值过小')
+  })
 })

@@ -5,6 +5,7 @@ import {
   analyzeSnapshotText,
   createSnapshotExport,
   readSnapshotImport,
+  SnapshotImportError,
 } from '../../utils/snapshot-workbench'
 
 const fixture = fixtureData as unknown as YujianContentSnapshot
@@ -56,12 +57,15 @@ describe('快照工作台工具', () => {
   })
 
   it.each([
-    ['非 JSON 文件', { name: 'draft.txt', size: 2, text: async () => '{}' }, 'JSON'],
-    ['空文件', { name: 'draft.json', size: 0, text: async () => '' }, '空'],
-    ['超过大小限制的文件', { name: 'draft.json', size: 2 * 1024 * 1024 + 1, text: async () => '{}' }, '2 MiB'],
-    ['无法读取的文件', { name: 'draft.json', size: 2, text: async () => { throw new Error('disk') } }, '读取'],
-  ])('拒绝%s', async (_name, file, message) => {
-    await expect(readSnapshotImport(file)).rejects.toThrow(message)
+    ['非 JSON 文件', { name: 'draft.txt', size: 2, text: async () => '{}' }, 'invalid-extension'],
+    ['空文件', { name: 'draft.json', size: 0, text: async () => '' }, 'empty-file'],
+    ['超过大小限制的文件', { name: 'draft.json', size: 2 * 1024 * 1024 + 1, text: async () => '{}' }, 'file-too-large'],
+    ['无法读取的文件', { name: 'draft.json', size: 2, text: async () => { throw new Error('disk') } }, 'read-failed'],
+  ])('拒绝%s并返回稳定错误代码', async (_name, file, code) => {
+    await expect(readSnapshotImport(file)).rejects.toMatchObject({
+      name: SnapshotImportError.name,
+      code,
+    })
   })
 
   it('导出可重新校验的格式化快照', () => {
