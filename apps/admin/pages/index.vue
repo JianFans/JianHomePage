@@ -115,7 +115,7 @@ function downloadSnapshot() {
     anchor.download = exported.filename
     anchor.click()
   } finally {
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 0)
   }
 }
 

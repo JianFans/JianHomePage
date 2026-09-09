@@ -14,6 +14,7 @@ function deferred<T>() {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   localStorage.clear()
 })
@@ -41,6 +42,7 @@ describe('管理端页面', () => {
     Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
 
     await input.trigger('change')
+    await flushPromises()
 
     expect((wrapper.get('.json-editor').element as HTMLTextAreaElement).value).toContain('rel_fixture_20260829')
     expect(wrapper.get('[data-testid="snapshot-validation"]').text()).toMatch(/有效|valid/i)
@@ -72,6 +74,7 @@ describe('管理端页面', () => {
     const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     const wrapper = await mountSuspended(AdminPage)
+    vi.useFakeTimers()
 
     await wrapper.get('.json-editor').setValue(JSON.stringify(fixtureData))
     await wrapper.get('[data-testid="snapshot-export"]').trigger('click')
@@ -79,6 +82,10 @@ describe('管理端页面', () => {
     expect(createObjectURL).toHaveBeenCalledOnce()
     expect((createObjectURL.mock.calls[0]?.[0] as Blob).type).toBe('application/json')
     expect(click).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(0)
+
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:snapshot')
   })
 
@@ -92,6 +99,7 @@ describe('管理端页面', () => {
     Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
 
     await input.trigger('change')
+    await flushPromises()
 
     expect(wrapper.get('.notice').text()).toContain('Choose a JSON file')
   })
