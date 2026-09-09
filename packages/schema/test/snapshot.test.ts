@@ -131,6 +131,17 @@ describe('首页快照契约', () => {
     }])
   })
 
+  it('将判别联合错误定位到具体判别字段', () => {
+    const invalid = structuredClone(fixture)
+    delete invalid.homepage.sections[0].type
+
+    expect(diagnoseContentSnapshot(invalid)).toEqual([{
+      path: '/homepage/sections/0/type',
+      source: 'schema',
+      code: 'discriminator',
+    }])
+  })
+
   it('固化所有公开语义诊断代码', () => {
     const duplicate = structuredClone(fixture)
     duplicate.assets[1].id = duplicate.assets[0].id

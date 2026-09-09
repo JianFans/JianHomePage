@@ -63,6 +63,10 @@ export function assertContentSnapshot(value: unknown): asserts value is YujianCo
 }
 
 function formatSchemaIssue(error: ErrorObject): string {
+  if (error.keyword === 'discriminator') {
+    const tag = String((error.params as { tag?: string }).tag ?? '')
+    return tag ? `${error.instancePath}/${escapePointer(tag)}` : error.instancePath || '/'
+  }
   if (error.keyword === 'required') {
     const missing = String((error.params as { missingProperty?: string }).missingProperty ?? '')
     return `${error.instancePath}/${escapePointer(missing)}`
