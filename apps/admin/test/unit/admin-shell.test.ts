@@ -5,6 +5,7 @@ import fixtureData from '../../../../content/fixtures/homepage.json'
 import App from '../../app.vue'
 import AdminPage from '../../pages/index.vue'
 
+/** 创建可由测试精确控制完成时机的 Promise。 */
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((resolvePromise) => {

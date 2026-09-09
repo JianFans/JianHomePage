@@ -52,6 +52,7 @@ const summaryEntries = computed(() => {
 const visibleIssues = computed(() => props.analysis.issues.slice(0, 8))
 const remainingIssues = computed(() => Math.max(0, props.analysis.issues.length - visibleIssues.value.length))
 
+/** 将稳定诊断代码转换为当前界面语言，并为未知代码提供安全回退。 */
 function issueLabel(code: string): string {
   const labels = props.locale === 'en'
     ? {
@@ -110,6 +111,7 @@ function issueLabel(code: string): string {
     ?? (props.locale === 'en' ? 'Content contract mismatch' : '内容契约不匹配')
 }
 
+/** 为编辑器、Schema 和语义诊断生成本地化来源标签。 */
 function issueSourceLabel(source: SnapshotAnalysis['issues'][number]['source']): string {
   if (source === 'schema') return 'Schema'
   if (source === 'semantic') return props.locale === 'en' ? 'Semantic' : '语义'

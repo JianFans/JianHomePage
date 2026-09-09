@@ -8,6 +8,7 @@ import type { AdminLocale } from '../../utils/admin-locale'
 
 const fixture = fixtureData as unknown as Record<string, unknown>
 
+/** 创建可由并发导入测试手动完成或拒绝的 Promise。 */
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (error: unknown) => void
@@ -18,6 +19,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+/** 构造工作区 API 流程测试使用的 JSON 响应。 */
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -25,8 +27,10 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+/** 在 Nuxt 测试作用域中挂载组合式函数并返回可解包状态。 */
 async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN')) {
   const host = defineComponent({
+    /** 向测试宿主暴露由 Vue 自动解包的工作区状态。 */
     setup() {
       return { workspace: reactive(useAdminWorkspace(locale)) }
     },
@@ -36,6 +40,7 @@ async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN')) {
   return { wrapper, workspace: wrapper.vm.workspace }
 }
 
+/** 创建具有合法快照的版本测试对象。 */
 function version(overrides: Partial<AdminVersion> = {}): AdminVersion {
   return {
     id: 'ver_1',
@@ -47,6 +52,7 @@ function version(overrides: Partial<AdminVersion> = {}): AdminVersion {
   }
 }
 
+/** 创建可按场景覆盖状态的发布任务测试对象。 */
 function publishJob(overrides: Partial<AdminPublishJob> = {}): AdminPublishJob {
   return {
     id: 'pub_1',

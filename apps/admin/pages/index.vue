@@ -87,15 +87,18 @@ const validationLabel = computed(() => workspace.editorAnalysis.issues.length
   ? copy.value.issueCount(workspace.editorAnalysis.issues.length)
   : copy.value.validSnapshot)
 
+/** 切换当前标签页的管理界面语言，并尽力持久化用户偏好。 */
 function toggleLocale() {
   locale.value = locale.value === 'zh-CN' ? 'en' : 'zh-CN'
   if (import.meta.client) persistAdminLocale(locale.value)
 }
 
+/** 通过可访问工具按钮打开隐藏的 JSON 文件选择器。 */
 function openSnapshotImport() {
   snapshotFileInput.value?.click()
 }
 
+/** 导入用户选择的首个文件，并重置输入以允许再次选择同名文件。 */
 async function handleSnapshotFile(event: Event) {
   const input = event.currentTarget as HTMLInputElement
   const file = input.files?.[0]
@@ -103,6 +106,9 @@ async function handleSnapshotFile(event: Event) {
   input.value = ''
 }
 
+/**
+ * 使用未挂载的临时链接下载当前快照，并在浏览器接管后释放对象 URL。
+ */
 function downloadSnapshot() {
   const exported = workspace.exportSnapshot()
   if (!exported) return

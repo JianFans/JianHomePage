@@ -21,6 +21,10 @@ import type { AdminLocale } from '../utils/admin-locale'
 
 const EDITOR_ANALYSIS_DEBOUNCE_MS = 250
 
+/**
+ * 管理内容编辑、导入导出、审核和发布状态，并按当前语言生成提示。
+ * 界面分析经过防抖，产生副作用的保存与导出始终重新读取当前文本。
+ */
 export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<AdminLocale>('zh-CN')) {
   const runtime = useRuntimeConfig()
   const apiBaseUrl = ref(String(runtime.public.apiBaseUrl || ''))
@@ -58,10 +62,12 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   const canPublish = computed(() => version.value?.status === 'in_review' && version.value.reviewApproved === true && !busy.value)
   const canRollback = computed(() => (version.value?.status === 'published' || version.value?.status === 'archived') && !busy.value)
 
+  /** 使用最新连接地址和令牌创建一次性 API 客户端。 */
   function api() {
     return createAdminApi({ baseUrl: apiBaseUrl.value, token: token.value })
   }
 
+  /** 统一维护异步操作的忙碌、成功和安全错误状态。 */
   async function run<T>(status: WorkflowState['status'], operation: () => Promise<T>, successMessage: string): Promise<T | null> {
     workflow.value = { status, message: '', requestId: '' }
     try {
@@ -74,12 +80,14 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     }
   }
 
+  /** 将服务端版本同步到版本标识与 JSON 编辑器。 */
   function setVersion(next: AdminVersion) {
     version.value = next
     versionId.value = next.id
     editorText.value = JSON.stringify(next.snapshot, null, 2)
   }
 
+  /** 校验版本 ID 后载入服务端内容版本。 */
   async function loadVersion() {
     if (!versionId.value.trim()) {
       workflow.value = workflowError({ message: '请先填写版本 ID' })
@@ -89,6 +97,9 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (result) setVersion(result)
   }
 
+  /**
+   * 直接校验当前编辑器文本，并创建新草稿或乐观更新已有草稿。
+   */
   async function saveDraft() {
     const currentAnalysis = analyzeSnapshotText(editorText.value)
     const snapshot = currentAnalysis.snapshot as unknown as Record<string, unknown> | null
@@ -109,6 +120,9 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (result) setVersion(result)
   }
 
+  /**
+   * 导入本地快照，并用单调序号保证只有最后一次异步导入可以更新状态。
+   */
   async function importSnapshot(file: SnapshotImportFile, locale: AdminLocale = 'zh-CN') {
     const sequence = ++importSequence
     importing.value = true
@@ -127,23 +141,27 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     }
   }
 
+  /** 从当前编辑器文本导出快照，文本无效时拒绝生成文件。 */
   function exportSnapshot(): SnapshotExport | null {
     const snapshot = analyzeSnapshotText(editorText.value).snapshot
     return snapshot ? createSnapshotExport(snapshot) : null
   }
 
+  /** 将当前草稿提交审核，并同步返回的新修订。 */
   async function submitReview() {
     if (!version.value) return
     const result = await run('reviewing', () => api().submitReview(version.value!.id, version.value!.revision), '已提交审核')
     if (result) setVersion(result)
   }
 
+  /** 批准当前审核版本，并同步审核状态。 */
   async function approveReview() {
     if (!version.value) return
     const result = await run('reviewing', () => api().approveReview(version.value!.id, version.value!.revision), '审核已通过')
     if (result) setVersion(result)
   }
 
+  /** 校验退回原因后将当前审核版本退回草稿。 */
   async function rejectReview() {
     if (!version.value || !rejectReason.value.trim()) {
       workflow.value = workflowError({ message: '请填写退回原因' })
@@ -153,6 +171,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (result) setVersion(result)
   }
 
+  /** 使用可复用幂等键为当前版本创建发布任务。 */
   async function publish() {
     if (!version.value) return
     const current = version.value
@@ -161,6 +180,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (result) setPublishJob('publish', result)
   }
 
+  /** 刷新当前发布任务，并在终态释放对应幂等键。 */
   async function refreshPublish() {
     if (!publishJob.value) return
     const result = await run('publishing', () => api().refreshPublish(publishJob.value!.id), '发布状态已刷新')
@@ -172,6 +192,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     }
   }
 
+  /** 为当前已发布或归档版本创建幂等回滚任务。 */
   async function rollback() {
     if (!version.value) return
     const current = version.value
@@ -180,6 +201,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (result) setPublishJob('rollback', result)
   }
 
+  /** 记录发布任务，并依据任务状态维护操作幂等键。 */
   function setPublishJob(operation: PublishOperation, job: AdminPublishJob) {
     publishOperation.value = operation
     publishJob.value = job
@@ -217,6 +239,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   }
 }
 
+/** 将首个编辑器或内容契约问题转换为本地化提示。 */
 function issueMessage(issue: { path: string; code: string } | undefined, locale: AdminLocale): string {
   if (!issue) return ''
   if (issue.code === 'invalid-json' || issue.code === 'object-root') {
@@ -225,10 +248,12 @@ function issueMessage(issue: { path: string; code: string } | undefined, locale:
   return locale === 'en' ? `Invalid snapshot: ${issue.path}` : `快照无效：${issue.path}`
 }
 
+/** 返回无具体诊断时使用的本地化快照错误消息。 */
 function invalidSnapshotMessage(locale: AdminLocale): string {
   return locale === 'en' ? 'Snapshot is invalid' : '快照无效'
 }
 
+/** 将稳定的导入错误代码映射为当前界面语言。 */
 function snapshotImportErrorMessage(code: SnapshotImportErrorCode, locale: AdminLocale): string {
   const messages = locale === 'en'
     ? {

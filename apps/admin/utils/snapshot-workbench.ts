@@ -50,6 +50,7 @@ export type SnapshotImportErrorCode =
 export class SnapshotImportError extends Error {
   readonly code: SnapshotImportErrorCode
 
+  /** 使用稳定错误代码描述可本地化的导入失败。 */
   constructor(code: SnapshotImportErrorCode) {
     super(code)
     this.name = 'SnapshotImportError'
@@ -57,6 +58,9 @@ export class SnapshotImportError extends Error {
   }
 }
 
+/**
+ * 解析并校验编辑器文本，只为完全有效的快照生成摘要。
+ */
 export function analyzeSnapshotText(text: string): SnapshotAnalysis {
   let value: unknown
   try {
@@ -82,6 +86,9 @@ export function analyzeSnapshotText(text: string): SnapshotAnalysis {
   }
 }
 
+/**
+ * 校验导入文件的扩展名、大小和可读性，并返回原始 JSON 文本。
+ */
 export async function readSnapshotImport(file: SnapshotImportFile): Promise<string> {
   if (!file.name.toLowerCase().endsWith('.json')) {
     throw new SnapshotImportError('invalid-extension')
@@ -105,6 +112,9 @@ export async function readSnapshotImport(file: SnapshotImportFile): Promise<stri
   return contents
 }
 
+/**
+ * 将已验证快照序列化为具有稳定文件名和末尾换行的 JSON 文件。
+ */
 export function createSnapshotExport(snapshot: YujianContentSnapshot): SnapshotExport {
   const filename = /^rel_[a-z0-9_]+$/.test(snapshot.releaseId)
     ? `${snapshot.releaseId}.json`
@@ -116,6 +126,7 @@ export function createSnapshotExport(snapshot: YujianContentSnapshot): SnapshotE
   }
 }
 
+/** 为编辑器级解析失败构造不含摘要的分析结果。 */
 function invalidAnalysis(code: string): SnapshotAnalysis {
   return {
     snapshot: null,
@@ -124,6 +135,7 @@ function invalidAnalysis(code: string): SnapshotAnalysis {
   }
 }
 
+/** 汇总首页编辑器预览所需的内容与素材数量。 */
 function summarizeSnapshot(snapshot: YujianContentSnapshot): SnapshotSummary {
   return {
     sections: snapshot.homepage.sections.length,

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createAdminApi, normalizeBaseUrl, parseSnapshotJSON } from '../../utils/admin-api'
 
+/** 构造管理 API 客户端测试使用的 JSON 响应。 */
 function response(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
