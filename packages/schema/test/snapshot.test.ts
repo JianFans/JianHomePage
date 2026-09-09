@@ -113,8 +113,22 @@ describe('首页快照契约', () => {
     expect(diagnoseContentSnapshot(brokenReference)).toContainEqual({
       path: '/releases/0/coverAssetId',
       source: 'semantic',
-      code: 'asset-kind',
+      code: 'missing-reference',
     })
+  })
+
+  it('只返回判别联合当前分支的 Schema 错误', () => {
+    const invalid = structuredClone(fixture)
+    const sectionIndex = invalid.homepage.sections.findIndex(
+      (section: { type: string }) => section.type === 'music',
+    )
+    invalid.homepage.sections[sectionIndex].limit = 0
+
+    expect(diagnoseContentSnapshot(invalid)).toEqual([{
+      path: `/homepage/sections/${sectionIndex}/limit`,
+      source: 'schema',
+      code: 'minimum',
+    }])
   })
 
   it('固化所有公开语义诊断代码', () => {
@@ -133,6 +147,29 @@ describe('首页快照契约', () => {
     missingReference.homepage.sections[musicSectionIndex].itemIds[0] = 'release_missing'
     expect(diagnoseContentSnapshot(missingReference)).toContainEqual({
       path: `/homepage/sections/${musicSectionIndex}/itemIds/0`,
+      source: 'semantic',
+      code: 'missing-reference',
+    })
+
+    const mismatchedReference = structuredClone(fixture)
+    const release = mismatchedReference.releases[0]
+    const foreignTrack = mismatchedReference.tracks.find(
+      (track: { releaseId: string }) => track.releaseId !== release.id,
+    )
+    release.trackIds[0] = foreignTrack.id
+    expect(diagnoseContentSnapshot(mismatchedReference)).toContainEqual({
+      path: '/releases/0/trackIds/0',
+      source: 'semantic',
+      code: 'reference-mismatch',
+    })
+
+    const missingTarget = structuredClone(fixture)
+    const missingTargetHero = missingTarget.heroSlides.find(
+      (slide: { id: string }) => slide.id === 'hero_release',
+    )
+    missingTargetHero.target.contentId = 'content_missing'
+    expect(diagnoseContentSnapshot(missingTarget)).toContainEqual({
+      path: '/heroSlides/2/target/contentId',
       source: 'semantic',
       code: 'missing-reference',
     })
@@ -163,7 +200,11 @@ describe('首页快照契约', () => {
     const audioAsset = invalid.assets.find((asset: { kind: string }) => asset.kind === 'audio')
     invalid.releases[0].coverAssetId = audioAsset.id
 
-    expect(validateContentSnapshot(invalid)).toContain('/releases/0/coverAssetId')
+    expect(diagnoseContentSnapshot(invalid)).toContainEqual({
+      path: '/releases/0/coverAssetId',
+      source: 'semantic',
+      code: 'asset-kind',
+    })
   })
 
   it('拒绝指向被板块 limit 截断内容的内部目标', () => {

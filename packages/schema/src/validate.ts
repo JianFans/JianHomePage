@@ -11,11 +11,16 @@ import type {
   YujianContentSnapshot,
 } from './generated'
 
-const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: true })
+const validationSchema = structuredClone(schema)
+addSchemaDiscriminator(validationSchema, ['$defs', 'Homepage', 'properties', 'sections', 'items'], 'type')
+addSchemaDiscriminator(validationSchema, ['$defs', 'ContentTarget'], 'kind')
+addSchemaDiscriminator(validationSchema, ['$defs', 'Asset'], 'kind')
+
+const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: true, discriminator: true })
 ajv.addFormat('date', { type: 'string', validate: isISODate })
 ajv.addFormat('date-time', { type: 'string', validate: isRFC3339DateTime })
 ajv.addFormat('https-url', { type: 'string', validate: isHTTPSURL })
-const validateSchema = ajv.compile(schema)
+const validateSchema = ajv.compile(validationSchema)
 
 export type ContentSnapshotIssueSource = 'schema' | 'semantic'
 
@@ -78,16 +83,18 @@ function diagnoseSemantics(snapshot: YujianContentSnapshot): ContentSnapshotIssu
   const videos = indexRecords(snapshot.videos, '/videos', issues)
   const events = indexRecords(snapshot.events, '/events', issues)
   const moments = indexRecords(snapshot.moments, '/moments', issues)
-  const contentIds = renderedContentIds(snapshot, { heroes, releases, videos, events, moments })
+  const indexes = { heroes, releases, videos, events, moments }
+  const knownContentIds = collectKnownContentIds(snapshot, indexes, tracks)
+  const renderedIds = renderedContentIds(snapshot, indexes)
 
   requireAssetKind(snapshot.site.seo.ogAssetId, assets, ['image', 'gif'], '/site/seo/ogAssetId', issues)
-  validateHomepage(snapshot, { heroes, releases, videos, events, moments }, issues)
-  validateHeroes(snapshot.heroSlides, assets, releases, contentIds, issues)
+  validateHomepage(snapshot, indexes, issues)
+  validateHeroes(snapshot.heroSlides, assets, releases, knownContentIds, renderedIds, issues)
   validateReleases(snapshot.releases, assets, tracks, issues)
   validateTracks(snapshot.tracks, assets, releases, issues)
   validateVideos(snapshot.videos, assets, issues)
   validateEvents(snapshot.events, assets, issues)
-  validateMoments(snapshot.moments, assets, contentIds, issues)
+  validateMoments(snapshot.moments, assets, knownContentIds, renderedIds, issues)
   requireAssetKind(snapshot.artist.portraitAssetId, assets, ['image', 'gif'], '/artist/portraitAssetId', issues)
   snapshot.assets.forEach((asset, index) => {
     if (asset.posterAssetId) {
@@ -115,6 +122,22 @@ interface HomepageIndexes {
   videos: ReadonlyMap<string, Video>
   events: ReadonlyMap<string, Event>
   moments: ReadonlyMap<string, Moment>
+}
+
+function collectKnownContentIds(
+  snapshot: YujianContentSnapshot,
+  indexes: HomepageIndexes,
+  tracks: ReadonlyMap<string, Track>,
+): Set<string> {
+  return new Set([
+    snapshot.artist.id,
+    ...indexes.heroes.keys(),
+    ...indexes.releases.keys(),
+    ...tracks.keys(),
+    ...indexes.videos.keys(),
+    ...indexes.events.keys(),
+    ...indexes.moments.keys(),
+  ])
 }
 
 function renderedContentIds(snapshot: YujianContentSnapshot, indexes: HomepageIndexes): Set<string> {
@@ -195,7 +218,8 @@ function validateHeroes(
   records: readonly HeroSlide[],
   assets: ReadonlyMap<string, Asset>,
   releases: ReadonlyMap<string, Release>,
-  contentIds: ReadonlySet<string>,
+  knownContentIds: ReadonlySet<string>,
+  renderedContentIds: ReadonlySet<string>,
   issues: ContentSnapshotIssue[],
 ) {
   records.forEach((record, index) => {
@@ -204,7 +228,7 @@ function validateHeroes(
     if (record.mobileAssetId) requireAssetKind(record.mobileAssetId, assets, [record.mediaKind], `${base}/mobileAssetId`, issues)
     if (record.posterAssetId) requireAssetKind(record.posterAssetId, assets, ['image', 'gif'], `${base}/posterAssetId`, issues)
     if (record.releaseId) requireReference(record.releaseId, releases, `${base}/releaseId`, issues)
-    validateInternalTarget(record.target, contentIds, `${base}/target/contentId`, issues)
+    validateInternalTarget(record.target, knownContentIds, renderedContentIds, `${base}/target/contentId`, issues)
   })
 }
 
@@ -220,7 +244,7 @@ function validateReleases(
     record.trackIds.forEach((trackId, trackIndex) => {
       requireReference(trackId, tracks, `${base}/trackIds/${trackIndex}`, issues)
       const track = tracks.get(trackId)
-      if (track && track.releaseId !== record.id) addSemanticIssue(issues, `${base}/trackIds/${trackIndex}`, 'missing-reference')
+      if (track && track.releaseId !== record.id) addSemanticIssue(issues, `${base}/trackIds/${trackIndex}`, 'reference-mismatch')
     })
   })
 }
@@ -255,22 +279,29 @@ function validateEvents(records: readonly Event[], assets: ReadonlyMap<string, A
 function validateMoments(
   records: readonly Moment[],
   assets: ReadonlyMap<string, Asset>,
-  contentIds: ReadonlySet<string>,
+  knownContentIds: ReadonlySet<string>,
+  renderedContentIds: ReadonlySet<string>,
   issues: ContentSnapshotIssue[],
 ) {
   records.forEach((record, index) => {
     requireAssetKind(record.assetId, assets, ['image', 'gif'], `/moments/${index}/assetId`, issues)
-    validateInternalTarget(record.target, contentIds, `/moments/${index}/target/contentId`, issues)
+    validateInternalTarget(record.target, knownContentIds, renderedContentIds, `/moments/${index}/target/contentId`, issues)
   })
 }
 
 function validateInternalTarget(
   target: HeroSlide['target'] | Moment['target'],
-  contentIds: ReadonlySet<string>,
+  knownContentIds: ReadonlySet<string>,
+  renderedContentIds: ReadonlySet<string>,
   path: string,
   issues: ContentSnapshotIssue[],
 ) {
-  if (target?.kind === 'internal' && !contentIds.has(target.contentId)) addSemanticIssue(issues, path, 'hidden-target')
+  if (target?.kind !== 'internal') return
+  if (!knownContentIds.has(target.contentId)) {
+    addSemanticIssue(issues, path, 'missing-reference')
+  } else if (!renderedContentIds.has(target.contentId)) {
+    addSemanticIssue(issues, path, 'hidden-target')
+  }
 }
 
 function requireReference(id: string, records: ReadonlyMap<string, unknown>, path: string, issues: ContentSnapshotIssue[]) {
@@ -285,7 +316,11 @@ function requireAssetKind(
   issues: ContentSnapshotIssue[],
 ) {
   const asset = assets.get(id)
-  if (!asset || !allowedKinds.includes(asset.kind)) addSemanticIssue(issues, path, 'asset-kind')
+  if (!asset) {
+    addSemanticIssue(issues, path, 'missing-reference')
+  } else if (!allowedKinds.includes(asset.kind)) {
+    addSemanticIssue(issues, path, 'asset-kind')
+  }
 }
 
 function addSemanticIssue(issues: ContentSnapshotIssue[], path: string, code: string): void {
@@ -294,6 +329,21 @@ function addSemanticIssue(issues: ContentSnapshotIssue[], path: string, code: st
 
 function escapePointer(value: string): string {
   return value.replaceAll('~', '~0').replaceAll('/', '~1')
+}
+
+function addSchemaDiscriminator(root: unknown, path: readonly string[], propertyName: string): void {
+  let current = root
+  for (const segment of path) {
+    if (!isRecord(current)) throw new Error(`Invalid schema discriminator path: ${path.join('/')}`)
+    current = current[segment]
+  }
+  if (!isRecord(current)) throw new Error(`Invalid schema discriminator target: ${path.join('/')}`)
+  current.type = 'object'
+  current.discriminator = { propertyName }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function isISODate(value: string): boolean {
