@@ -20,8 +20,8 @@
   "devDependencies": {
     "@nuxt/test-utils": "4.3.2",
     "@vitest/coverage-v8": "4.1.11",
-    "@vue/test-utils": "2.5.0",
-    "happy-dom": "20.14.3",
+    "@vue/test-utils": "2.5.1",
+    "happy-dom": "20.14.5",
     "vitest": "4.1.11",
     "vue-tsc": "3.3.11"
   }
