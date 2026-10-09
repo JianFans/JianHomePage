@@ -53,16 +53,19 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
   const listError = ref(false)
   const pendingUpload = ref<AdminAssetUpload | null>(null)
   const blobUploaded = ref(false)
+  const completedAsset = shallowRef<AdminAsset | null>(null)
   const apiFactory = options.apiFactory || createAdminApi
   const digest = options.digest || sha256File
   let uploadSequence = 0
   let listSequence = 0
   let disposed = false
+  let uploadsDuringList = new Map<string, AdminAsset>()
 
   const canRetryComplete = computed(() => Boolean(pendingUpload.value && blobUploaded.value && errorCode.value === 'complete-failed'))
   const filteredAssets = computed(() => {
     const needle = searchText.value.trim().toLowerCase()
     return assets.value.filter((asset) => {
+      if (!matchesStatus(asset)) return false
       if (kindFilter.value !== 'all' && kindFromContentType(asset.metadata.contentType) !== kindFilter.value) return false
       if (!needle) return true
       return [asset.id, asset.metadata.fileName, asset.metadata.contentType]
@@ -105,6 +108,7 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
     const client = api()
     errorCode.value = null
     pendingUpload.value = null
+    completedAsset.value = null
     blobUploaded.value = false
     try {
       stage.value = 'hashing'
@@ -164,6 +168,8 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
   async function loadAssets(append = false): Promise<void> {
     if (append && (!nextCursor.value || loading.value)) return
     const sequence = ++listSequence
+    const completedDuringRequest = new Map<string, AdminAsset>()
+    uploadsDuringList = completedDuringRequest
     loading.value = true
     listError.value = false
     try {
@@ -173,7 +179,13 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
         ...(append && nextCursor.value ? { cursor: nextCursor.value } : {}),
       })
       if (!activeList(sequence)) return
-      assets.value = append ? mergeAssets(assets.value, page.items) : [...page.items]
+      // An older page may contain the pending form of an upload completed while
+      // it was in flight. Keep its cursor and other records, but use ready data.
+      const incoming = [
+        ...completedDuringRequest.values(),
+        ...page.items.filter(asset => !completedDuringRequest.has(asset.id)),
+      ].filter(matchesStatus)
+      assets.value = append ? mergeAssets(assets.value, incoming) : incoming
       nextCursor.value = page.nextCursor || ''
     } catch {
       if (activeList(sequence)) listError.value = true
@@ -211,12 +223,11 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
     stage.value = 'failed'
   }
 
-  /** 将已确认素材置顶去重，并清理成功上传使用的表单。 */
+  /** 按当前状态筛选合并已确认素材，保留正在读取的列表和分页。 */
   function finishUpload(asset: AdminAsset): void {
-    listSequence++
-    loading.value = false
-    listError.value = false
-    assets.value = [asset, ...assets.value.filter(item => item.id !== asset.id)]
+    completedAsset.value = asset
+    if (loading.value) uploadsDuringList.set(asset.id, asset)
+    assets.value = [asset, ...assets.value.filter(item => item.id !== asset.id)].filter(matchesStatus)
     pendingUpload.value = null
     blobUploaded.value = false
     errorCode.value = null
@@ -228,6 +239,11 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
     license.value = ''
     altZhCN.value = ''
     altEn.value = ''
+  }
+
+  /** 默认隐藏已删除素材，显式筛选时仅保留对应状态。 */
+  function matchesStatus(asset: AdminAsset): boolean {
+    return statusFilter.value ? asset.status === statusFilter.value : asset.status !== 'deleted'
   }
 
   /** 从表单构造 canonical 权利结构并忽略空可选字段。 */
@@ -253,6 +269,7 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
     stage,
     errorCode,
     assets,
+    completedAsset,
     nextCursor,
     statusFilter,
     kindFilter,

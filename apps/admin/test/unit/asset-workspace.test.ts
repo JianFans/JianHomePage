@@ -142,6 +142,33 @@ describe('asset workspace state machine', () => {
     expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_uploaded'])
     expect(workspace.loading.value).toBe(false)
   })
+
+  it.each(['pending', 'deleted'] as const)('preserves an in-flight %s list when an upload completes', async (status) => {
+    const pendingList = deferred<{ items: AdminAsset[], nextCursor: string }>()
+    const api = createApi()
+    api.listAssets.mockReturnValueOnce(pendingList.promise)
+    const workspace = createWorkspace(api)
+    workspace.file.value = new File(['asset'], 'cover.webp', { type: 'image/webp' })
+    workspace.sourceZhCN.value = '官方授权'
+    workspace.altZhCN.value = '封面'
+
+    const loading = workspace.setStatusFilter(status)
+    await workspace.upload()
+
+    expect(workspace.stage.value).toBe('succeeded')
+    expect(workspace.assets.value).toEqual([])
+    expect(workspace.loading.value).toBe(true)
+    pendingList.resolve({ items: [
+      { ...readyAsset('asset_other'), status },
+      ...(status === 'pending' ? [{ ...readyAsset(), status }] : []),
+    ], nextCursor: 'next-page' })
+    await loading
+
+    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_other'])
+    expect(workspace.filteredAssets.value.map(asset => asset.id)).toEqual(['asset_other'])
+    expect(workspace.nextCursor.value).toBe('next-page')
+    expect(workspace.loading.value).toBe(false)
+  })
 })
 
 /** 使用默认成功响应构造可逐项覆盖的素材 API mock。 */
