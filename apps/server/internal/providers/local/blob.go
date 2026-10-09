@@ -1,7 +1,6 @@
 package local
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -12,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -26,11 +26,15 @@ type BlobStore struct {
 	objects      map[string]blobObject
 	reservations map[string]uploadReservation
 	now          func() time.Time
+	rootOnce     sync.Once
+	rootPath     string
+	rootErr      error
+	closed       bool
 }
 
 type blobObject struct {
 	metadata ports.BlobMetadata
-	data     []byte
+	filePath string
 }
 
 type uploadReservation struct {
@@ -38,6 +42,13 @@ type uploadReservation struct {
 	token     string
 	expiresAt time.Time
 }
+
+var (
+	errBlobStoreClosed = errors.New("local blob store is closed")
+	errPayloadTooLarge = errors.New("payload exceeds declared size")
+	errPayloadSize     = errors.New("payload size does not match declaration")
+	errPayloadChecksum = errors.New("payload checksum does not match declaration")
+)
 
 func NewBlobStore() *BlobStore {
 	return &BlobStore{
@@ -57,6 +68,10 @@ func (store *BlobStore) CreateUpload(_ context.Context, request ports.UploadRequ
 	}
 	expiresAt := store.now().UTC().Add(request.ExpiresIn)
 	store.mu.Lock()
+	if store.closed {
+		store.mu.Unlock()
+		return ports.SignedUpload{}, errBlobStoreClosed
+	}
 	store.reservations[request.BlobKey] = uploadReservation{request: request, token: token, expiresAt: expiresAt}
 	store.mu.Unlock()
 	headers := map[string]string{"Content-Type": request.ContentType}
@@ -104,29 +119,24 @@ func (store *BlobStore) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		http.Error(writer, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
 		return
 	}
+	if reservation.request.Checksum != "" && request.Header.Get("X-Yujian-Checksum") != reservation.request.Checksum {
+		http.Error(writer, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
 	request.Body = http.MaxBytesReader(writer, request.Body, reservation.request.Size+1)
-	data, err := io.ReadAll(request.Body)
-	if err != nil || int64(len(data)) > reservation.request.Size {
-		http.Error(writer, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
-		return
-	}
-	if int64(len(data)) != reservation.request.Size {
-		http.Error(writer, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	checksum := checksumFor(data)
-	if reservation.request.Checksum != "" &&
-		(request.Header.Get("X-Yujian-Checksum") != reservation.request.Checksum || checksum != reservation.request.Checksum) {
-		http.Error(writer, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-	if err := store.Put(request.Context(), key, bytes.NewReader(data), ports.BlobMetadata{
+	err := store.put(request.Context(), key, request.Body, ports.BlobMetadata{
 		ContentType: reservation.request.ContentType,
-		Size:        int64(len(data)),
-		Checksum:    checksum,
-	}); err != nil {
+		Size:        reservation.request.Size,
+		Checksum:    reservation.request.Checksum,
+	})
+	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, domain.ErrConflict) {
+		switch {
+		case errors.Is(err, errPayloadTooLarge):
+			status = http.StatusRequestEntityTooLarge
+		case errors.Is(err, errPayloadSize), errors.Is(err, errPayloadChecksum), errors.Is(err, domain.ErrInvalidInput):
+			status = http.StatusBadRequest
+		case errors.Is(err, domain.ErrConflict):
 			status = http.StatusConflict
 		}
 		http.Error(writer, http.StatusText(status), status)
@@ -151,19 +161,23 @@ func (store *BlobStore) serveRead(writer http.ResponseWriter, request *http.Requ
 	}
 	store.mu.RLock()
 	object, exists := store.objects[key]
-	if exists {
-		object.data = append([]byte(nil), object.data...)
-	}
-	store.mu.RUnlock()
 	if !exists {
+		store.mu.RUnlock()
 		http.NotFound(writer, request)
 		return
 	}
+	file, err := os.Open(object.filePath)
+	store.mu.RUnlock()
+	if err != nil {
+		http.NotFound(writer, request)
+		return
+	}
+	defer file.Close()
 	writer.Header().Set("Content-Type", object.metadata.ContentType)
 	if object.metadata.Checksum != "" {
 		writer.Header().Set("ETag", `"`+object.metadata.Checksum+`"`)
 	}
-	http.ServeContent(writer, request, path.Base(key), time.Time{}, bytes.NewReader(object.data))
+	http.ServeContent(writer, request, path.Base(key), time.Time{}, file)
 }
 
 func (store *BlobStore) Stat(_ context.Context, key string) (ports.BlobMetadata, error) {
@@ -176,20 +190,54 @@ func (store *BlobStore) Stat(_ context.Context, key string) (ports.BlobMetadata,
 	return object.metadata, nil
 }
 
-func (store *BlobStore) Put(_ context.Context, key string, reader io.Reader, metadata ports.BlobMetadata) error {
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return err
+func (store *BlobStore) Put(ctx context.Context, key string, reader io.Reader, metadata ports.BlobMetadata) error {
+	err := store.put(ctx, key, reader, metadata)
+	if errors.Is(err, errPayloadTooLarge) || errors.Is(err, errPayloadSize) || errors.Is(err, errPayloadChecksum) {
+		return domain.ErrInvalidInput
 	}
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	if current, exists := store.objects[key]; exists {
+	return err
+}
+
+func (store *BlobStore) put(ctx context.Context, key string, reader io.Reader, metadata ports.BlobMetadata) error {
+	if validateKey(key) != nil || metadata.ContentType == "" || metadata.Size < 0 {
+		return domain.ErrInvalidInput
+	}
+	store.mu.RLock()
+	current, exists := store.objects[key]
+	closed := store.closed
+	store.mu.RUnlock()
+	if closed {
+		return errBlobStoreClosed
+	}
+	if exists {
 		if current.metadata.Checksum != metadata.Checksum || current.metadata.Size != metadata.Size {
 			return domain.ErrConflict
 		}
 		return nil
 	}
-	store.objects[key] = blobObject{metadata: metadata, data: append([]byte(nil), data...)}
+	filePath, actualMetadata, err := store.writeTemporaryObject(ctx, reader, metadata)
+	if err != nil {
+		return err
+	}
+	keepFile := false
+	defer func() {
+		if !keepFile {
+			_ = os.Remove(filePath)
+		}
+	}()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.closed {
+		return errBlobStoreClosed
+	}
+	if current, exists := store.objects[key]; exists {
+		if current.metadata.Checksum != actualMetadata.Checksum || current.metadata.Size != actualMetadata.Size {
+			return domain.ErrConflict
+		}
+		return nil
+	}
+	store.objects[key] = blobObject{metadata: actualMetadata, filePath: filePath}
+	keepFile = true
 	return nil
 }
 
@@ -199,8 +247,25 @@ func (store *BlobStore) Delete(_ context.Context, key string) error {
 	if _, exists := store.objects[key]; !exists {
 		return domain.ErrNotFound
 	}
+	if err := os.Remove(store.objects[key].filePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	delete(store.objects, key)
 	return nil
+}
+
+// Close removes all temporary local objects and makes the store unavailable.
+func (store *BlobStore) Close() error {
+	store.mu.Lock()
+	store.closed = true
+	rootPath := store.rootPath
+	store.objects = make(map[string]blobObject)
+	store.reservations = make(map[string]uploadReservation)
+	store.mu.Unlock()
+	if rootPath == "" {
+		return nil
+	}
+	return os.RemoveAll(rootPath)
 }
 
 func (store *BlobStore) SignedReadURL(_ context.Context, key string, expiresIn time.Duration) (string, error) {
@@ -257,6 +322,85 @@ func secureEqual(left, right string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
+}
+
+func (store *BlobStore) writeTemporaryObject(
+	ctx context.Context,
+	reader io.Reader,
+	metadata ports.BlobMetadata,
+) (string, ports.BlobMetadata, error) {
+	rootPath, err := store.localRoot()
+	if err != nil {
+		return "", ports.BlobMetadata{}, err
+	}
+	file, err := os.CreateTemp(rootPath, "object-*")
+	if err != nil {
+		return "", ports.BlobMetadata{}, err
+	}
+	filePath := file.Name()
+	keepFile := false
+	defer func() {
+		_ = file.Close()
+		if !keepFile {
+			_ = os.Remove(filePath)
+		}
+	}()
+
+	hash := sha256.New()
+	limited := io.LimitReader(&contextReader{ctx: ctx, reader: reader}, metadata.Size+1)
+	written, err := io.CopyBuffer(io.MultiWriter(file, hash), limited, make([]byte, 64*1024))
+	if err != nil {
+		return "", ports.BlobMetadata{}, err
+	}
+	if written > metadata.Size {
+		return "", ports.BlobMetadata{}, errPayloadTooLarge
+	}
+	if written != metadata.Size {
+		return "", ports.BlobMetadata{}, errPayloadSize
+	}
+	actualChecksum := fmt.Sprintf("sha256:%x", hash.Sum(nil))
+	if metadata.Checksum != "" && metadata.Checksum != actualChecksum {
+		return "", ports.BlobMetadata{}, errPayloadChecksum
+	}
+	if err := file.Close(); err != nil {
+		return "", ports.BlobMetadata{}, err
+	}
+	keepFile = true
+	return filePath, metadata, nil
+}
+
+func (store *BlobStore) localRoot() (string, error) {
+	store.mu.RLock()
+	closed := store.closed
+	store.mu.RUnlock()
+	if closed {
+		return "", errBlobStoreClosed
+	}
+	store.rootOnce.Do(func() {
+		rootPath, err := os.MkdirTemp("", "yujian-local-blobs-*")
+		store.mu.Lock()
+		store.rootPath = rootPath
+		store.rootErr = err
+		store.mu.Unlock()
+	})
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	if store.closed {
+		return "", errBlobStoreClosed
+	}
+	return store.rootPath, store.rootErr
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader *contextReader) Read(buffer []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return reader.reader.Read(buffer)
 }
 
 func checksumFor(data []byte) string {

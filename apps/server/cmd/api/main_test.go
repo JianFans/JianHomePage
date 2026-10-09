@@ -117,7 +117,13 @@ func TestDevelopmentHandlerRunsAssetUploadRoundTrip(t *testing.T) {
 		Address:          "127.0.0.1:0",
 		AllowDevIdentity: true,
 	}
-	handler, err := buildHandler(settings, ServiceDependencies{})
+	dependencies := developmentDependencies()
+	t.Cleanup(func() {
+		if err := dependencies.Close(); err != nil {
+			t.Errorf("close development dependencies: %v", err)
+		}
+	})
+	handler, err := buildHandler(settings, dependencies)
 	if err != nil {
 		t.Fatalf("build handler: %v", err)
 	}
@@ -198,6 +204,29 @@ func TestDevelopmentHandlerRunsAssetUploadRoundTrip(t *testing.T) {
 	handler.ServeHTTP(list, listRequest)
 	if list.Code != http.StatusOK || !bytes.Contains(list.Body.Bytes(), []byte(created.Asset.ID)) {
 		t.Fatalf("list ready assets: status=%d body=%s", list.Code, list.Body.String())
+	}
+}
+
+func TestDevelopmentDependenciesCloseLocalBlobStore(t *testing.T) {
+	dependencies := developmentDependencies()
+	store, ok := dependencies.LocalUploads.(*local.BlobStore)
+	if !ok || dependencies.Close == nil {
+		t.Fatalf("development dependencies do not expose local cleanup: %#v", dependencies)
+	}
+	payload := []byte("temporary-media")
+	if err := store.Put(t.Context(), "assets/temporary/source.webp", bytes.NewReader(payload), ports.BlobMetadata{
+		ContentType: "image/webp",
+		Size:        int64(len(payload)),
+		Checksum:    fmt.Sprintf("sha256:%x", sha256.Sum256(payload)),
+	}); err != nil {
+		t.Fatalf("put local object: %v", err)
+	}
+
+	if err := dependencies.Close(); err != nil {
+		t.Fatalf("close development dependencies: %v", err)
+	}
+	if _, err := store.Stat(t.Context(), "assets/temporary/source.webp"); err == nil {
+		t.Fatal("development cleanup retained local object")
 	}
 }
 

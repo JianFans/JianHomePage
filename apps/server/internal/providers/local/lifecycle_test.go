@@ -34,7 +34,7 @@ func TestBuildTriggerLifecycle(t *testing.T) {
 }
 
 func TestBlobStoreLifecycleAndReadValidation(t *testing.T) {
-	store := NewBlobStore()
+	store := newTestBlobStore(t)
 	metadata := ports.BlobMetadata{ContentType: "text/plain", Size: 4, Checksum: checksumFor([]byte("data"))}
 	if err := store.Put(t.Context(), "files/data.txt", bytes.NewBufferString("data"), metadata); err != nil {
 		t.Fatalf("put object: %v", err)
@@ -89,7 +89,7 @@ func TestBlobStoreLifecycleAndReadValidation(t *testing.T) {
 }
 
 func TestUploadReservationRejectsInvalidAndExpiredRequests(t *testing.T) {
-	store := NewBlobStore()
+	store := newTestBlobStore(t)
 	for _, request := range []ports.UploadRequest{
 		{},
 		{BlobKey: "key", ContentType: "text/plain", Size: 1},

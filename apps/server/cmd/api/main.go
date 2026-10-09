@@ -53,8 +53,11 @@ func run(ctx context.Context, settings config.Config, logger *slog.Logger) (retu
 		if err != nil {
 			return err
 		}
-		defer func() { returnErr = errors.Join(returnErr, closeResources()) }()
+	} else {
+		dependencies = developmentDependencies()
+		closeResources = dependencies.Close
 	}
+	defer func() { returnErr = errors.Join(returnErr, closeResources()) }()
 	handler, err := buildHandler(settings, dependencies)
 	if err != nil {
 		return err
@@ -75,6 +78,7 @@ type ServiceDependencies struct {
 	Publish           httpapi.PublishService
 	PublishReconciler publishReconciler
 	LocalUploads      http.Handler
+	Close             func() error
 }
 
 type productionDatabase interface {
@@ -220,6 +224,7 @@ func developmentDependencies() ServiceDependencies {
 		Publish:           publishService,
 		PublishReconciler: publishService,
 		LocalUploads:      blobs,
+		Close:             blobs.Close,
 	}
 }
 
