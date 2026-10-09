@@ -236,8 +236,12 @@ function formatBytes(value: unknown): string {
   >
     <div class="panel-heading asset-heading">
       <div>
-        <p class="eyebrow">04</p>
-        <h2 id="asset-workbench-title">{{ copy.title }}</h2>
+        <p class="eyebrow">
+          04
+        </p>
+        <h2 id="asset-workbench-title">
+          {{ copy.title }}
+        </h2>
       </div>
       <div
         class="asset-stage"
@@ -271,7 +275,10 @@ function formatBytes(value: unknown): string {
         @submit.prevent="uploadAsset"
       >
         <div class="asset-subheading">
-          <Upload :size="16" aria-hidden="true" />
+          <Upload
+            :size="16"
+            aria-hidden="true"
+          />
           <span>{{ copy.upload }}</span>
         </div>
 
@@ -281,7 +288,10 @@ function formatBytes(value: unknown): string {
           :disabled="activeUpload"
           @click="chooseFile"
         >
-          <Plus :size="18" aria-hidden="true" />
+          <Plus
+            :size="18"
+            aria-hidden="true"
+          />
           <span>{{ workspace.file?.name || copy.choose }}</span>
           <small v-if="workspace.file">{{ formatBytes(workspace.file.size) }}</small>
         </button>
@@ -308,15 +318,27 @@ function formatBytes(value: unknown): string {
           </label>
           <label>
             <span>{{ copy.sourceEn }}</span>
-            <input v-model="workspace.sourceEn" type="text" :aria-label="copy.sourceEn">
+            <input
+              v-model="workspace.sourceEn"
+              type="text"
+              :aria-label="copy.sourceEn"
+            >
           </label>
           <label>
             <span>{{ copy.credit }}</span>
-            <input v-model="workspace.credit" type="text" :aria-label="copy.credit">
+            <input
+              v-model="workspace.credit"
+              type="text"
+              :aria-label="copy.credit"
+            >
           </label>
           <label>
             <span>{{ copy.license }}</span>
-            <input v-model="workspace.license" type="text" :aria-label="copy.license">
+            <input
+              v-model="workspace.license"
+              type="text"
+              :aria-label="copy.license"
+            >
           </label>
           <label>
             <span>{{ copy.altZh }}</span>
@@ -330,7 +352,11 @@ function formatBytes(value: unknown): string {
           </label>
           <label>
             <span>{{ copy.altEn }}</span>
-            <input v-model="workspace.altEn" type="text" :aria-label="copy.altEn">
+            <input
+              v-model="workspace.altEn"
+              type="text"
+              :aria-label="copy.altEn"
+            >
           </label>
         </div>
 
@@ -341,7 +367,10 @@ function formatBytes(value: unknown): string {
             :disabled="activeUpload || !workspace.file"
             data-testid="asset-upload"
           >
-            <Upload :size="16" aria-hidden="true" />
+            <Upload
+              :size="16"
+              aria-hidden="true"
+            />
             <span>{{ copy.uploadAction }}</span>
           </button>
           <button
@@ -350,7 +379,10 @@ function formatBytes(value: unknown): string {
             type="button"
             @click="workspace.retryComplete"
           >
-            <RotateCcw :size="16" aria-hidden="true" />
+            <RotateCcw
+              :size="16"
+              aria-hidden="true"
+            />
             <span>{{ copy.retryComplete }}</span>
           </button>
         </div>
@@ -366,7 +398,10 @@ function formatBytes(value: unknown): string {
       <div class="asset-library">
         <div class="asset-library-bar">
           <div class="asset-subheading">
-            <FileImage :size="16" aria-hidden="true" />
+            <FileImage
+              :size="16"
+              aria-hidden="true"
+            />
             <span>{{ copy.library }}</span>
           </div>
           <button
@@ -378,14 +413,20 @@ function formatBytes(value: unknown): string {
             data-testid="asset-refresh"
             @click="workspace.loadAssets()"
           >
-            <RefreshCw :size="16" aria-hidden="true" />
+            <RefreshCw
+              :size="16"
+              aria-hidden="true"
+            />
           </button>
         </div>
 
         <div class="asset-filters">
           <label class="search-control">
             <span class="sr-only">{{ copy.search }}</span>
-            <Search :size="15" aria-hidden="true" />
+            <Search
+              :size="15"
+              aria-hidden="true"
+            />
             <input
               v-model="workspace.searchText"
               type="search"
@@ -404,7 +445,10 @@ function formatBytes(value: unknown): string {
               <option value="ready">{{ copy.ready }}</option>
               <option value="deleted">{{ copy.deleted }}</option>
             </select>
-            <ChevronDown :size="14" aria-hidden="true" />
+            <ChevronDown
+              :size="14"
+              aria-hidden="true"
+            />
           </label>
           <label class="select-control">
             <span class="sr-only">Type</span>
@@ -415,13 +459,32 @@ function formatBytes(value: unknown): string {
               <option value="audio">{{ copy.audio }}</option>
               <option value="video">{{ copy.video }}</option>
             </select>
-            <ChevronDown :size="14" aria-hidden="true" />
+            <ChevronDown
+              :size="14"
+              aria-hidden="true"
+            />
           </label>
         </div>
 
-        <p v-if="!token.trim()" class="asset-empty">{{ copy.connection }}</p>
-        <p v-else-if="workspace.listError" class="asset-error" role="alert">{{ copy.errors['create-failed'] }}</p>
-        <p v-else-if="!workspace.loading && workspace.filteredAssets.length === 0" class="asset-empty">{{ copy.empty }}</p>
+        <p
+          v-if="!token.trim()"
+          class="asset-empty"
+        >
+          {{ copy.connection }}
+        </p>
+        <p
+          v-else-if="workspace.listError"
+          class="asset-error"
+          role="alert"
+        >
+          {{ copy.errors['create-failed'] }}
+        </p>
+        <p
+          v-else-if="!workspace.loading && workspace.filteredAssets.length === 0"
+          class="asset-empty"
+        >
+          {{ copy.empty }}
+        </p>
 
         <div class="asset-grid">
           <article
@@ -477,7 +540,10 @@ function formatBytes(value: unknown): string {
                 data-testid="asset-insert"
                 @click="insertAsset(asset)"
               >
-                <Plus :size="16" aria-hidden="true" />
+                <Plus
+                  :size="16"
+                  aria-hidden="true"
+                />
                 <span>{{ existingAssetIds.has(asset.id) ? copy.duplicate : copy.insert }}</span>
               </button>
             </div>
@@ -494,7 +560,13 @@ function formatBytes(value: unknown): string {
         >
           {{ copy.loadMore }}
         </button>
-        <p v-if="insertError" class="asset-error" role="alert">{{ insertError }}</p>
+        <p
+          v-if="insertError"
+          class="asset-error"
+          role="alert"
+        >
+          {{ insertError }}
+        </p>
       </div>
     </div>
   </section>

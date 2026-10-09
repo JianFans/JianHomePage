@@ -387,7 +387,7 @@ onMounted(() => {
           <div class="panel-heading">
             <div>
               <p class="eyebrow">
-              05
+                05
               </p>
               <h2 id="review-title">
                 {{ copy.submit }} / {{ copy.approve }}
@@ -430,7 +430,7 @@ onMounted(() => {
           <div class="panel-heading">
             <div>
               <p class="eyebrow">
-              06
+                06
               </p>
               <h2 id="publish-title">
                 {{ copy.publish }}
