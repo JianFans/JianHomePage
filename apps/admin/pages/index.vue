@@ -2,6 +2,7 @@
 import { useHead } from '#imports'
 import { Download, FileUp } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
+import AssetWorkbench from '../components/AssetWorkbench.vue'
 import SnapshotInsights from '../components/SnapshotInsights.vue'
 import { useAdminWorkspace } from '../composables/useAdminWorkspace'
 import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
@@ -371,6 +372,13 @@ onMounted(() => {
         </article>
       </section>
 
+      <AssetWorkbench
+        v-model:editor-text="workspace.editorText"
+        :locale="locale"
+        :api-base-url="workspace.apiBaseUrl"
+        :token="workspace.token"
+      />
+
       <section class="workflow-grid">
         <article
           class="panel"
@@ -379,7 +387,7 @@ onMounted(() => {
           <div class="panel-heading">
             <div>
               <p class="eyebrow">
-                04
+              05
               </p>
               <h2 id="review-title">
                 {{ copy.submit }} / {{ copy.approve }}
@@ -422,7 +430,7 @@ onMounted(() => {
           <div class="panel-heading">
             <div>
               <p class="eyebrow">
-                05
+              06
               </p>
               <h2 id="publish-title">
                 {{ copy.publish }}

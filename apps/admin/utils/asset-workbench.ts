@@ -81,7 +81,14 @@ export function toSnapshotAsset(asset: AdminAsset, alt: LocalizedDraft): Asset {
     mimeType: rule.contentType,
     byteSize: Number(asset.metadata.declaredSize),
     alt: { 'zh-CN': zhCN },
-    rights: structuredClone(asset.rights),
+    rights: {
+      source: {
+        'zh-CN': asset.rights.source['zh-CN'],
+        ...(asset.rights.source.en ? { en: asset.rights.source.en } : {}),
+      },
+      ...(asset.rights.credit ? { credit: asset.rights.credit } : {}),
+      ...(asset.rights.license ? { license: asset.rights.license } : {}),
+    },
     checksum: asset.metadata.checksum!,
   } as Asset
   if (alt.en?.trim()) result.alt.en = alt.en.trim()
