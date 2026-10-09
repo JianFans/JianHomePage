@@ -6,7 +6,7 @@
 
 **架构：** Go 服务为素材记录提供稳定的游标分页查询，内存和 PostgreSQL 仓储保持相同排序语义。管理端把文件约束、SHA-256、服务端签名上传和快照转换拆成纯函数、API 客户端和组合式函数；Vue 组件只负责表单、列表和可访问状态展示。
 
-**技术栈：** Go 1.25、PostgreSQL、OpenAPI 3.1、TypeScript、Vue 3、Nuxt 4、Vitest、Vue Test Utils、Web Crypto、Playwright。
+**技术栈：** Go 1.25、PostgreSQL、OpenAPI 3.1、TypeScript、Vue 3、Nuxt 4、Vitest、Vue Test Utils、@noble/hashes、Playwright。
 
 ---
 
@@ -89,17 +89,19 @@ type ListPage struct {
 
 - [x] **步骤 4：实现内存与 PostgreSQL keyset 分页**
 
-内存实现复制后排序。PostgreSQL 使用：
+内存实现复制后排序。经性能修复后，PostgreSQL 默认未删除素材的深页查询使用：
 
 ```sql
 SELECT id, blob_key, source_url, status, metadata, rights,
        created_by, created_at, deleted_at
 FROM assets
-WHERE status = ANY($1)
-  AND ($2::timestamptz IS NULL OR (created_at, id) < ($2, $3))
+WHERE status IN ('pending', 'ready')
+  AND (created_at, id) < ($1, $2)
 ORDER BY created_at DESC, id DESC
-LIMIT $4
+LIMIT $3
 ```
+
+第一页不添加游标条件。单状态筛选使用 `status = $1`，其他仓储状态组合使用 `status = ANY($1)`，游标和 LIMIT 参数序号随之调整。查询不保留可空游标的 `OR` 分支；默认谓词匹配 `0005_asset_list_indexes.sql` 的部分索引，单状态查询使用状态复合索引。
 
 - [x] **步骤 5：运行窄测试**
 
@@ -217,11 +219,11 @@ pnpm --filter @yujian/admin test -- asset-workbench.test.ts
 ```ts
 export function validateAssetFile(file: Pick<File, 'name' | 'size' | 'type'>): AssetFileRule
 export async function sha256File(file: Blob): Promise<string>
-export function toSnapshotAsset(asset: AdminAsset, alt: LocalizedDraft): SnapshotAsset
-export function insertSnapshotAsset(text: string, asset: SnapshotAsset): SnapshotInsertResult
+export function toSnapshotAsset(asset: AdminAsset, alt: LocalizedDraft): Asset
+export function insertSnapshotAsset(text: string, asset: Asset): SnapshotInsertResult
 ```
 
-`sha256File()` 使用 Web Crypto 并输出小写 `sha256:<hex>`。服务端 metadata 的 `duration` 按纳秒转换为 `durationSeconds`。
+`Asset` 来自 `@yujian/schema`。`sha256File()` 使用 `@noble/hashes` 按 4 MiB 分块读取并输出小写 `sha256:<hex>`，避免 Web Crypto 整文件摘要的内存开销。服务端 metadata 的 `duration` 按纳秒转换为 `durationSeconds`。
 
 - [x] **步骤 4：编写失败的 API 客户端测试**
 
@@ -435,7 +437,7 @@ docs(素材工作台): 记录实现与验证结果
 
 ### 验证结果
 
-以下命令在分支最终实现上通过：
+以下命令在首次实现完成时通过，统计对应当时的代码；后续修复记录见文末链接：
 
 ```text
 pnpm lint
@@ -457,4 +459,12 @@ pnpm verify:static
 
 分支按权限与 Token 隔离、游标分页、大文件内存、上传失败恢复、完成确认重试、canonical 快照、双语与无障碍、响应式布局和 Nuxt 跨平台构建进行复审。复审发现并修复了 2 个 Important 问题：完成确认重试会丢失替代文本；本地上传适配器会将最大 2 GiB 文件重复读入内存。对应回归测试覆盖重试字段保留、64 KiB 分块写入、大小与 SHA-256 流式校验、取消信号、幂等写入和临时文件清理。最终复审未留下 Critical 或 Important 级别问题。
 
-真实 OIDC、PostgreSQL、COS CORS、稳定媒体域名和 EdgeOne 路由仍需在部署阶段使用云环境验证；本计划不据此宣称已经上线。
+生产 PostgreSQL 迁移、真实 OIDC、COS CORS、稳定媒体域名和 EdgeOne 路由仍需在部署阶段验证；本计划不据此宣称已经上线。本地 PostgreSQL 后续已完成独立 Schema 的迁移、并发与查询计划验证，不能替代生产迁移冒烟。
+
+### 后续修复与验证边界
+
+- [素材工作台审查修复](2026-10-09-asset-review-remediation.md)：记录上传期限、预览地址、筛选并发、替代文本、稳定地址和分页索引修复。
+- [交互与关闭边界修复](2026-10-09-asset-workbench-interaction-remediation.md)：记录表单冻结、API 切换隔离、超时测试、关闭和查询解析修复。
+- 后续共享样式、Windows 下载期间删除及 NUL 游标修复分别见提交 `39cdf2a`、`d3141c1` 和 `8f0af60`；测试与实现位于同一职责提交。
+
+本阶段素材上传采用 Go HTTP 集成测试与管理端单元测试分别验证。首次记录中的 11 项 Playwright 与 axe 测试属于公开站，不是管理端完整浏览器上传 E2E。完整管理端上传 E2E、Go race detector 和真实云集成仍是独立验证项，不因本地分层测试通过而视为完成。

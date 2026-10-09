@@ -2,9 +2,9 @@
 
 ## 1. 背景
 
-「遇健我」的 Go 服务已经提供素材签名上传、完成确认和删除接口，也能在本地开发模式通过 `/local-upload/*` 接收文件。管理端目前只能维护完整 JSON 快照，无法上传文件、查看服务端素材记录或把完成的素材安全写入快照。
+本阶段开始前，「遇健我」的 Go 服务已提供素材签名上传、完成确认和删除接口，也能在本地开发模式通过 `/local-upload/*` 接收文件。管理端当时只能维护完整 JSON 快照，无法上传文件、查看服务端素材记录或把完成的素材安全写入快照。
 
-这导致内容维护链路在素材环节中断：编辑人员需要自行计算 SHA-256、构造素材记录并手工填写稳定地址。下一阶段应先补齐素材工作台，再继续建设结构化内容表单。
+这导致内容维护链路在素材环节中断：编辑人员需要自行计算 SHA-256、构造素材记录并手工填写稳定地址。本阶段先补齐素材工作台，再继续建设结构化内容表单。下文已同步实现中的摘要算法、分页查询和验证边界，执行过程见 [实现计划](../plans/2026-10-09-admin-asset-workbench.md)。
 
 ## 2. 目标
 
@@ -74,7 +74,7 @@ Authorization: Bearer <session-token>
 - `status` 可省略；省略时返回 `pending` 和 `ready`，不返回 `deleted`。
 - `limit` 默认 50，最小 1，最大 100。
 - `cursor` 是服务端生成的 Base64URL 字符串，编码上一页末项的 `createdAt` 和 `id`。
-- 游标无效返回 `400 invalid_request`，不得回退到第一页。
+- 已知参数重复、显式空值、非法 URL 编码及无效游标返回 `400 invalid_request`，不得回退到第一页；游标 ID 不允许为空白或包含 NUL 字符。
 - 响应包含 `items` 和可选的 `nextCursor`。
 - 列表项继续复用现有 `Asset` 表示，不返回 `blob_key`、创建者身份或对象存储内部信息。
 
@@ -100,10 +100,11 @@ Authorization: Bearer <session-token>
       },
       "createdAt": "2026-10-09T00:00:00Z"
     }
-  ],
-  "nextCursor": "eyJjcmVhdGVkQXQiOi4uLn0"
+  ]
 }
 ```
+
+示例为最后一页，因此没有 `nextCursor`。还有后续记录时，响应包含服务端生成的游标，客户端原样传入下一请求。该游标只固定排序边界，不冻结素材状态；切换筛选重新读取第一页。
 
 ### 5.2 仓储查询
 
@@ -111,7 +112,7 @@ Authorization: Bearer <session-token>
 
 ```go
 type ListQuery struct {
-    Status          []domain.AssetStatus
+    Statuses        []domain.AssetStatus
     BeforeCreatedAt *time.Time
     BeforeID        string
     Limit           int
@@ -123,21 +124,20 @@ type ListPage struct {
 }
 ```
 
-仓储读取 `limit + 1` 条记录判断是否存在下一页。相同时间戳使用 `id` 作为次级排序键，避免分页重复或遗漏。列表是只读操作，不写审计日志。
+仓储读取 `limit + 1` 条记录判断是否存在下一页。相同时间戳使用 `id` 作为次级排序键，在记录未变化时保持稳定边界。首、深页使用不同查询条件，不通过可空游标的 `OR` 分支处理。单状态查询使用状态复合索引；默认查询使用与部分索引一致的字面量谓词。
+
+列表不写业务审计日志，但会原子补全实际返回页中缺少的稳定地址，以兼容滚动升级期间旧实例写入的记录。已存在的地址、状态和 metadata 不会被补全操作覆盖；解析或持久化失败时不返回部分列表。索引和维护窗口要求见 [服务端运维说明](../../../apps/server/README.md#安全与运维)。
 
 ## 6. 管理端上传模型
 
-新增独立的纯函数与组合式函数边界：
+文件校验、摘要和快照转换使用独立纯函数；组合式函数通过以下依赖和阶段类型管理状态：
 
 ```ts
-export interface AssetUploadDraft {
-  file: File
-  sourceZhCN: string
-  sourceEn: string
-  credit: string
-  license: string
-  altZhCN: string
-  altEn: string
+export interface AssetWorkspaceOptions {
+  apiBaseUrl: Readonly<Ref<string>>
+  token: Readonly<Ref<string>>
+  apiFactory?: (options: AdminApiOptions) => AssetWorkspaceApi
+  digest?: (file: Blob) => Promise<string>
 }
 
 export type AssetUploadStage =
@@ -155,7 +155,7 @@ export type AssetUploadStage =
 ```text
 选择文件
   -> 本地预检
-  -> Web Crypto 计算 SHA-256
+  -> @noble/hashes 按 4 MiB 分块计算 SHA-256
   -> POST /api/v1/assets/uploads
   -> PUT 签名上传地址并原样携带服务端请求头
   -> POST /api/v1/assets/{assetId}/complete
@@ -184,10 +184,10 @@ export type AssetUploadStage =
 - `src`：服务端持久化的稳定公开地址。
 - `mimeType`、`byteSize`、`checksum`：来自已确认的服务端 metadata。
 - `width`、`height`、`durationSeconds`：服务端完成确认后存在时写入。
-- `alt`：来自上传表单，`zh-CN` 必填，`en` 可选。
+- `alt`：上传成功时从表单带入素材卡片，或由用户在卡片中重新填写；`zh-CN` 必填，`en` 可选。该字段只保存在当前界面和插入后的快照中，不存入服务端素材库。
 - `rights`：与创建上传时提交的权利信息一致。
 
-只有当前编辑器文本可以解析为对象、包含 `assets` 数组且不存在相同素材 ID 时才能插入。插入后重新运行现有 canonical Schema 与语义诊断，不自动保存草稿。
+当前编辑器文本必须先通过完整 canonical Schema 与语义校验，且不存在相同素材 ID。追加素材后再次校验；失败时保留原文本，不自动保存草稿，也不自动绑定业务记录。
 
 ## 8. 页面体验
 
@@ -198,7 +198,7 @@ export type AssetUploadStage =
 1. **上传区：** 文件选择、来源、署名、许可、双语替代文本，以及一个主上传按钮。上传阶段使用单一进度状态展示，不弹出遮挡页面的模态框。
 2. **素材区：** 显示最近素材的紧凑网格。图片和 GIF 使用稳定比例预览；音频和视频使用类型图标与文件信息，避免自动加载或自动播放大媒体。
 
-每项素材提供“插入快照”按钮。已存在于当前快照的素材显示不可操作状态。筛选控件只作用于已加载页面，服务端状态筛选会重新请求第一页；“加载更多”追加下一页。
+每项素材提供「插入快照」按钮。已存在于当前快照的素材显示不可操作状态。类型和文本筛选只作用于已加载记录，文本匹配 ID、文件名和 MIME；服务端状态筛选会重新请求第一页，「加载更多」追加下一页并按 ID 去重。上传期间锁定上传表单，显示阶段状态，不提供字节进度。
 
 移动端改为单列。操作按钮触控高度不小于 44 px。上传状态使用 `aria-live="polite"`，错误文本使用 `role="alert"`。在 `prefers-reduced-motion` 下不显示循环进度动画。
 
@@ -209,6 +209,7 @@ export type AssetUploadStage =
 - 对象存储上传失败后保留当前文件和表单内容，允许重新创建新的签名上传；不复用可能已过期的 URL。
 - 完成确认失败时保留素材 ID，并允许重试完成确认，不重复上传已经成功写入的对象。
 - 页面卸载后不继续把异步结果写入已销毁的 Vue 状态。
+- 切换规范化 API 地址使旧连接列表、游标、确认重试和卡片替代文本失效，保留文件和上传表单；迟到结果不再更新界面。相同 API 更新 Token 后允许继续确认重试。界面结果失效不会撤销已经发出的上传请求。
 - Token 只用于管理 API；不得发送到签名上传域名。
 - 列表和快照预览不渲染任意 HTML、SVG、脚本或富文本。
 - 删除素材继续只允许 `admin`，本轮不在管理端提供删除按钮，避免误删历史引用素材。
@@ -223,7 +224,8 @@ export type AssetUploadStage =
 - API 客户端测试确认 Bearer Token 只发送给管理 API，签名上传只携带服务端指定请求头。
 - 组合式函数测试覆盖完整阶段流转、上传失败、完成重试、分页追加和组件销毁。
 - 页面测试覆盖双语文案、键盘入口、移动布局结构、状态播报和插入按钮门禁。
-- 管理端 E2E 使用本地 Go 服务和 `/local-upload/*` 完成一个小型 WebP 上传、完成确认、插入快照和保存草稿闭环。
+- 当前采用分层闭环验证：Go HTTP 集成测试覆盖签名上传、`PUT /local-upload/*` 和完成确认，管理端 API、状态机及组件测试覆盖插入快照和界面行为。Go 开发身份未注入浏览器，尚无完整管理端上传 E2E；公开站 Playwright 不能替代该验证。
+- PostgreSQL 集成测试在独立 Schema 中覆盖迁移、地址并发补全、事务竞争和 100,000 条记录的首、深页查询计划；需要显式配置 `YUJIAN_TEST_POSTGRES_URL`，否则跳过。
 
 ## 11. 验收标准
 
@@ -233,4 +235,4 @@ export type AssetUploadStage =
 - 素材分页在相同创建时间下不重复、不遗漏。
 - 已完成素材可以插入当前快照，插入后的快照继续通过 canonical 校验。
 - 本地开发上传闭环可以自动测试，不要求真实 COS 或 EdgeOne。
-- 所有受影响的前端、Go、OpenAPI、覆盖率和 E2E 门禁通过。
+- 所有受影响的前端、Go、OpenAPI 和覆盖率门禁通过；公开站 E2E、管理端完整浏览器上传、race detector 和真实云集成分别记录证据或缺口，不互相替代。

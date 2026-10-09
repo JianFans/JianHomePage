@@ -5,7 +5,7 @@
 ## 当前边界
 
 - `internal/content`：草稿、乐观锁、审核状态和审计。
-- `internal/assets`：图片、音频、视频的 MIME、扩展名、大小和签名上传校验。
+- `internal/assets`：图片、动图、音频、视频的 MIME、扩展名、大小、签名上传校验与素材游标分页。
 - `internal/publish`：不可变快照、SHA-256、发布幂等、构建状态、原子指针切换和回滚。
 - `internal/store/postgres`：pgx 标准库驱动、嵌入式迁移、事务锁和可替换 SQL 执行器。
 - `internal/httpapi`：标准库 `net/http` 管理 API，统一错误体、`ETag`、`If-Match` 和 `Idempotency-Key`。
@@ -46,8 +46,6 @@
 
 ```powershell
 cd apps/server
-$env:GOCACHE = (Resolve-Path '.cache\go-build').Path
-$env:GOTMPDIR = (Resolve-Path '.cache\tmp').Path
 go test ./...
 go vet ./...
 ```
@@ -126,6 +124,29 @@ Content-Type: application/json
 
 创建素材上传时必须提交 `sha256:<64 位十六进制摘要>`。客户端上传至签名 URL 时还需原样携带响应中的校验头；素材响应的 `src` 是可直接写入内容快照的稳定公开地址。服务会在创建素材时持久化该地址，完成上传重试和发布校验不会根据当前提供商配置覆盖它。
 
+### 素材列表
+
+```http
+GET /api/v1/assets?status=ready&limit=50 HTTP/1.1
+Authorization: Bearer <session-token>
+```
+
+接口使用 `create_asset` 权限，允许 `editor` 和 `admin`。参数如下：
+
+| 参数 | 省略时 | 约束 |
+| --- | --- | --- |
+| `status` | 返回 `pending` 和 `ready` | 显式值只允许 `pending`、`ready`、`deleted` |
+| `limit` | 50 | 整数，范围 1–100 |
+| `cursor` | 第一页 | 原样传入上一响应的 `nextCursor`，不要自行生成或修改 |
+
+响应为 `{"items": [...], "nextCursor": "..."}`，最后一页省略 `nextCursor`，空列表的 `items` 为 `[]`。记录按 `createdAt DESC, id DESC` 排序，游标是分页边界，不是整个素材库的冻结快照。切换状态应从第一页开始；类型和文件名搜索由管理端在已加载记录中执行，API 不提供这两种筛选参数。
+
+已知参数重复、显式空值、越界 `limit`、非法 URL 编码及无效游标返回 `400 invalid_request`。游标校验拒绝缺失时间、空白 ID、NUL 字符、未知 JSON 字段和尾随数据。列表返回稳定 `src`、状态、metadata、权利及时间，不返回存储对象键或创建者身份。
+
+列表不产生业务审计；为兼容旧实例，会原子补全返回页中尚未持久化的素材地址，失败时整个请求失败。完整契约见 [管理 API 规范](../../packages/schema/openapi/admin.yaml)。
+
+### 发布与错误响应
+
 发布和回滚必须携带长度至少为 8 的 `Idempotency-Key`。重复使用同一个键只返回同一个逻辑任务，不重复写快照或触发构建。同一时刻只允许一个生产发布或回滚任务处于 `pending`、`building` 状态。
 
 错误响应统一为：
@@ -176,6 +197,7 @@ Content-Type: application/json
 - 请求正文启用未知字段拒绝和大小上限；外部链接及媒体资源由内容契约校验。
 - 上传使用 15 分钟签名 URL，签名和完成确认都校验 SHA-256、实际大小与 MIME；不信任客户端自定义 metadata 中的摘要。
 - 普通 API 保持 15 秒读写期限。本地 `/local-upload/*` 只有在签名、有效期、MIME、声明大小和校验头通过后，才将本次连接的读写期限延长为 15 分钟；仍按声明大小流式校验，不全量缓存文件。生产素材直接上传到对象存储，不经过该本地路由。
+- 开发素材保存在临时文件中，正常关闭会等待活动写入并清理文件；超过 `SHUTDOWN_TIMEOUT` 时先断开在途连接，再释放依赖。Windows 媒体读取句柄允许共享删除，删除后新的读取失败，已有下载可继续读完；Range 请求仍可用。开发上传不作为持久化生产存储。
 - `MEDIA_PUBLIC_BASE_URL` 应指向 EdgeOne 加速的 COS 公开读取域名。内容快照只保存该稳定地址，不保存短期签名 URL 或服务商内部端点。更换 COS 或其他对象存储源站时应保留该公开域名，避免历史快照失效。
 - 首次部署包含 `0003_publish_target_freeze` 的版本前，应等待 `pending`、`building` 发布任务结束。迁移会自动冻结 checksum 一致的单个活跃任务；如果检测到多个任务或历史数字格式导致 checksum 不一致，服务会拒绝启动。此时应先用旧版本确认并结束活跃任务，再重新部署；不得手改 checksum 或跳过迁移。
 - `0004_asset_source_url` 会在同一迁移事务中锁定缺少公开地址的旧素材，使用当前对象存储适配器的 `PublicURL` 回填，并拒绝非 `NULL` 的空字符串。升级期间必须保持 `MEDIA_PUBLIC_BASE_URL` 为旧内容正在使用的稳定域名；解析或并发回填失败时服务会回滚迁移并拒绝启动。为兼容滚动升级中的旧实例和旧二进制回滚，本版本允许 `source_url` 为 `NULL`；旧实例全部退出并度过回滚窗口后，后续迁移必须再次回填期间产生的 `NULL`，再设置 `NOT NULL`。
