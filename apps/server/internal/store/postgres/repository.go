@@ -141,6 +141,42 @@ SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_a
 FROM assets WHERE id = $1`, id))
 }
 
+// ListAssets returns records using descending creation-time and ID keyset pagination.
+func (repository *AssetRepository) ListAssets(ctx context.Context, query assets.ListQuery) ([]domain.AssetRecord, error) {
+	statuses := make([]string, len(query.Statuses))
+	for index, status := range query.Statuses {
+		statuses[index] = string(status)
+	}
+	var beforeCreatedAt any
+	if query.BeforeCreatedAt != nil {
+		beforeCreatedAt = *query.BeforeCreatedAt
+	}
+	rows, err := repository.exec.QueryContext(ctx, `
+SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at
+FROM assets
+WHERE status = ANY($1)
+  AND ($2::timestamptz IS NULL OR (created_at, id) < ($2, $3))
+ORDER BY created_at DESC, id DESC
+LIMIT $4`, statuses, beforeCreatedAt, query.BeforeID, query.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.AssetRecord, 0, query.Limit)
+	for rows.Next() {
+		asset, err := scanAsset(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, asset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 func (repository *AssetRepository) UpdateAsset(ctx context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	result, err := repository.exec.ExecContext(ctx, `
 UPDATE assets

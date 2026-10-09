@@ -6,6 +6,8 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"slices"
+	"strings"
 	"sync"
 
 	"yujian.me/server/internal/assets"
@@ -137,6 +139,41 @@ func (repository *AssetRepository) GetAsset(_ context.Context, id string) (domai
 		return nil
 	})
 	return value, err
+}
+
+// ListAssets returns cloned records using the shared descending keyset order.
+func (repository *AssetRepository) ListAssets(_ context.Context, query assets.ListQuery) ([]domain.AssetRecord, error) {
+	items := make([]domain.AssetRecord, 0, query.Limit)
+	err := repository.withRead(func() error {
+		for _, asset := range repository.state.assets {
+			if !slices.Contains(query.Statuses, asset.Status) || !assetBeforeCursor(asset, query) {
+				continue
+			}
+			items = append(items, cloneAsset(asset))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(items, func(left, right domain.AssetRecord) int {
+		if compared := right.CreatedAt.Compare(left.CreatedAt); compared != 0 {
+			return compared
+		}
+		return -strings.Compare(left.ID, right.ID)
+	})
+	if len(items) > query.Limit {
+		items = items[:query.Limit]
+	}
+	return items, nil
+}
+
+func assetBeforeCursor(asset domain.AssetRecord, query assets.ListQuery) bool {
+	if query.BeforeCreatedAt == nil {
+		return true
+	}
+	return asset.CreatedAt.Before(*query.BeforeCreatedAt) ||
+		(asset.CreatedAt.Equal(*query.BeforeCreatedAt) && asset.ID < query.BeforeID)
 }
 
 func (repository *AssetRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {

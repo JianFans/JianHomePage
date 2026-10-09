@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +41,31 @@ func (repository *memoryRepository) GetAsset(_ context.Context, id string) (doma
 		return domain.AssetRecord{}, domain.ErrNotFound
 	}
 	return asset, nil
+}
+
+func (repository *memoryRepository) ListAssets(_ context.Context, query ListQuery) ([]domain.AssetRecord, error) {
+	items := make([]domain.AssetRecord, 0, len(repository.assets))
+	for _, asset := range repository.assets {
+		if !slices.Contains(query.Statuses, asset.Status) {
+			continue
+		}
+		if query.BeforeCreatedAt != nil &&
+			(asset.CreatedAt.After(*query.BeforeCreatedAt) ||
+				(asset.CreatedAt.Equal(*query.BeforeCreatedAt) && asset.ID >= query.BeforeID)) {
+			continue
+		}
+		items = append(items, asset)
+	}
+	slices.SortFunc(items, func(left, right domain.AssetRecord) int {
+		if compared := right.CreatedAt.Compare(left.CreatedAt); compared != 0 {
+			return compared
+		}
+		return -strings.Compare(left.ID, right.ID)
+	})
+	if len(items) > query.Limit {
+		items = items[:query.Limit]
+	}
+	return items, nil
 }
 
 func (repository *memoryRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
@@ -134,6 +161,87 @@ func editor() domain.Principal {
 
 func admin() domain.Principal {
 	return domain.Principal{Subject: "admin-1", Roles: []domain.Role{domain.RoleAdmin}}
+}
+
+func TestListAssetsUsesStableCursorAndDefaultStatuses(t *testing.T) {
+	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	repository := newMemoryRepository()
+	repository.assets = map[string]domain.AssetRecord{
+		"asset_a": {ID: "asset_a", Status: domain.AssetPending, CreatedAt: createdAt.Add(-time.Minute)},
+		"asset_b": {ID: "asset_b", Status: domain.AssetReady, CreatedAt: createdAt},
+		"asset_c": {ID: "asset_c", Status: domain.AssetPending, CreatedAt: createdAt},
+		"asset_d": {ID: "asset_d", Status: domain.AssetDeleted, CreatedAt: createdAt.Add(time.Minute)},
+	}
+	service := assetServiceForTest(repository, &blobStoreFake{})
+
+	first, err := service.List(t.Context(), editor(), ListOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("list first page: %v", err)
+	}
+	if got := assetIDs(first.Items); !slices.Equal(got, []string{"asset_c", "asset_b"}) {
+		t.Fatalf("unexpected first page %v", got)
+	}
+	if first.NextCursor == "" {
+		t.Fatal("expected next cursor")
+	}
+
+	second, err := service.List(t.Context(), editor(), ListOptions{Limit: 2, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatalf("list second page: %v", err)
+	}
+	if got := assetIDs(second.Items); !slices.Equal(got, []string{"asset_a"}) {
+		t.Fatalf("unexpected second page %v", got)
+	}
+	if second.NextCursor != "" {
+		t.Fatalf("unexpected trailing cursor %q", second.NextCursor)
+	}
+}
+
+func TestListAssetsSupportsExplicitDeletedStatus(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.assets["asset_deleted"] = domain.AssetRecord{
+		ID: "asset_deleted", Status: domain.AssetDeleted, CreatedAt: time.Now(),
+	}
+	service := assetServiceForTest(repository, &blobStoreFake{})
+
+	page, err := service.List(t.Context(), editor(), ListOptions{Status: domain.AssetDeleted})
+	if err != nil {
+		t.Fatalf("list deleted assets: %v", err)
+	}
+	if got := assetIDs(page.Items); !slices.Equal(got, []string{"asset_deleted"}) {
+		t.Fatalf("unexpected deleted assets %v", got)
+	}
+}
+
+func TestListAssetsRejectsInvalidOptions(t *testing.T) {
+	service := assetServiceForTest(newMemoryRepository(), &blobStoreFake{})
+	for _, options := range []ListOptions{
+		{Status: domain.AssetStatus("unknown")},
+		{Limit: -1},
+		{Limit: 101},
+		{Cursor: "not-base64"},
+		{Cursor: "e30"},
+	} {
+		if _, err := service.List(t.Context(), editor(), options); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("options %#v: expected invalid input, got %v", options, err)
+		}
+	}
+}
+
+func TestListAssetsRequiresCreatePermission(t *testing.T) {
+	service := assetServiceForTest(newMemoryRepository(), &blobStoreFake{})
+	actor := domain.Principal{Subject: "reviewer", Roles: []domain.Role{domain.RoleReviewer}}
+	if _, err := service.List(t.Context(), actor, ListOptions{}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected forbidden, got %v", err)
+	}
+}
+
+func assetIDs(items []domain.AssetRecord) []string {
+	ids := make([]string, len(items))
+	for index, item := range items {
+		ids[index] = item.ID
+	}
+	return ids
 }
 
 func TestCreateUploadValidatesTypeAndCreatesProviderIndependentKey(t *testing.T) {

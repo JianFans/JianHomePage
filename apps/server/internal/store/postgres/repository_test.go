@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/domain"
 	snapshotdata "yujian.me/server/internal/snapshot"
@@ -82,8 +83,11 @@ type recordingExecutor struct {
 	execQueries []string
 	execArgs    [][]any
 	rowQueries  []string
+	queries     []string
+	queryArgs   [][]any
 	row         Row
 	rows        Rows
+	rowsErr     error
 	result      ExecResult
 	begin       *recordingTx
 	execErr     error
@@ -100,8 +104,10 @@ func (executor *recordingExecutor) QueryRowContext(_ context.Context, query stri
 	return executor.row
 }
 
-func (executor *recordingExecutor) QueryContext(context.Context, string, ...any) (Rows, error) {
-	return executor.rows, nil
+func (executor *recordingExecutor) QueryContext(_ context.Context, query string, args ...any) (Rows, error) {
+	executor.queries = append(executor.queries, query)
+	executor.queryArgs = append(executor.queryArgs, args)
+	return executor.rows, executor.rowsErr
 }
 
 func (executor *recordingExecutor) BeginTx(context.Context) (Tx, error) {
@@ -242,6 +248,66 @@ func TestAssetRepositoryPersistsStableSourceURL(t *testing.T) {
 		t.Fatalf("asset update lost source URL: query=%q args=%#v", updateQuery, updateArgs)
 	}
 }
+
+func TestAssetRepositoryListsWithStatusAndKeysetPagination(t *testing.T) {
+	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	executor := &recordingExecutor{rows: &recordingRows{rows: []recordingRow{
+		{values: []any{
+			"asset_c", "assets/asset_c/source.webp", "https://media.yujian.me/assets/asset_c/source.webp",
+			"ready", []byte(`{"fileName":"cover.webp"}`), []byte(`{"source":{"zh-CN":"authorized"}}`),
+			"editor-1", createdAt, sql.NullTime{},
+		}},
+		{values: []any{
+			"asset_b", "assets/asset_b/source.mp3", "https://media.yujian.me/assets/asset_b/source.mp3",
+			"pending", []byte(`{"fileName":"song.mp3"}`), []byte(`{"source":{"zh-CN":"authorized"}}`),
+			"editor-1", createdAt, sql.NullTime{},
+		}},
+	}}}
+
+	items, err := NewAssetRepository(executor).ListAssets(t.Context(), assets.ListQuery{
+		Statuses:        []domain.AssetStatus{domain.AssetPending, domain.AssetReady},
+		BeforeCreatedAt: &createdAt,
+		BeforeID:        "asset_d",
+		Limit:           3,
+	})
+	if err != nil {
+		t.Fatalf("list assets: %v", err)
+	}
+	if len(items) != 2 || items[0].ID != "asset_c" || items[1].ID != "asset_b" {
+		t.Fatalf("unexpected assets %#v", items)
+	}
+	if len(executor.queries) != 1 ||
+		!strings.Contains(executor.queries[0], "status = ANY($1)") ||
+		!strings.Contains(executor.queries[0], "(created_at, id) < ($2, $3)") ||
+		!strings.Contains(executor.queries[0], "ORDER BY created_at DESC, id DESC") {
+		t.Fatalf("unexpected list query %#v", executor.queries)
+	}
+	args := executor.queryArgs[0]
+	if len(args) != 4 || args[1] != createdAt || args[2] != "asset_d" || args[3] != 3 {
+		t.Fatalf("unexpected list args %#v", args)
+	}
+}
+
+func TestAssetRepositoryListPropagatesQueryAndRowsErrors(t *testing.T) {
+	queryErr := errors.New("query failed")
+	executor := &recordingExecutor{rowsErr: queryErr}
+	if _, err := NewAssetRepository(executor).ListAssets(t.Context(), assets.ListQuery{Limit: 1}); !errors.Is(err, queryErr) {
+		t.Fatalf("expected query error, got %v", err)
+	}
+
+	rowsErr := errors.New("rows failed")
+	executor = &recordingExecutor{rows: &errorRows{err: rowsErr}}
+	if _, err := NewAssetRepository(executor).ListAssets(t.Context(), assets.ListQuery{Limit: 1}); !errors.Is(err, rowsErr) {
+		t.Fatalf("expected rows error, got %v", err)
+	}
+}
+
+type errorRows struct{ err error }
+
+func (*errorRows) Next() bool        { return false }
+func (*errorRows) Scan(...any) error { return nil }
+func (rows *errorRows) Err() error   { return rows.err }
+func (*errorRows) Close() error      { return nil }
 
 func TestAssetRepositoryReadsLegacyNullSourceURL(t *testing.T) {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
+	"time"
 
 	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/content"
@@ -90,6 +92,59 @@ func TestAssetRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	if len(state.audits) != 1 || string(state.audits[0].Metadata) != `{"ok":true}` {
 		t.Fatalf("unexpected audits %#v", state.audits)
 	}
+}
+
+func TestAssetRepositoryListsByStatusAndStableCursor(t *testing.T) {
+	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	state := NewState()
+	repository := NewAssetRepository(state)
+	for _, asset := range []domain.AssetRecord{
+		{ID: "asset_a", Status: domain.AssetPending, CreatedAt: createdAt.Add(-time.Minute)},
+		{ID: "asset_b", Status: domain.AssetReady, CreatedAt: createdAt},
+		{ID: "asset_c", Status: domain.AssetPending, CreatedAt: createdAt},
+		{ID: "asset_d", Status: domain.AssetDeleted, CreatedAt: createdAt.Add(time.Minute)},
+	} {
+		if err := repository.CreateAsset(t.Context(), asset); err != nil {
+			t.Fatalf("create %s: %v", asset.ID, err)
+		}
+	}
+
+	first, err := repository.ListAssets(t.Context(), assets.ListQuery{
+		Statuses: []domain.AssetStatus{domain.AssetPending, domain.AssetReady},
+		Limit:    2,
+	})
+	if err != nil {
+		t.Fatalf("list first page: %v", err)
+	}
+	if got := listedAssetIDs(first); !slices.Equal(got, []string{"asset_c", "asset_b"}) {
+		t.Fatalf("unexpected first page %v", got)
+	}
+	first[0].Metadata = json.RawMessage(`{"changed":true}`)
+	stored, err := repository.GetAsset(t.Context(), "asset_c")
+	if err != nil || string(stored.Metadata) == string(first[0].Metadata) {
+		t.Fatalf("listed asset was not cloned: %#v err=%v", stored, err)
+	}
+
+	second, err := repository.ListAssets(t.Context(), assets.ListQuery{
+		Statuses:        []domain.AssetStatus{domain.AssetPending, domain.AssetReady},
+		BeforeCreatedAt: &createdAt,
+		BeforeID:        "asset_b",
+		Limit:           2,
+	})
+	if err != nil {
+		t.Fatalf("list second page: %v", err)
+	}
+	if got := listedAssetIDs(second); !slices.Equal(got, []string{"asset_a"}) {
+		t.Fatalf("unexpected second page %v", got)
+	}
+}
+
+func listedAssetIDs(items []domain.AssetRecord) []string {
+	ids := make([]string, len(items))
+	for index, item := range items {
+		ids[index] = item.ID
+	}
+	return ids
 }
 
 func TestContentRepositoryLifecycleAndCloneIsolation(t *testing.T) {
