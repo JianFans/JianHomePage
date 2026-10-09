@@ -33,6 +33,7 @@ type ContentService interface {
 
 // AssetService is the application boundary used by the HTTP adapter.
 type AssetService interface {
+	List(context.Context, domain.Principal, assets.ListOptions) (assets.ListPage, error)
 	CreateUpload(context.Context, domain.Principal, assets.CreateUploadInput) (assets.CreateUploadResult, error)
 	CompleteUpload(context.Context, domain.Principal, string) (domain.AssetRecord, error)
 	Delete(context.Context, domain.Principal, string) error
@@ -123,6 +124,11 @@ type assetUploadResponse struct {
 	ExpiresAt time.Time         `json:"expiresAt"`
 }
 
+type assetListResponse struct {
+	Items      []assetResponse `json:"items"`
+	NextCursor string          `json:"nextCursor,omitempty"`
+}
+
 type publishResponse struct {
 	ID               string               `json:"id"`
 	VersionID        string               `json:"versionId"`
@@ -160,6 +166,7 @@ func NewRouter(options RouterOptions) http.Handler {
 	register("POST /api/v1/versions/{versionId}/review", auth.PermissionSubmitReview, handler.submitReview)
 	register("POST /api/v1/versions/{versionId}/approve", auth.PermissionReview, handler.approveReview)
 	register("POST /api/v1/versions/{versionId}/reject", auth.PermissionReview, handler.rejectReview)
+	register("GET /api/v1/assets", auth.PermissionCreateAsset, handler.listAssets)
 	register("POST /api/v1/assets/uploads", auth.PermissionCreateAsset, handler.createAssetUpload)
 	register("POST /api/v1/assets/{assetId}/complete", auth.PermissionCreateAsset, handler.completeAssetUpload)
 	register("DELETE /api/v1/assets/{assetId}", auth.PermissionDeleteAsset, handler.deleteAsset)
@@ -357,6 +364,65 @@ func (handler *Handler) createAssetUpload(writer http.ResponseWriter, request *h
 		Headers:   result.Upload.Headers,
 		ExpiresAt: result.Upload.ExpiresAt,
 	})
+}
+
+func (handler *Handler) listAssets(writer http.ResponseWriter, request *http.Request) {
+	options, ok := parseAssetListOptions(request)
+	if !ok {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Asset list query is invalid.")
+		return
+	}
+	actor, ok := principal(writer, request)
+	if !ok || handler.assets == nil {
+		if ok {
+			writeError(writer, request, http.StatusInternalServerError, "internal_error", "Service unavailable.")
+		}
+		return
+	}
+	page, err := handler.assets.List(request.Context(), actor, options)
+	if err != nil {
+		writeDomainError(writer, request, err)
+		return
+	}
+	items := make([]assetResponse, len(page.Items))
+	for index, asset := range page.Items {
+		items[index] = toAssetResponse(asset)
+	}
+	writeJSON(writer, http.StatusOK, assetListResponse{Items: items, NextCursor: page.NextCursor})
+}
+
+func parseAssetListOptions(request *http.Request) (assets.ListOptions, bool) {
+	query := request.URL.Query()
+	var options assets.ListOptions
+
+	if values, exists := query["status"]; exists {
+		if len(values) != 1 {
+			return assets.ListOptions{}, false
+		}
+		options.Status = domain.AssetStatus(values[0])
+		switch options.Status {
+		case domain.AssetPending, domain.AssetReady, domain.AssetDeleted:
+		default:
+			return assets.ListOptions{}, false
+		}
+	}
+	if values, exists := query["limit"]; exists {
+		if len(values) != 1 {
+			return assets.ListOptions{}, false
+		}
+		limit, err := strconv.Atoi(values[0])
+		if err != nil || limit < 1 || limit > 100 {
+			return assets.ListOptions{}, false
+		}
+		options.Limit = limit
+	}
+	if values, exists := query["cursor"]; exists {
+		if len(values) != 1 || values[0] == "" {
+			return assets.ListOptions{}, false
+		}
+		options.Cursor = values[0]
+	}
+	return options, true
 }
 
 func (handler *Handler) completeAssetUpload(writer http.ResponseWriter, request *http.Request) {

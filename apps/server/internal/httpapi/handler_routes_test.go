@@ -176,6 +176,71 @@ func TestAssetLifecycleRoutesReturnStableRepresentations(t *testing.T) {
 	}
 }
 
+func TestListAssetsForwardsFiltersAndReturnsPage(t *testing.T) {
+	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	assetService := &assetServiceStub{listFn: func(_ context.Context, actor domain.Principal, options assets.ListOptions) (assets.ListPage, error) {
+		if actor.Subject != "editor-1" || options.Status != domain.AssetReady || options.Limit != 25 || options.Cursor != "cursor-value" {
+			t.Fatalf("unexpected list input actor=%q options=%#v", actor.Subject, options)
+		}
+		return assets.ListPage{
+			Items: []domain.AssetRecord{{
+				ID: "asset_1", SourceURL: "https://media.yujian.me/assets/asset_1/source.webp",
+				Status: domain.AssetReady, Metadata: json.RawMessage(`{"fileName":"cover.webp"}`),
+				Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`), CreatedAt: createdAt,
+			}},
+			NextCursor: "next-cursor",
+		}, nil
+	}}
+	recorder := httptest.NewRecorder()
+	request := authenticatedRequest(http.MethodGet, "/api/v1/assets?status=ready&limit=25&cursor=cursor-value", "", "editor")
+
+	testRouterWithAssets(t, &contentServiceStub{}, assetService, &publishServiceStub{}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response assetListResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode asset list response: %v", err)
+	}
+	if len(response.Items) != 1 || response.Items[0].ID != "asset_1" || response.NextCursor != "next-cursor" {
+		t.Fatalf("unexpected asset list response %#v", response)
+	}
+}
+
+func TestListAssetsRejectsInvalidQueryBeforeService(t *testing.T) {
+	for _, query := range []string{
+		"status=unknown",
+		"limit=0",
+		"limit=101",
+		"limit=invalid",
+		"cursor=",
+		"status=ready&status=pending",
+	} {
+		t.Run(query, func(t *testing.T) {
+			called := false
+			assetService := &assetServiceStub{listFn: func(context.Context, domain.Principal, assets.ListOptions) (assets.ListPage, error) {
+				called = true
+				return assets.ListPage{}, nil
+			}}
+			recorder := httptest.NewRecorder()
+			request := authenticatedRequest(http.MethodGet, "/api/v1/assets?"+query, "", "editor")
+
+			testRouterWithAssets(t, &contentServiceStub{}, assetService, &publishServiceStub{}).ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if called {
+				t.Fatal("invalid query reached asset service")
+			}
+			if response := decodeError(t, recorder); response["code"] != "invalid_request" {
+				t.Fatalf("unexpected error response %#v", response)
+			}
+		})
+	}
+}
+
 func TestPublishRoutesForwardIdentifiersAndReturnJob(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -75,9 +75,17 @@ type publishServiceStub struct {
 }
 
 type assetServiceStub struct {
+	listFn     func(context.Context, domain.Principal, assets.ListOptions) (assets.ListPage, error)
 	createFn   func(context.Context, domain.Principal, assets.CreateUploadInput) (assets.CreateUploadResult, error)
 	completeFn func(context.Context, domain.Principal, string) (domain.AssetRecord, error)
 	deleteFn   func(context.Context, domain.Principal, string) error
+}
+
+func (stub *assetServiceStub) List(ctx context.Context, actor domain.Principal, options assets.ListOptions) (assets.ListPage, error) {
+	if stub.listFn == nil {
+		return assets.ListPage{}, nil
+	}
+	return stub.listFn(ctx, actor, options)
 }
 
 func (stub *assetServiceStub) CreateUpload(ctx context.Context, actor domain.Principal, input assets.CreateUploadInput) (assets.CreateUploadResult, error) {

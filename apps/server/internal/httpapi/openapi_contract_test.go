@@ -31,6 +31,7 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 				Required   []string `json:"required"`
 				Properties map[string]struct {
 					Ref         string   `json:"$ref"`
+					Format      string   `json:"format"`
 					Enum        []string `json:"enum"`
 					Description string   `json:"description"`
 					OneOf       []struct {
@@ -56,6 +57,7 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 		"POST /api/v1/versions/{versionId}/review":   "submitReview",
 		"POST /api/v1/versions/{versionId}/approve":  "approveReview",
 		"POST /api/v1/versions/{versionId}/reject":   "rejectReview",
+		"GET /api/v1/assets":                         "listAssets",
 		"POST /api/v1/assets/uploads":                "createAssetUpload",
 		"POST /api/v1/assets/{assetId}/complete":     "completeAssetUpload",
 		"DELETE /api/v1/assets/{assetId}":            "deleteAsset",
@@ -82,6 +84,7 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	assertRequiredHeader(t, document.Paths["/api/v1/versions/{versionId}"]["put"].Parameters, "If-Match")
 	assertRequiredHeader(t, document.Paths["/api/v1/publishes"]["post"].Parameters, "Idempotency-Key")
 	assertRequiredHeader(t, document.Paths["/api/v1/rollbacks"]["post"].Parameters, "Idempotency-Key")
+	assertOptionalParameters(t, document.Paths["/api/v1/assets"]["get"].Parameters, "status", "limit", "cursor")
 	contentTypes := document.Components.Schemas["AssetUploadRequest"].Properties["contentType"].Enum
 	if len(contentTypes) != 5 {
 		t.Fatalf("asset upload MIME enum is not aligned with snapshot schema: %#v", contentTypes)
@@ -103,6 +106,9 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 		source.OneOf[0].Format != "uri" || source.OneOf[0].Pattern != "^https://" ||
 		source.OneOf[1].Pattern != "^/media/" {
 		t.Fatalf("asset src must document the stable HTTPS or local media contract: %#v", source)
+	}
+	if assetSchema.Properties["createdAt"].Format != "date-time" || assetSchema.Properties["deletedAt"].Format != "date-time" {
+		t.Fatalf("asset timestamps must be documented: %#v", assetSchema.Properties)
 	}
 }
 
@@ -159,4 +165,23 @@ func containsString(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func assertOptionalParameters(t *testing.T, parameters []struct {
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+}, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		found := false
+		for _, parameter := range parameters {
+			if parameter.Name == name && !parameter.Required {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing optional parameter %s", name)
+		}
+	}
 }
