@@ -169,6 +169,12 @@ watch(() => workspace.assets, (items) => {
   })
 }, { deep: false, immediate: true })
 
+watch(() => workspace.connectionBaseUrl, () => {
+  Object.keys(assetAlts).forEach(id => delete assetAlts[id])
+  pendingAlt.value = null
+  insertError.value = ''
+}, { flush: 'sync' })
+
 /** 打开原生文件选择器，同时保留键盘和辅助技术入口。 */
 function chooseFile() {
   fileInput.value?.click()

@@ -4,6 +4,89 @@ import { useAssetWorkspace, type AssetWorkspaceApi } from '../../composables/use
 import type { AdminAsset, AdminAssetUpload } from '../../utils/admin-api'
 
 describe('asset workspace state machine', () => {
+  it('invalidates completion retries and library state when the API connection changes', async () => {
+    const firstApi = createApi()
+    firstApi.listAssets.mockResolvedValueOnce({ items: [readyAsset('asset_a')], nextCursor: 'cursor-a' })
+    firstApi.completeAssetUpload.mockRejectedValueOnce(new Error('temporary failure'))
+    const secondApi = createApi()
+    const baseUrl = ref('https://api-a.example')
+    const workspace = useAssetWorkspace({
+      apiBaseUrl: baseUrl, token: ref('token'), digest: async () => 'sha256:' + 'a'.repeat(64),
+      apiFactory: options => options.baseUrl.includes('api-a') ? firstApi : secondApi,
+    })
+    workspace.file.value = new File(['asset'], 'cover.webp', { type: 'image/webp' })
+    workspace.sourceZhCN.value = '授权'
+    workspace.altZhCN.value = '封面'
+    await workspace.loadAssets()
+    await workspace.upload()
+    expect(workspace.canRetryComplete.value).toBe(true)
+
+    baseUrl.value = 'https://api-b.example'
+    expect(workspace.assets.value).toEqual([])
+    expect(workspace.nextCursor.value).toBe('')
+    expect(workspace.completedAsset.value).toBeNull()
+    expect(workspace.stage.value).toBe('idle')
+    expect(workspace.errorCode.value).toBeNull()
+    expect(workspace.canRetryComplete.value).toBe(false)
+    expect(workspace.file.value?.name).toBe('cover.webp')
+    expect(workspace.altZhCN.value).toBe('封面')
+    await workspace.retryComplete()
+    await workspace.loadMore()
+    expect(secondApi.completeAssetUpload).not.toHaveBeenCalled()
+    expect(secondApi.listAssets).not.toHaveBeenCalled()
+  })
+
+  it('ignores an old connection list and does not continue an old upload after hashing', async () => {
+    const oldList = deferred<{ items: AdminAsset[], nextCursor: string }>()
+    const hash = deferred<string>()
+    const firstApi = createApi()
+    firstApi.listAssets.mockReturnValueOnce(oldList.promise)
+    const secondApi = createApi()
+    secondApi.listAssets.mockResolvedValueOnce({ items: [readyAsset('asset_b')] })
+    const baseUrl = ref('https://api-a.example')
+    const workspace = useAssetWorkspace({
+      apiBaseUrl: baseUrl, token: ref('token'), digest: () => hash.promise,
+      apiFactory: options => options.baseUrl.includes('api-a') ? firstApi : secondApi,
+    })
+    workspace.file.value = new File(['asset'], 'cover.webp', { type: 'image/webp' })
+    workspace.sourceZhCN.value = '授权'
+    workspace.altZhCN.value = '封面'
+    const loading = workspace.loadAssets()
+    const uploading = workspace.upload()
+    baseUrl.value = 'https://api-b.example'
+    expect(workspace.loading.value).toBe(false)
+    await workspace.loadAssets()
+    oldList.resolve({ items: [readyAsset('asset_a')], nextCursor: 'cursor-a' })
+    hash.resolve('sha256:' + 'a'.repeat(64))
+    await Promise.all([loading, uploading])
+    expect(workspace.assets.value.map(item => item.id)).toEqual(['asset_b'])
+    expect(workspace.nextCursor.value).toBe('')
+    expect(workspace.stage.value).toBe('idle')
+    expect(firstApi.createAssetUpload).not.toHaveBeenCalled()
+  })
+
+  it('keeps the pending upload when only the token or trailing URL slash changes', async () => {
+    const firstApi = createApi()
+    firstApi.completeAssetUpload.mockRejectedValueOnce(new Error('temporary failure'))
+    const refreshedApi = createApi()
+    const baseUrl = ref('https://api-a.example')
+    const token = ref('expired-token')
+    const workspace = useAssetWorkspace({
+      apiBaseUrl: baseUrl, token, digest: async () => 'sha256:' + 'a'.repeat(64),
+      apiFactory: options => options.token === 'expired-token' ? firstApi : refreshedApi,
+    })
+    workspace.file.value = new File(['asset'], 'cover.webp', { type: 'image/webp' })
+    workspace.sourceZhCN.value = '授权'
+    workspace.altZhCN.value = '封面'
+    await workspace.upload()
+    baseUrl.value += '/'
+    token.value = 'refreshed-token'
+    expect(workspace.canRetryComplete.value).toBe(true)
+    await workspace.retryComplete()
+    expect(refreshedApi.completeAssetUpload).toHaveBeenCalledWith('asset_uploaded')
+    expect(workspace.stage.value).toBe('succeeded')
+  })
+
   it('runs the successful upload stages in order and adds the ready asset', async () => {
     const stages: string[] = []
     const api = createApi()

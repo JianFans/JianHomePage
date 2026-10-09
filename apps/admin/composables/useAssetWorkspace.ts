@@ -1,7 +1,8 @@
 import type { Asset } from '@yujian/schema'
-import { computed, getCurrentScope, onScopeDispose, ref, shallowRef, type Ref } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
 import {
   createAdminApi,
+  normalizeBaseUrl,
   type AdminApiOptions,
   type AdminAsset,
   type AdminAssetPage,
@@ -60,6 +61,24 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
   let listSequence = 0
   let disposed = false
   let uploadsDuringList = new Map<string, AdminAsset>()
+  const connectionBaseUrl = computed(() => normalizeBaseUrl(options.apiBaseUrl.value))
+
+  // Changing servers invalidates IDs, cursors and all in-flight results. Token
+  // refreshes on the same server keep a pending upload available for retry.
+  watch(connectionBaseUrl, () => {
+    uploadSequence++
+    listSequence++
+    uploadsDuringList = new Map()
+    assets.value = []
+    nextCursor.value = ''
+    pendingUpload.value = null
+    completedAsset.value = null
+    blobUploaded.value = false
+    stage.value = 'idle'
+    errorCode.value = null
+    loading.value = false
+    listError.value = false
+  }, { flush: 'sync' })
 
   const canRetryComplete = computed(() => Boolean(pendingUpload.value && blobUploaded.value && errorCode.value === 'complete-failed'))
   const filteredAssets = computed(() => {
@@ -259,6 +278,7 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
   }
 
   return {
+    connectionBaseUrl,
     file,
     sourceZhCN,
     sourceEn,

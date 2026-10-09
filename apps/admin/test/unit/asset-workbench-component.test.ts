@@ -11,6 +11,22 @@ afterEach(() => {
 })
 
 describe('素材工作台组件', () => {
+  it('切换 API 后同 ID 素材不继承旧连接的替代文本', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_shared')] })))
+    const wrapper = mountWorkbench()
+    await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-asset-id="asset_shared"] [data-testid="asset-alt-zh"]').setValue('旧连接的替代文本')
+    await wrapper.setProps({ apiBaseUrl: 'https://api-b.example' })
+    expect(wrapper.find('[data-asset-id="asset_shared"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+    await flushPromises()
+    const card = wrapper.get('[data-asset-id="asset_shared"]')
+    expect((card.get('[data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('')
+    expect(card.get('[data-testid="asset-insert"]').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
   it.each([
     ['/media/assets/asset_local/source.webp', 'http://127.0.0.1:8080/media/assets/asset_local/source.webp'],
     ['https://media.yujian.me/assets/asset_local/source.webp', 'https://media.yujian.me/assets/asset_local/source.webp'],
