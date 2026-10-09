@@ -28,6 +28,7 @@ export interface SnapshotInsertResult {
 export class AssetFileError extends Error {
   readonly code: AssetFileErrorCode
 
+  /** 保留可本地化的稳定错误代码，避免文件预检依赖底层异常文案。 */
   constructor(code: AssetFileErrorCode) {
     super(code)
     this.name = 'AssetFileError'

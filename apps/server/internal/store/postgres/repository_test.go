@@ -104,6 +104,8 @@ func (executor *recordingExecutor) QueryRowContext(_ context.Context, query stri
 	return executor.row
 }
 
+// QueryContext records generated SQL and parameter order, then returns injected
+// rows or query errors without requiring a live database in repository tests.
 func (executor *recordingExecutor) QueryContext(_ context.Context, query string, args ...any) (Rows, error) {
 	executor.queries = append(executor.queries, query)
 	executor.queryArgs = append(executor.queryArgs, args)
@@ -249,6 +251,8 @@ func TestAssetRepositoryPersistsStableSourceURL(t *testing.T) {
 	}
 }
 
+// TestAssetRepositoryListsWithStatusAndKeysetPagination binds the active-status
+// predicate, tuple boundary and limit arguments to the decoded record order.
 func TestAssetRepositoryListsWithStatusAndKeysetPagination(t *testing.T) {
 	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{rows: &recordingRows{rows: []recordingRow{
@@ -288,6 +292,8 @@ func TestAssetRepositoryListsWithStatusAndKeysetPagination(t *testing.T) {
 	}
 }
 
+// TestAssetRepositoryListPropagatesQueryAndRowsErrors distinguishes execution
+// failures from iteration failures so an empty result cannot conceal either.
 func TestAssetRepositoryListPropagatesQueryAndRowsErrors(t *testing.T) {
 	queryErr := errors.New("query failed")
 	executor := &recordingExecutor{rowsErr: queryErr}
@@ -304,10 +310,17 @@ func TestAssetRepositoryListPropagatesQueryAndRowsErrors(t *testing.T) {
 
 type errorRows struct{ err error }
 
-func (*errorRows) Next() bool        { return false }
+// Next terminates iteration immediately so the repository must consult Err.
+func (*errorRows) Next() bool { return false }
+
+// Scan satisfies Rows without adding a second failure to the iteration test.
 func (*errorRows) Scan(...any) error { return nil }
-func (rows *errorRows) Err() error   { return rows.err }
-func (*errorRows) Close() error      { return nil }
+
+// Err exposes the injected iteration failure after Next reports no more rows.
+func (rows *errorRows) Err() error { return rows.err }
+
+// Close allows deferred cleanup without masking the injected iteration error.
+func (*errorRows) Close() error { return nil }
 
 func TestAssetRepositoryReadsLegacyNullSourceURL(t *testing.T) {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)

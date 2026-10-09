@@ -52,6 +52,8 @@ var (
 	errPayloadChecksum = errors.New("payload checksum does not match declaration")
 )
 
+// NewBlobStore creates development-only storage with a lazily allocated
+// temporary directory; Close owns removal of all files in that directory.
 func NewBlobStore() *BlobStore {
 	return &BlobStore{
 		objects:      make(map[string]blobObject),
@@ -63,6 +65,8 @@ func NewBlobStore() *BlobStore {
 	}
 }
 
+// CreateUpload reserves a validated local object key with a random, expiring
+// token and prunes abandoned reservations without allocating a payload file.
 func (store *BlobStore) CreateUpload(_ context.Context, request ports.UploadRequest) (ports.SignedUpload, error) {
 	if validateKey(request.BlobKey) != nil || request.ContentType == "" || request.Size <= 0 || request.ExpiresIn <= 0 {
 		return ports.SignedUpload{}, domain.ErrInvalidInput
@@ -95,6 +99,8 @@ func (store *BlobStore) CreateUpload(_ context.Context, request ports.UploadRequ
 	}, nil
 }
 
+// ServeHTTP serves local media reads and reserved PUT uploads. Only a verified
+// upload can extend API deadlines; streaming validation enforces size and hash.
 func (store *BlobStore) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	if strings.HasPrefix(request.URL.Path, "/media/") {
 		store.serveRead(writer, request)
@@ -173,6 +179,8 @@ func (store *BlobStore) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	writer.WriteHeader(http.StatusNoContent)
 }
 
+// serveRead opens a tracked media handle for GET, HEAD and Range responses.
+// The handle permits an existing download to finish after the object is deleted.
 func (store *BlobStore) serveRead(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		writer.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
@@ -221,6 +229,8 @@ func (store *BlobStore) Stat(_ context.Context, key string) (ports.BlobMetadata,
 	return object.metadata, nil
 }
 
+// Put writes a local object and maps streaming size or checksum failures to the
+// domain error expected by snapshot and publishing callers.
 func (store *BlobStore) Put(ctx context.Context, key string, reader io.Reader, metadata ports.BlobMetadata) error {
 	err := store.put(ctx, key, reader, metadata)
 	if errors.Is(err, errPayloadTooLarge) || errors.Is(err, errPayloadSize) || errors.Is(err, errPayloadChecksum) {
@@ -229,6 +239,8 @@ func (store *BlobStore) Put(ctx context.Context, key string, reader io.Reader, m
 	return err
 }
 
+// put publishes only a fully validated temporary file. Matching size and hash
+// make retries idempotent; competing or failed writes discard their own file.
 func (store *BlobStore) put(ctx context.Context, key string, reader io.Reader, metadata ports.BlobMetadata) error {
 	if validateKey(key) != nil || metadata.ContentType == "" || metadata.Size < 0 {
 		return domain.ErrInvalidInput
@@ -273,6 +285,8 @@ func (store *BlobStore) put(ctx context.Context, key string, reader io.Reader, m
 	return nil
 }
 
+// Delete removes the payload before its lookup entry while holding the object
+// lock, so failed filesystem deletion does not hide a still-readable object.
 func (store *BlobStore) Delete(_ context.Context, key string) error {
 	finish, err := store.beginOperation()
 	if err != nil {
@@ -377,6 +391,8 @@ func secureEqual(left, right string) bool {
 	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
 }
 
+// writeTemporaryObject copies at most the declared size plus one sentinel byte
+// into a temporary file while hashing, deleting it on read or validation failure.
 func (store *BlobStore) writeTemporaryObject(
 	ctx context.Context,
 	reader io.Reader,
@@ -422,6 +438,8 @@ func (store *BlobStore) writeTemporaryObject(
 	return filePath, metadata, nil
 }
 
+// localRoot allocates the temporary directory once and rechecks shutdown after
+// creation so a racing operation cannot publish files into a closed store.
 func (store *BlobStore) localRoot() (string, error) {
 	store.mu.RLock()
 	closed := store.closed
@@ -449,6 +467,8 @@ type contextReader struct {
 	reader io.Reader
 }
 
+// Read checks cancellation before each underlying read; a read already blocked
+// on a network body still needs connection shutdown to unblock.
 func (reader *contextReader) Read(buffer []byte) (int, error) {
 	if err := reader.ctx.Err(); err != nil {
 		return 0, err

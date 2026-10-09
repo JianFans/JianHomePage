@@ -33,6 +33,8 @@ func TestBuildTriggerLifecycle(t *testing.T) {
 	}
 }
 
+// TestBlobStoreLifecycleAndReadValidation covers immutable writes, safe key
+// paths, HEAD semantics and metadata removal after deleting a local object.
 func TestBlobStoreLifecycleAndReadValidation(t *testing.T) {
 	store := newTestBlobStore(t)
 	metadata := ports.BlobMetadata{ContentType: "text/plain", Size: 4, Checksum: checksumFor([]byte("data"))}
@@ -88,6 +90,8 @@ func TestBlobStoreLifecycleAndReadValidation(t *testing.T) {
 	}
 }
 
+// TestUploadReservationRejectsInvalidAndExpiredRequests uses a controlled clock
+// to distinguish invalid reservations, missing tokens and expiration cleanup.
 func TestUploadReservationRejectsInvalidAndExpiredRequests(t *testing.T) {
 	store := newTestBlobStore(t)
 	for _, request := range []ports.UploadRequest{

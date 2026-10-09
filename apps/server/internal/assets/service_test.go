@@ -44,6 +44,8 @@ func (repository *memoryRepository) GetAsset(_ context.Context, id string) (doma
 	return asset, nil
 }
 
+// ListAssets models status filtering and the strict timestamp/ID boundary so
+// service tests can verify cursor generation independently of a database.
 func (repository *memoryRepository) ListAssets(_ context.Context, query ListQuery) ([]domain.AssetRecord, error) {
 	items := make([]domain.AssetRecord, 0, len(repository.assets))
 	for _, asset := range repository.assets {
@@ -157,6 +159,8 @@ func (store *blobStoreFake) SignedReadURL(context.Context, string, time.Duration
 	return "https://read.example.com/signed", nil
 }
 
+// PublicURL records resolution attempts and injects provider failures or URL
+// changes to test that persisted addresses are repaired once and then frozen.
 func (store *blobStoreFake) PublicURL(_ context.Context, key string) (string, error) {
 	store.publicCalls++
 	if store.publicErr != nil {
@@ -187,6 +191,8 @@ func admin() domain.Principal {
 	return domain.Principal{Subject: "admin-1", Roles: []domain.Role{domain.RoleAdmin}}
 }
 
+// TestListAssetsUsesStableCursorAndDefaultStatuses covers equal-time ID ordering,
+// deleted-record exclusion and a final page without a continuation cursor.
 func TestListAssetsUsesStableCursorAndDefaultStatuses(t *testing.T) {
 	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
 	repository := newMemoryRepository()
@@ -254,6 +260,8 @@ func TestListRepairsLegacySources(t *testing.T) {
 	}
 }
 
+// TestListLegacySourceRepairPropagatesErrors ensures neither URL resolution nor
+// persistence failure returns a partially repaired page to callers.
 func TestListLegacySourceRepairPropagatesErrors(t *testing.T) {
 	repository := newMemoryRepository()
 	repository.assets["asset_legacy"] = domain.AssetRecord{ID: "asset_legacy", BlobKey: "assets/legacy/source.webp", Status: domain.AssetReady, CreatedAt: time.Now()}
@@ -271,6 +279,8 @@ func TestListLegacySourceRepairPropagatesErrors(t *testing.T) {
 	}
 }
 
+// TestListAssetsSupportsExplicitDeletedStatus verifies that deleted records stay
+// accessible through an explicit filter despite being hidden by the default.
 func TestListAssetsSupportsExplicitDeletedStatus(t *testing.T) {
 	repository := newMemoryRepository()
 	repository.assets["asset_deleted"] = domain.AssetRecord{
@@ -287,6 +297,8 @@ func TestListAssetsSupportsExplicitDeletedStatus(t *testing.T) {
 	}
 }
 
+// TestListAssetsRejectsInvalidOptions covers status and page-size limits plus
+// malformed, incomplete and NUL-bearing cursors at the service boundary.
 func TestListAssetsRejectsInvalidOptions(t *testing.T) {
 	service := assetServiceForTest(newMemoryRepository(), &blobStoreFake{})
 	for _, options := range []ListOptions{
@@ -303,6 +315,8 @@ func TestListAssetsRejectsInvalidOptions(t *testing.T) {
 	}
 }
 
+// TestListAssetsRequiresCreatePermission prevents review-only identities from
+// reading the asset library without the editor's create_asset permission.
 func TestListAssetsRequiresCreatePermission(t *testing.T) {
 	service := assetServiceForTest(newMemoryRepository(), &blobStoreFake{})
 	actor := domain.Principal{Subject: "reviewer", Roles: []domain.Role{domain.RoleReviewer}}
@@ -311,6 +325,8 @@ func TestListAssetsRequiresCreatePermission(t *testing.T) {
 	}
 }
 
+// assetIDs preserves page order while projecting records for pagination
+// assertions, avoiding comparisons of unrelated metadata and timestamps.
 func assetIDs(items []domain.AssetRecord) []string {
 	ids := make([]string, len(items))
 	for index, item := range items {

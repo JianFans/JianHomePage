@@ -45,6 +45,8 @@ func main() {
 	}
 }
 
+// run selects environment-specific services and shuts down the HTTP server and
+// reconciler before releasing storage, preserving cleanup errors on exit.
 func run(ctx context.Context, settings config.Config, logger *slog.Logger) (returnErr error) {
 	dependencies := ServiceDependencies{}
 	closeResources := func() error { return nil }
@@ -226,6 +228,8 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 	}), nil
 }
 
+// developmentDependencies shares one in-memory state and temporary blob store
+// across development services; the caller must invoke Close to remove files.
 func developmentDependencies() ServiceDependencies {
 	state := memory.NewState()
 	validator := contract.NewValidator()

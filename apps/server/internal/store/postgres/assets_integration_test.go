@@ -185,6 +185,8 @@ type listPlanExecutor struct {
 	args  []any
 }
 
+// QueryContext captures the exact SQL and arguments before executing them on
+// PostgreSQL, letting plan checks replay the repository's real query.
 func (executor *listPlanExecutor) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
 	executor.query, executor.args = query, args
 	return executor.Executor.QueryContext(ctx, query, args...)

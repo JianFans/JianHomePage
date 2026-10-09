@@ -176,6 +176,8 @@ func TestAssetLifecycleRoutesReturnStableRepresentations(t *testing.T) {
 	}
 }
 
+// TestListAssetsForwardsFiltersAndReturnsPage checks that authenticated filters
+// reach the service and the public response retains its continuation cursor.
 func TestListAssetsForwardsFiltersAndReturnsPage(t *testing.T) {
 	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
 	assetService := &assetServiceStub{listFn: func(_ context.Context, actor domain.Principal, options assets.ListOptions) (assets.ListPage, error) {
@@ -208,6 +210,8 @@ func TestListAssetsForwardsFiltersAndReturnsPage(t *testing.T) {
 	}
 }
 
+// TestListAssetsRejectsInvalidQueryBeforeService verifies that invalid ranges,
+// duplicate filters and malformed URL encoding fail before any service call.
 func TestListAssetsRejectsInvalidQueryBeforeService(t *testing.T) {
 	for _, query := range []string{
 		"status=unknown",

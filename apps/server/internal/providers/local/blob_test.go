@@ -16,6 +16,8 @@ import (
 	"yujian.me/server/internal/ports"
 )
 
+// TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata exercises a signed
+// PUT and verifies that Stat exposes the validated size, MIME and checksum.
 func TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata(t *testing.T) {
 	store := newTestBlobStore(t)
 	payload := []byte("image-data")
@@ -47,6 +49,8 @@ func TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata(t *testing.T) {
 	}
 }
 
+// TestUploadHandlerStreamsPayloadWithBoundedReads rejects read buffers over
+// 64 KiB so an upload cannot regress to whole-payload buffering unnoticed.
 func TestUploadHandlerStreamsPayloadWithBoundedReads(t *testing.T) {
 	store := newTestBlobStore(t)
 	payload := bytes.Repeat([]byte("streamed-media"), 128*1024)
@@ -76,6 +80,8 @@ func TestUploadHandlerStreamsPayloadWithBoundedReads(t *testing.T) {
 	}
 }
 
+// TestBlobStorePublishesUploadedObjectAtStableLocalURL checks that a stored
+// payload is reachable through its canonical /media path with the declared MIME.
 func TestBlobStorePublishesUploadedObjectAtStableLocalURL(t *testing.T) {
 	store := newTestBlobStore(t)
 	payload := []byte("audio-data")
@@ -111,6 +117,8 @@ func TestBlobStorePublishesUploadedObjectAtStableLocalURL(t *testing.T) {
 	}
 }
 
+// TestBlobStoreCloseRemovesLocalObjects verifies that shutdown clears object
+// lookup state rather than leaving metadata for removed temporary payloads.
 func TestBlobStoreCloseRemovesLocalObjects(t *testing.T) {
 	store := NewBlobStore()
 	payload := []byte("temporary-data")
@@ -175,6 +183,8 @@ func TestBlobStoreCloseWaitsForConcurrentRootCreationAndRemovesIt(t *testing.T) 
 	}
 }
 
+// TestBlobStorePutHonorsCanceledContext requires a canceled write to propagate
+// context.Canceled instead of publishing a temporary object.
 func TestBlobStorePutHonorsCanceledContext(t *testing.T) {
 	store := newTestBlobStore(t)
 	payload := []byte("canceled-data")
@@ -192,6 +202,8 @@ func TestBlobStorePutHonorsCanceledContext(t *testing.T) {
 	}
 }
 
+// TestBlobStorePutWithoutChecksumRemainsIdempotent preserves internal callers'
+// repeat-write contract when they supply size but no expected checksum.
 func TestBlobStorePutWithoutChecksumRemainsIdempotent(t *testing.T) {
 	store := newTestBlobStore(t)
 	metadata := ports.BlobMetadata{ContentType: "text/plain", Size: 4}
@@ -203,6 +215,8 @@ func TestBlobStorePutWithoutChecksumRemainsIdempotent(t *testing.T) {
 	}
 }
 
+// TestUploadHandlerRejectsUnknownLengthPayloadTooLarge ensures that streaming
+// size enforcement still returns 413 when Content-Length cannot preflight it.
 func TestUploadHandlerRejectsUnknownLengthPayloadTooLarge(t *testing.T) {
 	store := newTestBlobStore(t)
 	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
@@ -225,6 +239,8 @@ func TestUploadHandlerRejectsUnknownLengthPayloadTooLarge(t *testing.T) {
 	}
 }
 
+// TestUploadHandlerRejectsInvalidPayloads covers MIME, declared-size and checksum
+// violations using reserved uploads rather than bypassing signature handling.
 func TestUploadHandlerRejectsInvalidPayloads(t *testing.T) {
 	for _, test := range []struct {
 		name        string
@@ -257,6 +273,8 @@ func TestUploadHandlerRejectsInvalidPayloads(t *testing.T) {
 	}
 }
 
+// newTestBlobStore registers temporary-file cleanup even when an assertion
+// aborts a test, keeping filesystem-backed upload tests isolated.
 func newTestBlobStore(t *testing.T) *BlobStore {
 	t.Helper()
 	store := NewBlobStore()
@@ -274,6 +292,8 @@ type boundedReadReader struct {
 	largestRead int
 }
 
+// Read records the largest requested buffer and fails above the streaming
+// budget, exposing allocation regressions without allocating a huge fixture.
 func (reader *boundedReadReader) Read(buffer []byte) (int, error) {
 	if len(buffer) > reader.largestRead {
 		reader.largestRead = len(buffer)

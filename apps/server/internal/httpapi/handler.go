@@ -367,6 +367,8 @@ func (handler *Handler) createAssetUpload(writer http.ResponseWriter, request *h
 	})
 }
 
+// listAssets validates filters before querying with the authenticated actor and
+// exposes public asset fields and the cursor without leaking storage keys.
 func (handler *Handler) listAssets(writer http.ResponseWriter, request *http.Request) {
 	options, ok := parseAssetListOptions(request)
 	if !ok {

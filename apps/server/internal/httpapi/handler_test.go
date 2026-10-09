@@ -81,6 +81,8 @@ type assetServiceStub struct {
 	deleteFn   func(context.Context, domain.Principal, string) error
 }
 
+// List forwards the authenticated actor and filters to a test-specific callback,
+// defaulting to an empty page for router tests unrelated to asset queries.
 func (stub *assetServiceStub) List(ctx context.Context, actor domain.Principal, options assets.ListOptions) (assets.ListPage, error) {
 	if stub.listFn == nil {
 		return assets.ListPage{}, nil

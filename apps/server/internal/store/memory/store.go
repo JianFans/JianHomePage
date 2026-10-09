@@ -168,6 +168,8 @@ func (repository *AssetRepository) ListAssets(_ context.Context, query assets.Li
 	return items, nil
 }
 
+// assetBeforeCursor uses ID as the strict tie-breaker when timestamps match,
+// keeping the in-memory boundary equivalent to PostgreSQL tuple comparison.
 func assetBeforeCursor(asset domain.AssetRecord, query assets.ListQuery) bool {
 	if query.BeforeCreatedAt == nil {
 		return true

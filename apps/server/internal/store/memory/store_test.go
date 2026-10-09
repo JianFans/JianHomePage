@@ -138,6 +138,8 @@ func TestAssetRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	}
 }
 
+// TestAssetRepositoryListsByStatusAndStableCursor checks filtering and timestamp
+// ties, and confirms returned metadata cannot mutate the stored asset record.
 func TestAssetRepositoryListsByStatusAndStableCursor(t *testing.T) {
 	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
 	state := NewState()
@@ -183,6 +185,8 @@ func TestAssetRepositoryListsByStatusAndStableCursor(t *testing.T) {
 	}
 }
 
+// listedAssetIDs retains result order for keyset assertions while excluding
+// metadata unrelated to the repository's pagination contract.
 func listedAssetIDs(items []domain.AssetRecord) []string {
 	ids := make([]string, len(items))
 	for index, item := range items {

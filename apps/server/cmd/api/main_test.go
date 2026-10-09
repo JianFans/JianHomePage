@@ -211,6 +211,8 @@ func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 	}
 }
 
+// TestDevelopmentHandlerRunsAssetUploadRoundTrip exercises creation, signed
+// PUT, completion, stable media reads and ready-list lookup through one router.
 func TestDevelopmentHandlerRunsAssetUploadRoundTrip(t *testing.T) {
 	settings := config.Config{
 		Environment:      "development",
@@ -307,6 +309,8 @@ func TestDevelopmentHandlerRunsAssetUploadRoundTrip(t *testing.T) {
 	}
 }
 
+// TestDevelopmentDependenciesCloseLocalBlobStore verifies that the application
+// dependency bundle exposes cleanup for its shared temporary upload store.
 func TestDevelopmentDependenciesCloseLocalBlobStore(t *testing.T) {
 	dependencies := developmentDependencies()
 	store, ok := dependencies.LocalUploads.(*local.BlobStore)

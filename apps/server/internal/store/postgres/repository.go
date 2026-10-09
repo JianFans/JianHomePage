@@ -113,6 +113,8 @@ type AssetRepository struct {
 
 func NewAssetRepository(exec Executor) *AssetRepository { return &AssetRepository{exec: exec} }
 
+// WithinTransaction marks the scoped repository for locking reads and commits
+// only a successful callback; callback or commit errors trigger rollback.
 func (repository *AssetRepository) WithinTransaction(ctx context.Context, run func(assets.Repository) error) error {
 	tx, err := begin(ctx, repository.exec)
 	if err != nil {
@@ -138,6 +140,8 @@ VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)`,
 	return err
 }
 
+// GetAsset locks the row inside a transaction so completion or deletion cannot
+// overwrite a concurrent address repair; ordinary reads remain unlocked.
 func (repository *AssetRepository) GetAsset(ctx context.Context, id string) (domain.AssetRecord, error) {
 	query := `
 SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at

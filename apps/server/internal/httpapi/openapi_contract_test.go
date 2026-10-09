@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+// TestOpenAPIContainsManagementOperationsAndSecurity checks route identifiers,
+// bearer requirements and the documented asset query, rights and URL contracts.
 func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	raw, err := os.ReadFile("../../../../packages/schema/openapi/admin.yaml")
 	if err != nil {
@@ -167,6 +169,8 @@ func containsString(values []string, expected string) bool {
 	return false
 }
 
+// assertOptionalParameters verifies presence without accidentally making asset
+// filters mandatory for clients that rely on server-side defaults.
 func assertOptionalParameters(t *testing.T, parameters []struct {
 	Name     string `json:"name"`
 	Required bool   `json:"required"`

@@ -182,6 +182,8 @@ func (service *Service) List(ctx context.Context, actor domain.Principal, option
 	return page, nil
 }
 
+// normalizeListOptions applies the active-status and page-size defaults and
+// requests one extra record so List can decide whether to issue a next cursor.
 func normalizeListOptions(options ListOptions) (ListQuery, int, error) {
 	limit := options.Limit
 	if limit == 0 {
@@ -214,6 +216,8 @@ func normalizeListOptions(options ListOptions) (ListQuery, int, error) {
 	return query, limit, nil
 }
 
+// encodeListCursor preserves the last item's UTC timestamp and ID as a
+// Base64URL boundary for the shared descending keyset order.
 func encodeListCursor(asset domain.AssetRecord) (string, error) {
 	encoded, err := json.Marshal(listCursor{CreatedAt: asset.CreatedAt.UTC(), ID: asset.ID})
 	if err != nil {
@@ -222,6 +226,8 @@ func encodeListCursor(asset domain.AssetRecord) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(encoded), nil
 }
 
+// decodeListCursor accepts exactly one known-field JSON boundary and rejects
+// zero timestamps, blank IDs and NUL bytes before they reach the repositories.
 func decodeListCursor(value string) (listCursor, error) {
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
