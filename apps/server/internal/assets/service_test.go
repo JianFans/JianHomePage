@@ -92,12 +92,32 @@ func (repository *memoryRepository) AppendAudit(_ context.Context, entry domain.
 	return nil
 }
 
+// EnsureAssetSourceURL models the narrow atomic repair contract for service tests.
+func (repository *memoryRepository) EnsureAssetSourceURL(_ context.Context, id, sourceURL string) (string, error) {
+	if sourceURL == "" {
+		return "", domain.ErrInvalidInput
+	}
+	if repository.updateErr != nil {
+		return "", repository.updateErr
+	}
+	asset, exists := repository.assets[id]
+	if !exists {
+		return "", domain.ErrNotFound
+	}
+	if asset.SourceURL == "" {
+		asset.SourceURL = sourceURL
+		repository.assets[id] = asset
+	}
+	return asset.SourceURL, nil
+}
+
 type blobStoreFake struct {
 	uploads     []ports.UploadRequest
 	metadata    ports.BlobMetadata
 	deletedKeys []string
 	publicURL   string
 	publicCalls int
+	publicErr   error
 	createErr   error
 	statErr     error
 	statCalls   int
@@ -138,6 +158,9 @@ func (store *blobStoreFake) SignedReadURL(context.Context, string, time.Duration
 
 func (store *blobStoreFake) PublicURL(_ context.Context, key string) (string, error) {
 	store.publicCalls++
+	if store.publicErr != nil {
+		return "", store.publicErr
+	}
 	if store.publicURL != "" {
 		return store.publicURL, nil
 	}
@@ -194,6 +217,56 @@ func TestListAssetsUsesStableCursorAndDefaultStatuses(t *testing.T) {
 	}
 	if second.NextCursor != "" {
 		t.Fatalf("unexpected trailing cursor %q", second.NextCursor)
+	}
+}
+
+// TestListRepairsLegacySources covers records written by old instances after
+// startup migration, without replacing existing provider URLs or lookahead rows.
+func TestListRepairsLegacySources(t *testing.T) {
+	for _, status := range []domain.AssetStatus{domain.AssetPending, domain.AssetReady, domain.AssetDeleted} {
+		t.Run(string(status), func(t *testing.T) {
+			repository := newMemoryRepository()
+			now := time.Now().UTC()
+			for _, id := range []string{"asset_a", "asset_b", "asset_c"} {
+				repository.assets[id] = domain.AssetRecord{ID: id, BlobKey: "assets/" + id + "/source.webp", Status: status, CreatedAt: now}
+			}
+			blobs := &blobStoreFake{}
+			service := assetServiceForTest(repository, blobs)
+			page, err := service.List(t.Context(), editor(), ListOptions{Status: status, Limit: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page.Items) != 1 || page.Items[0].SourceURL != "https://media.example.com/assets/asset_c/source.webp" {
+				t.Fatalf("legacy URL not repaired: %#v", page)
+			}
+			if repository.assets["asset_c"].SourceURL != page.Items[0].SourceURL || blobs.publicCalls != 1 || repository.assets["asset_b"].SourceURL != "" {
+				t.Fatal("repair must persist only returned page records")
+			}
+			blobs.publicURL = "https://other-provider.example/changed.webp"
+			if _, err := service.List(t.Context(), editor(), ListOptions{Status: status, Limit: 1}); err != nil {
+				t.Fatal(err)
+			}
+			if blobs.publicCalls != 1 {
+				t.Fatal("persisted source URL was recalculated")
+			}
+		})
+	}
+}
+
+func TestListLegacySourceRepairPropagatesErrors(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.assets["asset_legacy"] = domain.AssetRecord{ID: "asset_legacy", BlobKey: "assets/legacy/source.webp", Status: domain.AssetReady, CreatedAt: time.Now()}
+	providerErr := errors.New("provider unavailable")
+	blobs := &blobStoreFake{publicErr: providerErr}
+	page, err := assetServiceForTest(repository, blobs).List(t.Context(), editor(), ListOptions{})
+	if !errors.Is(err, providerErr) || len(page.Items) != 0 || repository.assets["asset_legacy"].SourceURL != "" {
+		t.Fatalf("provider failure must not return invalid page: page=%#v error=%v", page, err)
+	}
+	blobs.publicErr = nil
+	repository.updateErr = errors.New("database unavailable")
+	page, err = assetServiceForTest(repository, blobs).List(t.Context(), editor(), ListOptions{})
+	if !errors.Is(err, repository.updateErr) || len(page.Items) != 0 {
+		t.Fatalf("storage repair failure must propagate: page=%#v error=%v", page, err)
 	}
 }
 

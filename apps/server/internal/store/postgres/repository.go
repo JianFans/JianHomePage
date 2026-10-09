@@ -196,6 +196,23 @@ func nullableAssetSourceURL(sourceURL string) any {
 	return sourceURL
 }
 
+// EnsureAssetSourceURL fills only a missing URL and returns the persisted winner.
+// COALESCE is evaluated under the row lock; metadata and status are never copied
+// from a stale list result, and concurrent provider repairs cannot replace a URL.
+func (repository *AssetRepository) EnsureAssetSourceURL(ctx context.Context, id, sourceURL string) (string, error) {
+	if sourceURL == "" {
+		return "", domain.ErrInvalidInput
+	}
+	var stored string
+	err := repository.exec.QueryRowContext(ctx, `
+UPDATE assets SET source_url = COALESCE(source_url, $2)
+WHERE id = $1 RETURNING source_url`, id, sourceURL).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", domain.ErrNotFound
+	}
+	return stored, err
+}
+
 func compareAndSwapAssetResult(ctx context.Context, exec Executor, result ExecResult, id string) error {
 	affected, err := result.RowsAffected()
 	if err != nil {

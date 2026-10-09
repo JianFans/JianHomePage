@@ -190,6 +190,28 @@ func (repository *AssetRepository) UpdateAsset(_ context.Context, asset domain.A
 	})
 }
 
+// EnsureAssetSourceURL fills the address under the write lock without changing
+// the asset's current status or metadata and preserves any competing repair.
+func (repository *AssetRepository) EnsureAssetSourceURL(_ context.Context, id, sourceURL string) (string, error) {
+	if sourceURL == "" {
+		return "", domain.ErrInvalidInput
+	}
+	var stored string
+	err := repository.withWrite(func() error {
+		asset, exists := repository.state.assets[id]
+		if !exists {
+			return domain.ErrNotFound
+		}
+		if asset.SourceURL == "" {
+			asset.SourceURL = sourceURL
+			repository.state.assets[id] = asset
+		}
+		stored = asset.SourceURL
+		return nil
+	})
+	return stored, err
+}
+
 func (repository *AssetRepository) AppendAudit(_ context.Context, entry domain.AuditEntry) error {
 	return repository.withWrite(func() error {
 		repository.state.audits = append(repository.state.audits, cloneAudit(entry))

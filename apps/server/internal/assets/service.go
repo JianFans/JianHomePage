@@ -30,6 +30,7 @@ type Repository interface {
 	CreateAsset(context.Context, domain.AssetRecord) error
 	GetAsset(context.Context, string) (domain.AssetRecord, error)
 	ListAssets(context.Context, ListQuery) ([]domain.AssetRecord, error)
+	EnsureAssetSourceURL(context.Context, string, string) (string, error)
 	UpdateAsset(context.Context, domain.AssetRecord, domain.AssetStatus) error
 	AppendAudit(context.Context, domain.AuditEntry) error
 }
@@ -155,13 +156,28 @@ func (service *Service) List(ctx context.Context, actor domain.Principal, option
 	}
 
 	page := ListPage{Items: items}
-	if len(items) <= pageLimit {
-		return page, nil
+	if len(items) > pageLimit {
+		page.Items = items[:pageLimit]
+		page.NextCursor, err = encodeListCursor(page.Items[len(page.Items)-1])
+		if err != nil {
+			return ListPage{}, err
+		}
 	}
-	page.Items = items[:pageLimit]
-	page.NextCursor, err = encodeListCursor(page.Items[len(page.Items)-1])
-	if err != nil {
-		return ListPage{}, err
+	// Older instances can write NULL after the startup migration. Repair only
+	// returned records and persist once, keeping their original list ordering.
+	for index := range page.Items {
+		asset := &page.Items[index]
+		if asset.SourceURL != "" {
+			continue
+		}
+		sourceURL, err := service.blobStore.PublicURL(ctx, asset.BlobKey)
+		if err != nil {
+			return ListPage{}, err
+		}
+		asset.SourceURL, err = service.repository.EnsureAssetSourceURL(ctx, asset.ID, sourceURL)
+		if err != nil {
+			return ListPage{}, err
+		}
 	}
 	return page, nil
 }

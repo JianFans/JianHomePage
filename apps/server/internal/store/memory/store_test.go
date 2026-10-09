@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,49 @@ import (
 	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/publish"
 )
+
+// TestAssetSourceRepairIsAtomic verifies competing providers cannot change a
+// frozen URL and that repairing a deleted record leaves its lifecycle intact.
+func TestAssetSourceRepairIsAtomic(t *testing.T) {
+	repository := NewAssetRepository(NewState())
+	deletedAt := time.Now().UTC()
+	asset := domain.AssetRecord{ID: "legacy", Status: domain.AssetDeleted, DeletedAt: &deletedAt,
+		Metadata: json.RawMessage(`{"retainBlob":true}`), Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`)}
+	if err := repository.CreateAsset(t.Context(), asset); err != nil {
+		t.Fatal(err)
+	}
+	var workers sync.WaitGroup
+	results := make(chan string, 2)
+	for _, candidate := range []string{"https://media-a.example/source.webp", "https://media-b.example/source.webp"} {
+		workers.Go(func() {
+			stored, err := repository.EnsureAssetSourceURL(t.Context(), asset.ID, candidate)
+			if err != nil {
+				t.Error(err)
+			}
+			results <- stored
+		})
+	}
+	workers.Wait()
+	close(results)
+	stored, err := repository.GetAsset(t.Context(), asset.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for result := range results {
+		if result == "" || result != stored.SourceURL {
+			t.Fatalf("competing repairs returned different URLs: %q vs %q", result, stored.SourceURL)
+		}
+	}
+	if stored.Status != asset.Status || stored.DeletedAt == nil || !stored.DeletedAt.Equal(deletedAt) || string(stored.Metadata) != string(asset.Metadata) || string(stored.Rights) != string(asset.Rights) {
+		t.Fatal("source repair changed lifecycle or metadata")
+	}
+	if _, err := repository.EnsureAssetSourceURL(t.Context(), "missing", "https://media.example/source.webp"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("missing record: %v", err)
+	}
+	if _, err := repository.EnsureAssetSourceURL(t.Context(), asset.ID, ""); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("empty source: %v", err)
+	}
+}
 
 func TestRepositoriesRejectCancelledTransactions(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
