@@ -1,5 +1,6 @@
 import { createIdempotencyKey } from './idempotency'
 import type { AdminLocale } from './admin-locale'
+import type { Asset } from '@yujian/schema'
 
 export interface AdminVersion {
   id: string
@@ -20,6 +21,53 @@ export interface AdminPublishJob {
   snapshotChecksum: string
   buildId?: string
   errorMessage?: string
+}
+
+export interface AdminAssetMetadata {
+  fileName?: string
+  contentType?: string
+  declaredSize?: number
+  checksum?: string
+  width?: number
+  height?: number
+  duration?: number
+  [key: string]: unknown
+}
+
+export interface AdminAsset {
+  id: string
+  src: string
+  status: 'pending' | 'ready' | 'deleted'
+  metadata: AdminAssetMetadata
+  rights: Asset['rights']
+  createdAt?: string
+  deletedAt?: string
+}
+
+export interface AssetListOptions {
+  status?: AdminAsset['status']
+  limit?: number
+  cursor?: string
+}
+
+export interface AdminAssetPage {
+  items: AdminAsset[]
+  nextCursor?: string
+}
+
+export interface AdminAssetUploadRequest {
+  fileName: string
+  contentType: string
+  size: number
+  checksum: string
+  rights: Asset['rights']
+}
+
+export interface AdminAssetUpload {
+  asset: AdminAsset
+  uploadUrl: string
+  headers?: Record<string, string>
+  expiresAt: string
 }
 
 export interface AdminApiErrorShape {
@@ -166,6 +214,38 @@ export function createAdminApi(options: AdminApiOptions) {
     /** 将审核中的版本退回并记录原因。 */
     rejectReview(versionId: string, revision: number, reason: string) {
       return request<AdminVersion>(`/api/v1/versions/${encodeURIComponent(versionId)}/reject`, json({ revision, reason }))
+    },
+    /** 分页读取素材库，并仅发送显式提供的筛选参数。 */
+    listAssets(options: AssetListOptions = {}) {
+      const query = new URLSearchParams()
+      if (options.status) query.set('status', options.status)
+      if (options.limit !== undefined) query.set('limit', String(options.limit))
+      if (options.cursor) query.set('cursor', options.cursor)
+      const suffix = query.size > 0 ? `?${query.toString()}` : ''
+      return request<AdminAssetPage>(`/api/v1/assets${suffix}`)
+    },
+    /** 创建一次受服务端约束的签名素材上传。 */
+    createAssetUpload(input: AdminAssetUploadRequest) {
+      return request<AdminAssetUpload>('/api/v1/assets/uploads', json(input))
+    },
+    /** 仅使用签名响应声明的请求头把文件直传到对象存储。 */
+    async uploadAssetBlob(upload: AdminAssetUpload, file: Blob) {
+      const response = await fetcher(upload.uploadUrl, {
+        method: 'PUT',
+        headers: new Headers(upload.headers),
+        body: file,
+      })
+      if (!response.ok) {
+        throw new AdminApiError(response.status, {
+          code: 'upload_failed',
+          message: 'Asset upload failed.',
+          requestId: '',
+        })
+      }
+    },
+    /** 确认已直传的素材并读取服务端最终 metadata。 */
+    completeAssetUpload(assetId: string) {
+      return request<AdminAsset>(`/api/v1/assets/${encodeURIComponent(assetId)}/complete`, json({}))
     },
     /** 使用幂等键创建发布任务。 */
     publish(versionId: string, idempotencyKey = createIdempotencyKey()) {
