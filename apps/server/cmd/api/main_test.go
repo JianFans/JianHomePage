@@ -356,6 +356,34 @@ func TestPublishReconcilerLogsFailuresAndUsesDefaultInterval(t *testing.T) {
 	}
 }
 
+// TestStartPublishReconcilerWaitsForActiveRunBeforeStopping protects resource
+// shutdown from racing an in-flight reconciliation.
+func TestStartPublishReconcilerWaitsForActiveRunBeforeStopping(t *testing.T) {
+	reconciler := &blockingPublishReconciler{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	stop := startPublishReconciler(context.Background(), time.Hour, reconciler, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	<-reconciler.started
+
+	stopped := make(chan struct{})
+	go func() {
+		stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+		t.Fatal("reconciler stop returned before the active run completed")
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(reconciler.release)
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("reconciler stop did not wait for completion")
+	}
+}
+
 func TestRunDevelopmentStopsWithCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -542,6 +570,11 @@ type publishReconcilerFake struct {
 	err   error
 }
 
+type blockingPublishReconciler struct {
+	started chan struct{}
+	release chan struct{}
+}
+
 type notifyingWriter struct {
 	bytes.Buffer
 	wrote chan struct{}
@@ -559,6 +592,13 @@ func (writer *notifyingWriter) Write(value []byte) (int, error) {
 func (reconciler *publishReconcilerFake) Reconcile(context.Context) error {
 	reconciler.calls <- struct{}{}
 	return reconciler.err
+}
+
+// Reconcile holds one run open until the lifecycle test releases it.
+func (reconciler *blockingPublishReconciler) Reconcile(context.Context) error {
+	close(reconciler.started)
+	<-reconciler.release
+	return nil
 }
 
 func (*productionDatabaseFake) ExecContext(context.Context, string, ...any) (postgres.ExecResult, error) {

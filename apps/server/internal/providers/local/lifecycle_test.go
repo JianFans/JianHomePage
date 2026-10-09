@@ -93,6 +93,7 @@ func TestUploadReservationRejectsInvalidAndExpiredRequests(t *testing.T) {
 	for _, request := range []ports.UploadRequest{
 		{},
 		{BlobKey: "key", ContentType: "text/plain", Size: 1},
+		{BlobKey: "../escape", ContentType: "text/plain", Size: 1, ExpiresIn: time.Minute},
 	} {
 		if _, err := store.CreateUpload(t.Context(), request); !errors.Is(err, domain.ErrInvalidInput) {
 			t.Fatalf("expected invalid upload %#v, got %v", request, err)
@@ -121,5 +122,37 @@ func TestUploadReservationRejectsInvalidAndExpiredRequests(t *testing.T) {
 	store.ServeHTTP(expired, request)
 	if expired.Code != http.StatusGone {
 		t.Fatalf("expected expired upload, got %d", expired.Code)
+	}
+	if len(store.reservations) != 0 {
+		t.Fatalf("expired upload reservation was not removed: %#v", store.reservations)
+	}
+}
+
+// TestCreateUploadPrunesAbandonedExpiredReservations keeps unused local upload
+// tokens bounded during a long-running development server session.
+func TestCreateUploadPrunesAbandonedExpiredReservations(t *testing.T) {
+	store := newTestBlobStore(t)
+	now := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	if _, err := store.CreateUpload(t.Context(), ports.UploadRequest{
+		BlobKey: "files/stale.txt", ContentType: "text/plain", Size: 4,
+		Checksum: checksumFor([]byte("data")), ExpiresIn: time.Minute,
+	}); err != nil {
+		t.Fatalf("create stale upload: %v", err)
+	}
+
+	now = now.Add(2 * time.Minute)
+	if _, err := store.CreateUpload(t.Context(), ports.UploadRequest{
+		BlobKey: "files/fresh.txt", ContentType: "text/plain", Size: 4,
+		Checksum: checksumFor([]byte("data")), ExpiresIn: time.Minute,
+	}); err != nil {
+		t.Fatalf("create fresh upload: %v", err)
+	}
+
+	if len(store.reservations) != 1 {
+		t.Fatalf("expected only the fresh reservation, got %#v", store.reservations)
+	}
+	if _, exists := store.reservations["files/fresh.txt"]; !exists {
+		t.Fatalf("fresh upload reservation was not retained: %#v", store.reservations)
 	}
 }

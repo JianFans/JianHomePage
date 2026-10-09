@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -63,9 +64,33 @@ func run(ctx context.Context, settings config.Config, logger *slog.Logger) (retu
 		return err
 	}
 	if dependencies.PublishReconciler != nil {
-		go runPublishReconciler(ctx, 15*time.Second, dependencies.PublishReconciler, logger)
+		stopReconciler := startPublishReconciler(ctx, 15*time.Second, dependencies.PublishReconciler, logger)
+		defer stopReconciler()
 	}
 	return runServer(ctx, settings, logger, handler)
+}
+
+// startPublishReconciler starts one cancellable reconciliation loop and returns
+// an idempotent stop function that waits for the active reconciliation to exit.
+func startPublishReconciler(
+	parent context.Context,
+	interval time.Duration,
+	reconciler publishReconciler,
+	logger *slog.Logger,
+) func() {
+	ctx, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runPublishReconciler(ctx, interval, reconciler, logger)
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			cancel()
+			<-done
+		})
+	}
 }
 
 type publishReconciler interface {

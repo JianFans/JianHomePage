@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -127,6 +128,50 @@ func TestBlobStoreCloseRemovesLocalObjects(t *testing.T) {
 	}
 	if _, err := store.Stat(t.Context(), key); err == nil {
 		t.Fatal("closed local store retained object metadata")
+	}
+}
+
+// TestBlobStoreCloseWaitsForConcurrentRootCreationAndRemovesIt verifies that
+// shutdown cannot delete the temporary root underneath an active writer.
+func TestBlobStoreCloseWaitsForConcurrentRootCreationAndRemovesIt(t *testing.T) {
+	store := NewBlobStore()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	store.createRoot = func() (string, error) {
+		close(started)
+		<-release
+		return os.MkdirTemp("", "yujian-local-blobs-race-*")
+	}
+
+	putDone := make(chan error, 1)
+	go func() {
+		putDone <- store.Put(t.Context(), "files/race.txt", bytes.NewBufferString("data"), ports.BlobMetadata{
+			ContentType: "text/plain",
+			Size:        4,
+			Checksum:    checksumFor([]byte("data")),
+		})
+	}()
+	<-started
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- store.Close() }()
+	select {
+	case err := <-closeDone:
+		t.Fatalf("close returned during root creation: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(release)
+
+	if err := <-putDone; !errors.Is(err, errBlobStoreClosed) {
+		t.Fatalf("expected concurrent put to observe closed store, got %v", err)
+	}
+	if err := <-closeDone; err != nil {
+		t.Fatalf("close local store: %v", err)
+	}
+	if store.rootPath == "" {
+		t.Fatal("test did not create a temporary root")
+	}
+	if _, err := os.Stat(store.rootPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary root still exists after close: %v", err)
 	}
 }
 

@@ -29,6 +29,8 @@ type BlobStore struct {
 	rootOnce     sync.Once
 	rootPath     string
 	rootErr      error
+	createRoot   func() (string, error)
+	active       sync.WaitGroup
 	closed       bool
 }
 
@@ -55,11 +57,14 @@ func NewBlobStore() *BlobStore {
 		objects:      make(map[string]blobObject),
 		reservations: make(map[string]uploadReservation),
 		now:          time.Now,
+		createRoot: func() (string, error) {
+			return os.MkdirTemp("", "yujian-local-blobs-*")
+		},
 	}
 }
 
 func (store *BlobStore) CreateUpload(_ context.Context, request ports.UploadRequest) (ports.SignedUpload, error) {
-	if request.BlobKey == "" || request.ContentType == "" || request.Size <= 0 || request.ExpiresIn <= 0 {
+	if validateKey(request.BlobKey) != nil || request.ContentType == "" || request.Size <= 0 || request.ExpiresIn <= 0 {
 		return ports.SignedUpload{}, domain.ErrInvalidInput
 	}
 	token, err := randomToken()
@@ -71,6 +76,11 @@ func (store *BlobStore) CreateUpload(_ context.Context, request ports.UploadRequ
 	if store.closed {
 		store.mu.Unlock()
 		return ports.SignedUpload{}, errBlobStoreClosed
+	}
+	for key, reservation := range store.reservations {
+		if !store.now().Before(reservation.expiresAt) {
+			delete(store.reservations, key)
+		}
 	}
 	store.reservations[request.BlobKey] = uploadReservation{request: request, token: token, expiresAt: expiresAt}
 	store.mu.Unlock()
@@ -108,6 +118,11 @@ func (store *BlobStore) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	if !store.now().Before(reservation.expiresAt) {
+		store.mu.Lock()
+		if current, ok := store.reservations[key]; ok && secureEqual(current.token, reservation.token) {
+			delete(store.reservations, key)
+		}
+		store.mu.Unlock()
 		http.Error(writer, http.StatusText(http.StatusGone), http.StatusGone)
 		return
 	}
@@ -159,6 +174,12 @@ func (store *BlobStore) serveRead(writer http.ResponseWriter, request *http.Requ
 		http.NotFound(writer, request)
 		return
 	}
+	finish, err := store.beginOperation()
+	if err != nil {
+		http.NotFound(writer, request)
+		return
+	}
+	defer finish()
 	store.mu.RLock()
 	object, exists := store.objects[key]
 	if !exists {
@@ -202,13 +223,14 @@ func (store *BlobStore) put(ctx context.Context, key string, reader io.Reader, m
 	if validateKey(key) != nil || metadata.ContentType == "" || metadata.Size < 0 {
 		return domain.ErrInvalidInput
 	}
+	finish, err := store.beginOperation()
+	if err != nil {
+		return err
+	}
+	defer finish()
 	store.mu.RLock()
 	current, exists := store.objects[key]
-	closed := store.closed
 	store.mu.RUnlock()
-	if closed {
-		return errBlobStoreClosed
-	}
 	if exists {
 		if current.metadata.Checksum != metadata.Checksum || current.metadata.Size != metadata.Size {
 			return domain.ErrConflict
@@ -242,6 +264,11 @@ func (store *BlobStore) put(ctx context.Context, key string, reader io.Reader, m
 }
 
 func (store *BlobStore) Delete(_ context.Context, key string) error {
+	finish, err := store.beginOperation()
+	if err != nil {
+		return err
+	}
+	defer finish()
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if _, exists := store.objects[key]; !exists {
@@ -258,14 +285,30 @@ func (store *BlobStore) Delete(_ context.Context, key string) error {
 func (store *BlobStore) Close() error {
 	store.mu.Lock()
 	store.closed = true
+	store.reservations = make(map[string]uploadReservation)
+	store.mu.Unlock()
+	store.active.Wait()
+	store.rootOnce.Do(func() {})
+	store.mu.Lock()
 	rootPath := store.rootPath
 	store.objects = make(map[string]blobObject)
-	store.reservations = make(map[string]uploadReservation)
 	store.mu.Unlock()
 	if rootPath == "" {
 		return nil
 	}
 	return os.RemoveAll(rootPath)
+}
+
+// beginOperation prevents temporary files from being removed while a local
+// read, write, or delete is still using them.
+func (store *BlobStore) beginOperation() (func(), error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.closed {
+		return nil, errBlobStoreClosed
+	}
+	store.active.Add(1)
+	return store.active.Done, nil
 }
 
 func (store *BlobStore) SignedReadURL(_ context.Context, key string, expiresIn time.Duration) (string, error) {
@@ -377,7 +420,7 @@ func (store *BlobStore) localRoot() (string, error) {
 		return "", errBlobStoreClosed
 	}
 	store.rootOnce.Do(func() {
-		rootPath, err := os.MkdirTemp("", "yujian-local-blobs-*")
+		rootPath, err := store.createRoot()
 		store.mu.Lock()
 		store.rootPath = rootPath
 		store.rootErr = err
