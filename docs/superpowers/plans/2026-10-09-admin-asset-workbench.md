@@ -223,7 +223,7 @@ export function toSnapshotAsset(asset: AdminAsset, alt: LocalizedDraft): Asset
 export function insertSnapshotAsset(text: string, asset: Asset): SnapshotInsertResult
 ```
 
-`Asset` 来自 `@yujian/schema`。`sha256File()` 使用 `@noble/hashes` 按 4 MiB 分块读取并输出小写 `sha256:<hex>`，避免 Web Crypto 整文件摘要的内存开销。服务端 metadata 的 `duration` 按纳秒转换为 `durationSeconds`。
+`Asset` 来自 `@yujian/schema`。`sha256File()` 使用 `@noble/hashes/sha2.js` 的 `sha256.create()` 创建增量 SHA-256 实例，按 4 MiB 分块读取并逐块调用 `hash.update()`，最后通过 `hash.digest()` 输出小写 `sha256:<hex>`。该实现不使用 Web Crypto，也不把整个文件一次性读入内存。服务端 metadata 的 `duration` 按纳秒转换为 `durationSeconds`。
 
 - [x] **步骤 4：编写失败的 API 客户端测试**
 

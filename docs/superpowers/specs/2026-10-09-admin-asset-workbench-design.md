@@ -155,7 +155,7 @@ export type AssetUploadStage =
 ```text
 选择文件
   -> 本地预检
-  -> @noble/hashes 按 4 MiB 分块计算 SHA-256
+  -> @noble/hashes 的 sha256.create() 按 4 MiB 分块增量计算 SHA-256
   -> POST /api/v1/assets/uploads
   -> PUT 签名上传地址并原样携带服务端请求头
   -> POST /api/v1/assets/{assetId}/complete
@@ -164,6 +164,8 @@ export type AssetUploadStage =
 ```
 
 上传 `PUT` 不携带管理 API 的 Bearer Token，也不自动附加管理 API 的 `Content-Type`。客户端只发送签名响应要求的请求头，并确保实际文件类型与声明一致。
+
+`sha256File()` 从 `@noble/hashes/sha2.js` 导入 `sha256`，通过 `sha256.create()` 创建增量实例，逐块调用 `hash.update()`，最后调用 `hash.digest()` 并输出小写 `sha256:<hex>`。该实现不使用 Web Crypto，也不把整个文件一次性读入内存。
 
 ## 7. 文件约束与快照转换
 
