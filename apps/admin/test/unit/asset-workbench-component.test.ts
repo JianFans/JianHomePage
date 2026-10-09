@@ -108,6 +108,51 @@ describe('素材工作台组件', () => {
     expect(wrapper.get('[data-testid="asset-stage"]').text()).toMatch(/完成|complete/i)
     expect(wrapper.find('[data-asset-id="asset_uploaded"]').exists()).toBe(true)
   })
+
+  it('完成确认重试成功后保留上传表单中的替代文本', async () => {
+    let completeAttempts = 0
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/assets/uploads')) {
+        return jsonResponse({
+          asset: { ...asset('asset_retry', 'pending') },
+          uploadUrl: 'https://upload.example.test/signed',
+          headers: { 'Content-Type': 'image/webp' },
+          expiresAt: '2026-10-09T09:00:00Z',
+        })
+      }
+      if (url === 'https://upload.example.test/signed') return new Response(null, { status: 200 })
+      if (url.endsWith('/api/v1/assets/asset_retry/complete')) {
+        completeAttempts++
+        return completeAttempts === 1
+          ? jsonResponse({ code: 'metadata_pending' }, 503)
+          : jsonResponse(asset('asset_retry'))
+      }
+      return jsonResponse({ items: [] })
+    })
+    vi.stubGlobal('fetch', fetcher)
+    const wrapper = mountWorkbench()
+    const input = wrapper.get('[data-testid="asset-file-input"]')
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['asset'], 'cover.webp', { type: 'image/webp' })],
+    })
+    await input.trigger('change')
+    await wrapper.get('[data-testid="asset-source-zh"]').setValue('官方授权')
+    await wrapper.get('[data-testid="asset-alt-upload-zh"]').setValue('重试后封面')
+
+    await wrapper.get('form.asset-upload').trigger('submit')
+    await flushPromises()
+    const retry = wrapper.findAll('button').find(button => button.text().includes('重试确认'))
+    expect(retry).toBeDefined()
+
+    await retry!.trigger('click')
+    await flushPromises()
+
+    const card = wrapper.get('[data-asset-id="asset_retry"]')
+    expect((card.get('[data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('重试后封面')
+    expect(card.get('[data-testid="asset-insert"]').attributes('disabled')).toBeUndefined()
+  })
 })
 
 /** 使用真实状态机挂载素材工作台。 */
@@ -142,8 +187,8 @@ function asset(id: string, status: AdminAsset['status'] = 'ready'): AdminAsset {
 }
 
 /** 构造 JSON API 响应。 */
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
 /** 创建由测试显式完成的 Promise。 */

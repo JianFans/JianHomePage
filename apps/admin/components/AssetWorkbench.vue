@@ -37,6 +37,7 @@ const workspace = reactive(useAssetWorkspace({
 const fileInput = ref<HTMLInputElement | null>(null)
 const assetAlts = reactive<Record<string, LocalizedDraft>>({})
 const insertError = ref('')
+const pendingAlt = ref<LocalizedDraft | null>(null)
 
 const copy = computed(() => props.locale === 'en'
   ? {
@@ -176,11 +177,23 @@ function handleFile(event: Event) {
 
 /** 执行上传，并把上传表单中的替代文本带到新素材卡片。 */
 async function uploadAsset() {
-  const alt = { zhCN: workspace.altZhCN, en: workspace.altEn }
+  pendingAlt.value = { zhCN: workspace.altZhCN, en: workspace.altEn }
   await workspace.upload()
-  if (workspace.stage === 'succeeded' && workspace.assets[0]) {
-    assetAlts[workspace.assets[0].id] = alt
-  }
+  restoreCompletedAlt()
+}
+
+/** 重试完成确认后恢复首次上传时填写的替代文本。 */
+async function retryComplete() {
+  await workspace.retryComplete()
+  restoreCompletedAlt()
+}
+
+/** 将待确认上传的替代文本绑定到新完成的素材卡片。 */
+function restoreCompletedAlt() {
+  const completed = workspace.assets[0]
+  if (workspace.stage !== 'succeeded' || !completed || !pendingAlt.value) return
+  assetAlts[completed.id] = pendingAlt.value
+  pendingAlt.value = null
 }
 
 /** 将素材转换并追加到当前编辑器文本，不触发自动保存。 */
@@ -377,7 +390,7 @@ function formatBytes(value: unknown): string {
             v-if="workspace.canRetryComplete"
             class="button"
             type="button"
-            @click="workspace.retryComplete"
+            @click="retryComplete"
           >
             <RotateCcw
               :size="16"
