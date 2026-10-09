@@ -11,6 +11,24 @@ afterEach(() => {
 })
 
 describe('素材工作台组件', () => {
+  it.each([
+    ['/media/assets/asset_local/source.webp', 'http://127.0.0.1:8080/media/assets/asset_local/source.webp'],
+    ['https://media.yujian.me/assets/asset_local/source.webp', 'https://media.yujian.me/assets/asset_local/source.webp'],
+  ])('仅为图片预览解析地址 %s，快照保留原始地址', async (src, preview) => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [{ ...asset('asset_local'), src }] })))
+    const wrapper = mountWorkbench()
+    await wrapper.setProps({ apiBaseUrl: 'http://127.0.0.1:8080' })
+    await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+    await flushPromises()
+    const card = wrapper.get('[data-asset-id="asset_local"]')
+    expect(card.get('img').attributes('src')).toBe(preview)
+    await card.get('[data-testid="asset-alt-zh"]').setValue('本地封面')
+    await card.get('[data-testid="asset-insert"]').trigger('click')
+    const snapshot = JSON.parse(String(wrapper.emitted('update:editorText')?.[0]?.[0]))
+    expect(snapshot.assets.find((item: { id: string }) => item.id === 'asset_local').src).toBe(src)
+    wrapper.unmount()
+  })
+
   it('展示双语字段和可访问工具按钮', async () => {
     const wrapper = mountWorkbench()
 

@@ -224,6 +224,16 @@ function canInsert(asset: AdminAsset): boolean {
     && Boolean(assetAlts[asset.id]?.zhCN.trim())
 }
 
+/** 相对媒体地址按 API Origin 预览，保留素材本身的 canonical 地址。 */
+function previewSource(asset: AdminAsset): string {
+  if (!asset.src.startsWith('/media/')) return asset.src
+  try {
+    return new URL(asset.src, props.apiBaseUrl).href
+  } catch {
+    return ''
+  }
+}
+
 /** 判断素材是否可以使用固定比例安全预览。 */
 function isVisual(asset: AdminAsset): boolean {
   return asset.status === 'ready' && (asset.metadata.contentType === 'image/webp' || asset.metadata.contentType === 'image/gif')
@@ -523,7 +533,7 @@ function formatBytes(value: unknown): string {
             <div class="asset-preview">
               <img
                 v-if="isVisual(asset)"
-                :src="asset.src"
+                :src="previewSource(asset)"
                 :alt="assetAlts[asset.id]?.zhCN || ''"
                 loading="lazy"
                 decoding="async"
