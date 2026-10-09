@@ -216,6 +216,10 @@ func TestListAssetsRejectsInvalidQueryBeforeService(t *testing.T) {
 		"limit=invalid",
 		"cursor=",
 		"status=ready&status=pending",
+		"cursor=%ZZ",
+		"limit=%ZZ",
+		"status=ready&cursor=%ZZ",
+		"status=ready&%ZZ=value",
 	} {
 		t.Run(query, func(t *testing.T) {
 			called := false

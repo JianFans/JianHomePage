@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -391,8 +392,13 @@ func (handler *Handler) listAssets(writer http.ResponseWriter, request *http.Req
 	writeJSON(writer, http.StatusOK, assetListResponse{Items: items, NextCursor: page.NextCursor})
 }
 
+// parseAssetListOptions rejects malformed query encoding before applying list
+// filters, rather than silently dropping invalid parameters via URL.Query.
 func parseAssetListOptions(request *http.Request) (assets.ListOptions, bool) {
-	query := request.URL.Query()
+	query, err := url.ParseQuery(request.URL.RawQuery)
+	if err != nil {
+		return assets.ListOptions{}, false
+	}
 	var options assets.ListOptions
 
 	if values, exists := query["status"]; exists {
