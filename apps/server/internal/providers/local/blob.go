@@ -197,7 +197,7 @@ func (store *BlobStore) serveRead(writer http.ResponseWriter, request *http.Requ
 		http.NotFound(writer, request)
 		return
 	}
-	file, err := os.Open(object.filePath)
+	file, err := openMediaFile(object.filePath)
 	store.mu.RUnlock()
 	if err != nil {
 		http.NotFound(writer, request)
