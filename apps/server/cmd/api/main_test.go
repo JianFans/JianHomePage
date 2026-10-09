@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -105,6 +108,96 @@ func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 	handler.ServeHTTP(publish, publishRequest)
 	if publish.Code != http.StatusAccepted {
 		t.Fatalf("publish: status=%d body=%s", publish.Code, publish.Body.String())
+	}
+}
+
+func TestDevelopmentHandlerRunsAssetUploadRoundTrip(t *testing.T) {
+	settings := config.Config{
+		Environment:      "development",
+		Address:          "127.0.0.1:0",
+		AllowDevIdentity: true,
+	}
+	handler, err := buildHandler(settings, ServiceDependencies{})
+	if err != nil {
+		t.Fatalf("build handler: %v", err)
+	}
+	payload, err := os.ReadFile("../../../web/public/media/cover-05.webp")
+	if err != nil {
+		t.Fatalf("read WebP fixture: %v", err)
+	}
+	checksum := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
+
+	create := httptest.NewRecorder()
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/v1/assets/uploads", bytes.NewReader(mustJSON(map[string]any{
+		"fileName": "cover.webp", "contentType": "image/webp", "size": len(payload), "checksum": checksum,
+		"rights": map[string]any{"source": map[string]string{"zh-CN": "本地闭环测试"}},
+	})))
+	devHeaders(createRequest, "editor-1", "editor")
+	handler.ServeHTTP(create, createRequest)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create asset upload: status=%d body=%s", create.Code, create.Body.String())
+	}
+	var created struct {
+		Asset struct {
+			ID     string `json:"id"`
+			Src    string `json:"src"`
+			Status string `json:"status"`
+		} `json:"asset"`
+		UploadURL string            `json:"uploadUrl"`
+		Headers   map[string]string `json:"headers"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode asset upload: %v", err)
+	}
+	if created.Asset.Status != "pending" || created.Asset.Src == "" {
+		t.Fatalf("unexpected pending asset %#v", created.Asset)
+	}
+	signedURL, err := url.Parse(created.UploadURL)
+	if err != nil {
+		t.Fatalf("parse signed upload URL: %v", err)
+	}
+
+	upload := httptest.NewRecorder()
+	uploadRequest := httptest.NewRequest(http.MethodPut, signedURL.RequestURI(), bytes.NewReader(payload))
+	for key, value := range created.Headers {
+		uploadRequest.Header.Set(key, value)
+	}
+	handler.ServeHTTP(upload, uploadRequest)
+	if upload.Code != http.StatusNoContent {
+		t.Fatalf("upload asset blob: status=%d body=%s", upload.Code, upload.Body.String())
+	}
+
+	complete := httptest.NewRecorder()
+	completeRequest := httptest.NewRequest(http.MethodPost, "/api/v1/assets/"+created.Asset.ID+"/complete", bytes.NewReader([]byte(`{}`)))
+	devHeaders(completeRequest, "editor-1", "editor")
+	handler.ServeHTTP(complete, completeRequest)
+	if complete.Code != http.StatusOK {
+		t.Fatalf("complete asset upload: status=%d body=%s", complete.Code, complete.Body.String())
+	}
+	var completed struct {
+		ID     string `json:"id"`
+		Src    string `json:"src"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(complete.Body.Bytes(), &completed); err != nil {
+		t.Fatalf("decode completed asset: %v", err)
+	}
+	if completed.ID != created.Asset.ID || completed.Src != created.Asset.Src || completed.Status != "ready" {
+		t.Fatalf("unexpected completed asset %#v", completed)
+	}
+
+	media := httptest.NewRecorder()
+	handler.ServeHTTP(media, httptest.NewRequest(http.MethodGet, completed.Src, nil))
+	if media.Code != http.StatusOK || media.Header().Get("Content-Type") != "image/webp" || !bytes.Equal(media.Body.Bytes(), payload) {
+		t.Fatalf("read stable media: status=%d type=%q size=%d", media.Code, media.Header().Get("Content-Type"), media.Body.Len())
+	}
+
+	list := httptest.NewRecorder()
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/assets?status=ready", nil)
+	devHeaders(listRequest, "editor-1", "editor")
+	handler.ServeHTTP(list, listRequest)
+	if list.Code != http.StatusOK || !bytes.Contains(list.Body.Bytes(), []byte(created.Asset.ID)) {
+		t.Fatalf("list ready assets: status=%d body=%s", list.Code, list.Body.String())
 	}
 }
 
