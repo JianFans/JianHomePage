@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fixtureData from '../../../../content/fixtures/homepage.json'
@@ -11,6 +13,32 @@ afterEach(() => {
 })
 
 describe('素材工作台组件', () => {
+  it('共享样式作用于子组件内部的按钮和标题', () => {
+    const stylesheet = document.createElement('style')
+    stylesheet.textContent = readFileSync(resolve(process.cwd(), 'assets/css/main.css'), 'utf8')
+    document.head.append(stylesheet)
+    const wrapper = mount(AssetWorkbench, {
+      attachTo: document.body,
+      props: { locale: 'zh-CN', editorText: '{}', apiBaseUrl: 'https://api.yujian.me', token: '' },
+    })
+    try {
+      const upload = getComputedStyle(wrapper.get('[data-testid="asset-upload"]').element)
+      const refresh = getComputedStyle(wrapper.get('[data-testid="asset-refresh"]').element)
+      expect(upload.minHeight).toBe('44px')
+      expect(refresh.height).toBe('44px')
+      expect(refresh.width).toBe('44px')
+      expect(upload.cursor).toBe('not-allowed')
+      expect(refresh.cursor).toBe('not-allowed')
+      expect(Number(upload.opacity)).toBeLessThan(1)
+      expect(Number(refresh.opacity)).toBeLessThan(1)
+      expect(getComputedStyle(wrapper.get('.panel-heading').element).display).toBe('flex')
+      expect(getComputedStyle(wrapper.get('#asset-workbench-title').element).fontSize).toBe('16px')
+    } finally {
+      wrapper.unmount()
+      stylesheet.remove()
+    }
+  })
+
   it('切换 API 后同 ID 素材不继承旧连接的替代文本', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_shared')] })))
     const wrapper = mountWorkbench()
