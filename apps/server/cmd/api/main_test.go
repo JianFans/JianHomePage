@@ -562,6 +562,98 @@ func TestRunServerShutsDownWhenContextIsCanceled(t *testing.T) {
 	}
 }
 
+// TestRunServerClosesActiveUploadAfterShutdownTimeout ensures resource cleanup
+// cannot wait for the extended upload deadline after graceful shutdown expires.
+func TestRunServerClosesActiveUploadAfterShutdownTimeout(t *testing.T) {
+	store := local.NewBlobStore()
+	t.Cleanup(func() { _ = store.Close() })
+	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
+		BlobKey: "assets/shutdown/source.mp4", ContentType: "video/mp4", Size: 4,
+		Checksum: fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("body"))), ExpiresIn: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := url.Parse(upload.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	_ = listener.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		request.Body = &uploadReadSignalBody{ReadCloser: request.Body, started: started}
+		store.ServeHTTP(writer, request)
+	})
+	done := make(chan struct{})
+	var shutdownErr error
+	go func() {
+		shutdownErr = runServer(ctx, config.Config{
+			Address: address, ShutdownTimeout: 50 * time.Millisecond,
+		}, slog.New(slog.NewTextHandler(io.Discard, nil)), handler)
+		shutdownErr = errors.Join(shutdownErr, store.Close())
+		close(done)
+	}()
+	var connection net.Conn
+	t.Cleanup(func() {
+		cancel()
+		if connection != nil {
+			_ = connection.Close()
+		}
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Error("server cleanup did not exit after client disconnected")
+		}
+	})
+	connectDeadline := time.Now().Add(time.Second)
+	for time.Now().Before(connectDeadline) {
+		connection, err = net.DialTimeout("tcp", address, 20*time.Millisecond)
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("connect to server: %v", err)
+	}
+	_ = connection.SetWriteDeadline(time.Now().Add(time.Second))
+	if _, err := fmt.Fprintf(connection, "PUT %s HTTP/1.1\r\nHost: %s\r\nContent-Length: 4\r\nContent-Type: video/mp4\r\nX-Yujian-Checksum: %s\r\n\r\nb", signed.RequestURI(), address, upload.Headers["X-Yujian-Checksum"]); err != nil {
+		t.Fatalf("send partial upload: %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("upload did not start reading its reserved body")
+	}
+	cancel()
+	select {
+	case <-done:
+		if !errors.Is(shutdownErr, context.DeadlineExceeded) {
+			t.Fatalf("shutdown lost its timeout error: %v", shutdownErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("server cleanup exceeded the shutdown bound with an active upload")
+	}
+}
+
+type uploadReadSignalBody struct {
+	io.ReadCloser
+	started chan struct{}
+	once    sync.Once
+}
+
+// Read signals entry into the store's body read without replacing socket I/O.
+func (body *uploadReadSignalBody) Read(buffer []byte) (int, error) {
+	body.once.Do(func() { close(body.started) })
+	return body.ReadCloser.Read(buffer)
+}
+
 func TestBuildProductionDependenciesRejectsNonProductionEnvironment(t *testing.T) {
 	_, closeResources, err := buildProductionDependencies(context.Background(), config.Config{Environment: "development"}, productionFactory{})
 	if err == nil {

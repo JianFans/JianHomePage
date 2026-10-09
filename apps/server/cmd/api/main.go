@@ -273,6 +273,8 @@ func runPublishReconciler(ctx context.Context, interval time.Duration, reconcile
 	}
 }
 
+// runServer drains requests on cancellation, then disconnects remaining clients
+// on timeout so dependency cleanup cannot wait for extended upload deadlines.
 func runServer(ctx context.Context, settings config.Config, logger *slog.Logger, handler http.Handler) error {
 	handler = httpapi.LoggingMiddleware(handler, logger)
 
@@ -296,7 +298,7 @@ func runServer(ctx context.Context, settings config.Config, logger *slog.Logger,
 		shutdownContext, cancel := context.WithTimeout(context.Background(), settings.ShutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(shutdownContext); err != nil {
-			return err
+			return errors.Join(err, server.Close())
 		}
 		return nil
 	case err := <-serveErrors:
