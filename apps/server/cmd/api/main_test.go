@@ -18,12 +18,97 @@ import (
 	"time"
 
 	"yujian.me/server/internal/config"
+	"yujian.me/server/internal/httpapi"
 	"yujian.me/server/internal/ports"
 	"yujian.me/server/internal/providers/edgeone"
 	"yujian.me/server/internal/providers/local"
 	providerS3 "yujian.me/server/internal/providers/s3"
 	"yujian.me/server/internal/store/postgres"
 )
+
+// TestLocalUploadOutlivesAPIDeadlines exercises real socket deadlines through
+// the production logging wrapper; ordinary requests keep the server limit.
+func TestLocalUploadOutlivesAPIDeadlines(t *testing.T) {
+	dependencies := developmentDependencies()
+	t.Cleanup(func() { _ = dependencies.Close() })
+	handler, err := buildHandler(config.Config{Environment: "development"}, dependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("slow-video-upload")
+	upload, err := dependencies.LocalUploads.(*local.BlobStore).CreateUpload(t.Context(), ports.UploadRequest{
+		BlobKey: "assets/slow/source.mp4", ContentType: "video/mp4", Size: int64(len(payload)),
+		Checksum: fmt.Sprintf("sha256:%x", sha256.Sum256(payload)), ExpiresIn: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := url.Parse(upload.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{signed.RequestURI(), "/deadline-control"} {
+		t.Run(target, func(t *testing.T) {
+			entered := make(chan struct{})
+			endpoint := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				close(entered)
+				if request.URL.Path == "/deadline-control" {
+					_, _ = io.Copy(io.Discard, request.Body)
+					writer.WriteHeader(http.StatusNoContent)
+					return
+				}
+				handler.ServeHTTP(writer, request)
+			})
+			server := httptest.NewUnstartedServer(httpapi.LoggingMiddleware(endpoint, slog.New(slog.NewTextHandler(io.Discard, nil))))
+			server.Config.ReadTimeout = 50 * time.Millisecond
+			server.Config.WriteTimeout = 50 * time.Millisecond
+			server.Start()
+			defer server.Close()
+			body, sender := io.Pipe()
+			defer body.Close()
+			defer sender.Close()
+			request, err := http.NewRequestWithContext(t.Context(), http.MethodPut, server.URL+target, body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.ContentLength = int64(len(payload))
+			for key, value := range upload.Headers {
+				request.Header.Set(key, value)
+			}
+			client := server.Client()
+			client.Timeout = 3 * time.Second
+			type result struct {
+				response *http.Response
+				err      error
+			}
+			finished := make(chan result, 1)
+			go func() {
+				response, err := client.Do(request)
+				finished <- result{response, err}
+			}()
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("request did not reach handler")
+			}
+			// Exceed both default deadlines before delivering the reserved body.
+			time.Sleep(150 * time.Millisecond)
+			_, _ = sender.Write(payload)
+			_ = sender.Close()
+			got := <-finished
+			if got.response != nil {
+				defer got.response.Body.Close()
+			}
+			if target == "/deadline-control" {
+				if got.err == nil {
+					t.Fatal("ordinary request unexpectedly outlived server deadlines")
+				}
+			} else if got.err != nil || got.response.StatusCode != http.StatusNoContent {
+				t.Fatalf("reserved slow upload failed: response=%v error=%v", got.response, got.err)
+			}
+		})
+	}
+}
 
 func TestHealthHandler(t *testing.T) {
 	recorder := httptest.NewRecorder()

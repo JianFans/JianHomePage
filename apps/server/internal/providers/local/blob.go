@@ -138,6 +138,16 @@ func (store *BlobStore) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		http.Error(writer, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+	// Only a validated reservation may extend the server's short API deadlines.
+	// Bound both directions: WriteTimeout otherwise expires while reading a PUT.
+	controller := http.NewResponseController(writer)
+	deadline := time.Now().Add(15 * time.Minute)
+	for _, setDeadline := range []func(time.Time) error{controller.SetReadDeadline, controller.SetWriteDeadline} {
+		if err := setDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
+			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+	}
 	request.Body = http.MaxBytesReader(writer, request.Body, reservation.request.Size+1)
 	err := store.put(request.Context(), key, request.Body, ports.BlobMetadata{
 		ContentType: reservation.request.ContentType,
