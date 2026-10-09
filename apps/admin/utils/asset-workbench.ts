@@ -1,4 +1,5 @@
 import type { Asset } from '@yujian/schema'
+import { sha256 } from '@noble/hashes/sha2.js'
 import type { AdminAsset } from './admin-api'
 import { analyzeSnapshotText } from './snapshot-workbench'
 
@@ -42,6 +43,8 @@ const fileRules: Readonly<Record<string, AssetFileRule>> = {
   'video/mp4': { kind: 'video', contentType: 'video/mp4', extension: '.mp4', maxBytes: 2 * 1024 * 1024 * 1024 },
 }
 
+const digestChunkBytes = 4 * 1024 * 1024
+
 /** 在摘要计算前校验文件 MIME、扩展名和大小，并返回对应 canonical 规则。 */
 export function validateAssetFile(file: Pick<File, 'name' | 'size' | 'type'>): AssetFileRule {
   if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new AssetFileError('empty-file')
@@ -54,10 +57,14 @@ export function validateAssetFile(file: Pick<File, 'name' | 'size' | 'type'>): A
   return rule
 }
 
-/** 使用浏览器 Web Crypto 计算可直接提交给服务端的标准 SHA-256。 */
+/** 分块计算可直接提交给服务端的标准 SHA-256，避免大文件整块进入内存。 */
 export async function sha256File(file: Blob): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', await file.arrayBuffer())
-  const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  const hash = sha256.create()
+  for (let offset = 0; offset < file.size; offset += digestChunkBytes) {
+    const chunk = file.slice(offset, Math.min(offset + digestChunkBytes, file.size))
+    hash.update(new Uint8Array(await chunk.arrayBuffer()))
+  }
+  const hex = Array.from(hash.digest(), byte => byte.toString(16).padStart(2, '0')).join('')
   return `sha256:${hex}`
 }
 

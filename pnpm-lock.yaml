@@ -52,6 +52,9 @@ importers:
       '@lucide/vue':
         specifier: 1.47.0
         version: 1.47.0(vue@3.5.43(typescript@6.0.3))
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
       '@yujian/schema':
         specifier: workspace:*
         version: link:../../packages/schema

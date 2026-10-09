@@ -1,5 +1,5 @@
 import type { Asset, YujianContentSnapshot } from '@yujian/schema'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import fixtureData from '../../../../content/fixtures/homepage.json'
 import {
   AssetFileError,
@@ -48,6 +48,17 @@ describe('asset workbench utilities', () => {
     await expect(sha256File(new Blob(['abc']))).resolves.toBe(
       'sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     )
+  })
+
+  it('hashes large files incrementally without reading the whole Blob', async () => {
+    const blob = new Blob([new Uint8Array(8 * 1024 * 1024 + 1)])
+    const wholeBlobRead = vi.spyOn(blob, 'arrayBuffer').mockRejectedValue(new Error('whole Blob read'))
+    const slice = vi.spyOn(blob, 'slice')
+
+    await expect(sha256File(blob)).resolves.toMatch(/^sha256:[a-f0-9]{64}$/)
+
+    expect(wholeBlobRead).not.toHaveBeenCalled()
+    expect(slice).toHaveBeenCalledTimes(3)
   })
 
   it('converts ready server metadata into the canonical asset contract', () => {
