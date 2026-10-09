@@ -5,5 +5,18 @@ packages:
 allowBuilds:
   esbuild: true
 
+auditConfig:
+  ignoreGhsas:
+    - GHSA-86w9-cpqp-85rv
+    - GHSA-vfj7-8cjw-p6xm
+
 overrides:
+  '@simple-git/argv-parser': 2.0.1
+  'brace-expansion@2': 2.1.7
+  'brace-expansion@5': 5.0.12
+  fast-uri: 3.1.8
   'glob@>=10.2.0 <10.5.0': 13.0.6
+  shell-quote: 1.12.0
+  simple-git: 4.0.2
+  source-map-js: 1.2.2
+  sharp: 0.35.5

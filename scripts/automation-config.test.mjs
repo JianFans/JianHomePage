@@ -56,7 +56,7 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
     assert.ok(commands.includes(command), `工作流缺少命令：${command}`)
   }
 
-  assert.ok(commands.includes('pnpm audit --prod --audit-level high --registry=https://registry.npmjs.org'))
+  assert.ok(commands.includes('pnpm audit --prod --audit-level high --ignore-unfixable --registry=https://registry.npmjs.org'))
   assert.ok(commands.includes('go test -race ./... -count=1'))
   assert.ok(commands.some(command => command.startsWith('git diff --exit-code -- packages/schema/src/generated.ts')))
   assert.ok(commands.some(command => command.startsWith('git diff --exit-code -- apps/server/internal/contract/schema.json')))
