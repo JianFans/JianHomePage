@@ -144,7 +144,7 @@ describe('素材工作台组件', () => {
     expect(wrapper.find('[data-asset-id="asset_uploaded"]').exists()).toBe(true)
   })
 
-  it('完成确认重试成功后保留上传表单中的替代文本', async () => {
+  it.each(['', 'pending'])('完成确认重试保留修改后的替代文本，状态筛选为 %s', async (status) => {
     let completeAttempts = 0
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -163,10 +163,14 @@ describe('素材工作台组件', () => {
           ? jsonResponse({ code: 'metadata_pending' }, 503)
           : jsonResponse(asset('asset_retry'))
       }
-      return jsonResponse({ items: [] })
+      return jsonResponse({ items: completeAttempts >= 2 ? [asset('asset_retry')] : [] })
     })
     vi.stubGlobal('fetch', fetcher)
     const wrapper = mountWorkbench()
+    if (status) {
+      await wrapper.get('[data-testid="asset-status-filter"]').setValue(status)
+      await flushPromises()
+    }
     const input = wrapper.get('[data-testid="asset-file-input"]')
     Object.defineProperty(input.element, 'files', {
       configurable: true,
@@ -181,11 +185,21 @@ describe('素材工作台组件', () => {
     const retry = wrapper.findAll('button').find(button => button.text().includes('重试确认'))
     expect(retry).toBeDefined()
 
+    await wrapper.get('[data-testid="asset-alt-upload-zh"]').setValue('修改后的封面')
+    await wrapper.get('form input[aria-label="替代文本 · 英文"]').setValue('Updated cover')
+
     await retry!.trigger('click')
     await flushPromises()
 
+    if (status) {
+      expect(wrapper.find('[data-asset-id="asset_retry"]').exists()).toBe(false)
+      await wrapper.get('[data-testid="asset-status-filter"]').setValue('')
+      await flushPromises()
+    }
+
     const card = wrapper.get('[data-asset-id="asset_retry"]')
-    expect((card.get('[data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('重试后封面')
+    expect((card.get('[data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('修改后的封面')
+    expect((card.get('input[aria-label="替代文本 · 英文: asset_retry"]').element as HTMLInputElement).value).toBe('Updated cover')
     expect(card.get('[data-testid="asset-insert"]').attributes('disabled')).toBeUndefined()
   })
 })

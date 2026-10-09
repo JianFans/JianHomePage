@@ -188,15 +188,16 @@ async function uploadAsset() {
   restoreCompletedAlt()
 }
 
-/** 重试完成确认后恢复首次上传时填写的替代文本。 */
+/** 重试开始时保存当前替代文本，完成确认后绑定到对应素材。 */
 async function retryComplete() {
+  pendingAlt.value = { zhCN: workspace.altZhCN, en: workspace.altEn }
   await workspace.retryComplete()
   restoreCompletedAlt()
 }
 
 /** 将待确认上传的替代文本绑定到新完成的素材卡片。 */
 function restoreCompletedAlt() {
-  const completed = workspace.assets[0]
+  const completed = workspace.completedAsset
   if (workspace.stage !== 'succeeded' || !completed || !pendingAlt.value) return
   assetAlts[completed.id] = pendingAlt.value
   pendingAlt.value = null
