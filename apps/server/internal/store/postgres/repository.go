@@ -147,17 +147,30 @@ func (repository *AssetRepository) ListAssets(ctx context.Context, query assets.
 	for index, status := range query.Statuses {
 		statuses[index] = string(status)
 	}
-	var beforeCreatedAt any
-	if query.BeforeCreatedAt != nil {
-		beforeCreatedAt = *query.BeforeCreatedAt
+	predicate := "status = ANY($1)"
+	args := []any{statuses}
+	if len(statuses) == 1 {
+		predicate = "status = $1"
+		args[0] = statuses[0]
+	} else if len(statuses) == 2 &&
+		((statuses[0] == "pending" && statuses[1] == "ready") || (statuses[0] == "ready" && statuses[1] == "pending")) {
+		// A literal predicate allows PostgreSQL's generic prepared plans to use
+		// the partial index without proving the contents of a parameter array.
+		predicate = "status IN ('pending', 'ready')"
+		args = nil
 	}
-	rows, err := repository.exec.QueryContext(ctx, `
+	if query.BeforeCreatedAt != nil {
+		predicate += fmt.Sprintf(" AND (created_at, id) < ($%d, $%d)", len(args)+1, len(args)+2)
+		args = append(args, *query.BeforeCreatedAt, query.BeforeID)
+	}
+	statement := fmt.Sprintf(`
 SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at
 FROM assets
-WHERE status = ANY($1)
-  AND ($2::timestamptz IS NULL OR (created_at, id) < ($2, $3))
+WHERE %s
 ORDER BY created_at DESC, id DESC
-LIMIT $4`, statuses, beforeCreatedAt, query.BeforeID, query.Limit)
+LIMIT $%d`, predicate, len(args)+1)
+	args = append(args, query.Limit)
+	rows, err := repository.exec.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return nil, err
 	}

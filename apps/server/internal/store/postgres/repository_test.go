@@ -277,13 +277,13 @@ func TestAssetRepositoryListsWithStatusAndKeysetPagination(t *testing.T) {
 		t.Fatalf("unexpected assets %#v", items)
 	}
 	if len(executor.queries) != 1 ||
-		!strings.Contains(executor.queries[0], "status = ANY($1)") ||
-		!strings.Contains(executor.queries[0], "(created_at, id) < ($2, $3)") ||
+		!strings.Contains(executor.queries[0], "status IN ('pending', 'ready')") ||
+		!strings.Contains(executor.queries[0], "(created_at, id) < ($1, $2)") ||
 		!strings.Contains(executor.queries[0], "ORDER BY created_at DESC, id DESC") {
 		t.Fatalf("unexpected list query %#v", executor.queries)
 	}
 	args := executor.queryArgs[0]
-	if len(args) != 4 || args[1] != createdAt || args[2] != "asset_d" || args[3] != 3 {
+	if len(args) != 3 || args[0] != createdAt || args[1] != "asset_d" || args[2] != 3 {
 		t.Fatalf("unexpected list args %#v", args)
 	}
 }
