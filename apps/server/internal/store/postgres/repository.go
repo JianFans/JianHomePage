@@ -106,7 +106,10 @@ VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
 	return err
 }
 
-type AssetRepository struct{ exec Executor }
+type AssetRepository struct {
+	exec          Executor
+	inTransaction bool
+}
 
 func NewAssetRepository(exec Executor) *AssetRepository { return &AssetRepository{exec: exec} }
 
@@ -115,7 +118,7 @@ func (repository *AssetRepository) WithinTransaction(ctx context.Context, run fu
 	if err != nil {
 		return err
 	}
-	transaction := &AssetRepository{exec: tx}
+	transaction := &AssetRepository{exec: tx, inTransaction: true}
 	if err := run(transaction); err != nil {
 		_ = tx.Rollback(context.Background())
 		return err
@@ -136,9 +139,15 @@ VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)`,
 }
 
 func (repository *AssetRepository) GetAsset(ctx context.Context, id string) (domain.AssetRecord, error) {
-	return scanAsset(repository.exec.QueryRowContext(ctx, `
+	query := `
 SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at
-FROM assets WHERE id = $1`, id))
+FROM assets WHERE id = $1`
+	// Completion and deletion read before updating. Hold the row until commit so
+	// a concurrent URL repair cannot be overwritten by that stale record.
+	if repository.inTransaction {
+		query += " FOR UPDATE"
+	}
+	return scanAsset(repository.exec.QueryRowContext(ctx, query, id))
 }
 
 // ListAssets returns records using descending creation-time and ID keyset pagination.

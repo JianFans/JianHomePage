@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -101,6 +102,63 @@ func TestPostgresAssetSourceRepair(t *testing.T) {
 	}
 	if stored.Status != asset.Status || stored.DeletedAt == nil || !stored.DeletedAt.Equal(deletedAt) || !metadata["retainBlob"] {
 		t.Fatalf("repair changed lifecycle fields: %#v", stored)
+	}
+}
+
+// TestPostgresAssetTransactionSerializesSourceRepair exercises the read/update
+// window shared by upload completion and deletion against a concurrent repair.
+func TestPostgresAssetTransactionSerializesSourceRepair(t *testing.T) {
+	database := assetIntegrationDatabase(t)
+	repository := NewAssetRepository(database)
+	for _, transition := range []struct{ initial, target domain.AssetStatus }{
+		{domain.AssetPending, domain.AssetReady}, {domain.AssetReady, domain.AssetReady},
+		{domain.AssetPending, domain.AssetDeleted}, {domain.AssetReady, domain.AssetDeleted},
+	} {
+		t.Run(string(transition.initial)+"_to_"+string(transition.target), func(t *testing.T) {
+			id := "asset_" + string(transition.initial) + "_" + string(transition.target)
+			asset := domain.AssetRecord{
+				ID: id, BlobKey: "assets/" + id + "/source.webp", Status: transition.initial,
+				Metadata: json.RawMessage(`{}`), Rights: json.RawMessage(`{}`),
+				CreatedBy: "review", CreatedAt: time.Now().UTC(),
+			}
+			if err := repository.CreateAsset(t.Context(), asset); err != nil {
+				t.Fatal(err)
+			}
+			const frozenURL = "https://media-a.example/source.webp"
+			const competingURL = "https://media-b.example/source.webp"
+			err := repository.WithinTransaction(t.Context(), func(tx assets.Repository) error {
+				current, err := tx.GetAsset(t.Context(), asset.ID)
+				if err != nil {
+					return err
+				}
+				// A different connection must wait until this read/update transaction
+				// finishes instead of freezing a URL that the stale update overwrites.
+				ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+				_, repairErr := repository.EnsureAssetSourceURL(ctx, asset.ID, competingURL)
+				cancel()
+				if repairErr == nil || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return fmt.Errorf("repair was not serialized with transaction: %v", repairErr)
+				}
+				current.SourceURL, current.Status = frozenURL, transition.target
+				if transition.target == domain.AssetDeleted {
+					deletedAt := time.Now().UTC()
+					current.DeletedAt = &deletedAt
+				}
+				return tx.UpdateAsset(t.Context(), current, transition.initial)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			winner, err := repository.EnsureAssetSourceURL(t.Context(), asset.ID, competingURL)
+			if err != nil || winner != frozenURL {
+				t.Fatalf("repair replaced the transaction's frozen URL: %q, %v", winner, err)
+			}
+			stored, err := repository.GetAsset(t.Context(), asset.ID)
+			if err != nil || stored.SourceURL != frozenURL || stored.Status != transition.target ||
+				(transition.target == domain.AssetDeleted && stored.DeletedAt == nil) {
+				t.Fatalf("unexpected committed asset: %#v, %v", stored, err)
+			}
+		})
 	}
 }
 
