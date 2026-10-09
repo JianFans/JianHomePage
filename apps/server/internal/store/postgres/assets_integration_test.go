@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,6 +59,20 @@ func assetIntegrationDatabase(t *testing.T) *Database {
 		}
 	}
 	return database
+}
+
+// TestPostgresAssetListRejectsNULCursor rejects invalid PostgreSQL text at the
+// service boundary instead of exposing a database encoding failure to the API.
+func TestPostgresAssetListRejectsNULCursor(t *testing.T) {
+	database := assetIntegrationDatabase(t)
+	service := assets.NewService(assets.ServiceOptions{Repository: NewAssetRepository(database)})
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(`{"createdAt":"2026-10-09T00:00:00Z","id":"asset_\u0000"}`))
+	_, err := service.List(t.Context(), domain.Principal{
+		Subject: "editor-1", Roles: []domain.Role{domain.RoleEditor},
+	}, assets.ListOptions{Cursor: cursor})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("expected invalid cursor before PostgreSQL query, got %v", err)
+	}
 }
 
 // TestPostgresAssetSourceRepair preserves lifecycle fields and the winning URL

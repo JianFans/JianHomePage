@@ -233,7 +233,7 @@ func decodeListCursor(value string) (listCursor, error) {
 	if err := decoder.Decode(&cursor); err != nil {
 		return listCursor{}, err
 	}
-	if decoder.Decode(&struct{}{}) != io.EOF || cursor.CreatedAt.IsZero() || strings.TrimSpace(cursor.ID) == "" {
+	if decoder.Decode(&struct{}{}) != io.EOF || cursor.CreatedAt.IsZero() || strings.TrimSpace(cursor.ID) == "" || strings.ContainsRune(cursor.ID, '\x00') {
 		return listCursor{}, domain.ErrInvalidInput
 	}
 	return cursor, nil

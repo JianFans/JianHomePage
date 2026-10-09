@@ -3,6 +3,7 @@ package assets
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -294,6 +295,7 @@ func TestListAssetsRejectsInvalidOptions(t *testing.T) {
 		{Limit: 101},
 		{Cursor: "not-base64"},
 		{Cursor: "e30"},
+		{Cursor: base64.RawURLEncoding.EncodeToString([]byte(`{"createdAt":"2026-10-09T00:00:00Z","id":"asset_\u0000"}`))},
 	} {
 		if _, err := service.List(t.Context(), editor(), options); !errors.Is(err, domain.ErrInvalidInput) {
 			t.Fatalf("options %#v: expected invalid input, got %v", options, err)
