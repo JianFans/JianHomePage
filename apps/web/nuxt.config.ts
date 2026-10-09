@@ -42,6 +42,9 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'static',
+    externals: {
+      inline: [/[/\\]nuxt[/\\]dist[/\\]/],
+    },
     prerender: {
       routes: ['/robots.txt', '/sitemap.xml'],
     },

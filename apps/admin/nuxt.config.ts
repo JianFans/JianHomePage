@@ -4,6 +4,11 @@ export default defineNuxtConfig({
   telemetry: false,
   ssr: false,
   css: ['~/assets/css/main.css'],
+  nitro: {
+    externals: {
+      inline: [/[/\\]nuxt[/\\]dist[/\\]/],
+    },
+  },
   typescript: {
     strict: true,
     typeCheck: true,
