@@ -109,7 +109,7 @@ describe('素材工作台组件', () => {
     expect(String(fetcher.mock.calls[1]?.[0])).toContain('cursor=next-page')
   })
 
-  it('通过 aria-live 播报上传阶段并完成素材创建', async () => {
+  it('上传期间锁定文件和文本输入，完成后恢复编辑并保留替代文本', async () => {
     const uploadGate = deferred<Response>()
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -132,6 +132,9 @@ describe('素材工作台组件', () => {
     await wrapper.get('form.asset-upload').trigger('submit')
     await flushPromises()
     expect(wrapper.get('[data-testid="asset-stage"]').text()).toMatch(/创建|creating/i)
+    wrapper.findAll('form.asset-upload input').forEach((field) => {
+      expect(field.attributes('disabled')).toBeDefined()
+    })
 
     uploadGate.resolve(jsonResponse({
       asset: { ...asset('asset_uploaded', 'pending') },
@@ -142,6 +145,11 @@ describe('素材工作台组件', () => {
     await flushPromises()
     expect(wrapper.get('[data-testid="asset-stage"]').text()).toMatch(/完成|complete/i)
     expect(wrapper.find('[data-asset-id="asset_uploaded"]').exists()).toBe(true)
+    expect((wrapper.get('[data-asset-id="asset_uploaded"] [data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('封面')
+    wrapper.findAll('form.asset-upload input').forEach((field) => {
+      expect(field.attributes('disabled')).toBeUndefined()
+    })
+    wrapper.unmount()
   })
 
   it.each(['', 'pending'])('完成确认重试保留修改后的替代文本，状态筛选为 %s', async (status) => {

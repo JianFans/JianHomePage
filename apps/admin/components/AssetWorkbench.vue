@@ -329,6 +329,7 @@ function formatBytes(value: unknown): string {
           ref="fileInput"
           class="sr-only"
           type="file"
+          :disabled="activeUpload"
           accept="image/webp,.webp,image/gif,.gif,audio/mpeg,.mp3,audio/wav,.wav,video/mp4,.mp4"
           :aria-label="copy.choose"
           data-testid="asset-file-input"
@@ -340,6 +341,7 @@ function formatBytes(value: unknown): string {
             <span>{{ copy.sourceZh }}</span>
             <input
               v-model="workspace.sourceZhCN"
+              :disabled="activeUpload"
               required
               type="text"
               :aria-label="copy.sourceZh"
@@ -350,6 +352,7 @@ function formatBytes(value: unknown): string {
             <span>{{ copy.sourceEn }}</span>
             <input
               v-model="workspace.sourceEn"
+              :disabled="activeUpload"
               type="text"
               :aria-label="copy.sourceEn"
             >
@@ -358,6 +361,7 @@ function formatBytes(value: unknown): string {
             <span>{{ copy.credit }}</span>
             <input
               v-model="workspace.credit"
+              :disabled="activeUpload"
               type="text"
               :aria-label="copy.credit"
             >
@@ -366,6 +370,7 @@ function formatBytes(value: unknown): string {
             <span>{{ copy.license }}</span>
             <input
               v-model="workspace.license"
+              :disabled="activeUpload"
               type="text"
               :aria-label="copy.license"
             >
@@ -374,6 +379,7 @@ function formatBytes(value: unknown): string {
             <span>{{ copy.altZh }}</span>
             <input
               v-model="workspace.altZhCN"
+              :disabled="activeUpload"
               required
               type="text"
               :aria-label="copy.altZh"
@@ -384,6 +390,7 @@ function formatBytes(value: unknown): string {
             <span>{{ copy.altEn }}</span>
             <input
               v-model="workspace.altEn"
+              :disabled="activeUpload"
               type="text"
               :aria-label="copy.altEn"
             >
