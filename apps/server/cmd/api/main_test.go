@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,10 +52,17 @@ func TestLocalUploadOutlivesAPIDeadlines(t *testing.T) {
 	for _, target := range []string{signed.RequestURI(), "/deadline-control"} {
 		t.Run(target, func(t *testing.T) {
 			entered := make(chan struct{})
+			readErrors := make(chan error, 1)
+			respond := make(chan struct{})
+			allowResponse := sync.OnceFunc(func() { close(respond) })
 			endpoint := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				close(entered)
 				if request.URL.Path == "/deadline-control" {
-					_, _ = io.Copy(io.Discard, request.Body)
+					_, readErr := io.Copy(io.Discard, request.Body)
+					readErrors <- readErr
+					// Wait until both deadlines have elapsed before writing. The
+					// read deadline starts slightly earlier than the write deadline.
+					<-respond
 					writer.WriteHeader(http.StatusNoContent)
 					return
 				}
@@ -64,6 +73,7 @@ func TestLocalUploadOutlivesAPIDeadlines(t *testing.T) {
 			server.Config.WriteTimeout = 50 * time.Millisecond
 			server.Start()
 			defer server.Close()
+			defer allowResponse()
 			body, sender := io.Pipe()
 			defer body.Close()
 			defer sender.Close()
@@ -95,11 +105,16 @@ func TestLocalUploadOutlivesAPIDeadlines(t *testing.T) {
 			time.Sleep(150 * time.Millisecond)
 			_, _ = sender.Write(payload)
 			_ = sender.Close()
+			allowResponse()
 			got := <-finished
 			if got.response != nil {
 				defer got.response.Body.Close()
 			}
 			if target == "/deadline-control" {
+				var timeout net.Error
+				if readErr := <-readErrors; !errors.As(readErr, &timeout) || !timeout.Timeout() {
+					t.Fatalf("ordinary request read did not time out: %v", readErr)
+				}
 				if got.err == nil {
 					t.Fatal("ordinary request unexpectedly outlived server deadlines")
 				}
