@@ -55,6 +55,8 @@ const copy = computed(() => props.locale === 'en'
       retryComplete: 'Retry confirmation',
       refresh: 'Refresh assets',
       search: 'Search assets',
+      statusFilter: 'Status',
+      kindFilter: 'Type',
       allStatuses: 'All active',
       pending: 'Pending',
       ready: 'Ready',
@@ -84,6 +86,7 @@ const copy = computed(() => props.locale === 'en'
         'create-failed': 'Unable to create an upload',
         'upload-failed': 'Direct upload failed; retry to request a new signature',
         'complete-failed': 'Upload confirmation failed',
+        'list-failed': 'Unable to load assets',
       },
       insertErrors: {
         'invalid-snapshot': 'Fix the snapshot before inserting an asset',
@@ -107,6 +110,8 @@ const copy = computed(() => props.locale === 'en'
       retryComplete: '重试确认',
       refresh: '刷新素材',
       search: '搜索素材',
+      statusFilter: '状态',
+      kindFilter: '类型',
       allStatuses: '未删除',
       pending: '待上传',
       ready: '可用',
@@ -136,6 +141,7 @@ const copy = computed(() => props.locale === 'en'
         'create-failed': '无法创建上传',
         'upload-failed': '直传失败，请重试以获取新签名',
         'complete-failed': '上传确认失败',
+        'list-failed': '无法加载素材',
       },
       insertErrors: {
         'invalid-snapshot': '请先修复当前快照',
@@ -448,9 +454,11 @@ function formatBytes(value: unknown): string {
             >
           </label>
           <label class="select-control">
-            <span class="sr-only">Status</span>
+            <span class="sr-only">{{ copy.statusFilter }}</span>
             <select
               :value="workspace.statusFilter"
+              :aria-label="copy.statusFilter"
+              data-testid="asset-status-filter"
               @change="workspace.setStatusFilter(($event.target as HTMLSelectElement).value as AdminAsset['status'] | '')"
             >
               <option value="">{{ copy.allStatuses }}</option>
@@ -464,8 +472,12 @@ function formatBytes(value: unknown): string {
             />
           </label>
           <label class="select-control">
-            <span class="sr-only">Type</span>
-            <select v-model="workspace.kindFilter">
+            <span class="sr-only">{{ copy.kindFilter }}</span>
+            <select
+              v-model="workspace.kindFilter"
+              :aria-label="copy.kindFilter"
+              data-testid="asset-kind-filter"
+            >
               <option value="all">{{ copy.allKinds }}</option>
               <option value="image">{{ copy.image }}</option>
               <option value="gif">{{ copy.gif }}</option>
@@ -489,8 +501,9 @@ function formatBytes(value: unknown): string {
           v-else-if="workspace.listError"
           class="asset-error"
           role="alert"
+          data-testid="asset-list-error"
         >
-          {{ copy.errors['create-failed'] }}
+          {{ copy.errors['list-failed'] }}
         </p>
         <p
           v-else-if="!workspace.loading && workspace.filteredAssets.length === 0"

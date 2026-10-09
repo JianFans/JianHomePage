@@ -124,6 +124,24 @@ describe('asset workspace state machine', () => {
     expect(workspace.assets.value).toEqual([])
     expect(workspace.loading.value).toBe(true)
   })
+
+  it('does not let an older list response remove a newly completed upload', async () => {
+    const pendingList = deferred<{ items: AdminAsset[] }>()
+    const api = createApi()
+    api.listAssets.mockReturnValueOnce(pendingList.promise)
+    const workspace = createWorkspace(api)
+    workspace.file.value = new File(['asset'], 'cover.webp', { type: 'image/webp' })
+    workspace.sourceZhCN.value = '官方授权'
+    workspace.altZhCN.value = '封面'
+
+    const loading = workspace.loadAssets()
+    await workspace.upload()
+    pendingList.resolve({ items: [] })
+    await loading
+
+    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_uploaded'])
+    expect(workspace.loading.value).toBe(false)
+  })
 })
 
 /** 使用默认成功响应构造可逐项覆盖的素材 API mock。 */

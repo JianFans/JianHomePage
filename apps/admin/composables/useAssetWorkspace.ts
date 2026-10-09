@@ -213,6 +213,9 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
 
   /** 将已确认素材置顶去重，并清理成功上传使用的表单。 */
   function finishUpload(asset: AdminAsset): void {
+    listSequence++
+    loading.value = false
+    listError.value = false
     assets.value = [asset, ...assets.value.filter(item => item.id !== asset.id)]
     pendingUpload.value = null
     blobUploaded.value = false

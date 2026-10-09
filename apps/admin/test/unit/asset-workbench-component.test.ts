@@ -18,10 +18,27 @@ describe('素材工作台组件', () => {
     expect(wrapper.get('[data-testid="asset-refresh"]').attributes('aria-label')).toBeTruthy()
     expect(wrapper.get('[data-testid="asset-file-input"]').attributes('accept')).toContain('image/webp')
     expect(wrapper.get('[data-testid="asset-stage"]').attributes('aria-live')).toBe('polite')
+    expect(wrapper.get('[data-testid="asset-status-filter"]').attributes('aria-label')).toBe('状态')
+    expect(wrapper.get('[data-testid="asset-kind-filter"]').attributes('aria-label')).toBe('类型')
 
     await wrapper.setProps({ locale: 'en' })
     expect(wrapper.get('#asset-workbench-title').text()).toContain('Assets')
     expect(wrapper.get('[data-testid="asset-source-zh"]').attributes('aria-label')).toContain('Chinese')
+    expect(wrapper.get('[data-testid="asset-status-filter"]').attributes('aria-label')).toBe('Status')
+    expect(wrapper.get('[data-testid="asset-kind-filter"]').attributes('aria-label')).toBe('Type')
+  })
+
+  it('使用独立文案报告素材列表加载失败', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('offline')
+    }))
+    const wrapper = mountWorkbench()
+
+    await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="asset-list-error"]').text()).toBe('无法加载素材')
+    expect(wrapper.text()).not.toContain('无法创建上传')
   })
 
   it('按 ready、重复 ID 和替代文本状态控制快照插入', async () => {
