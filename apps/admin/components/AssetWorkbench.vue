@@ -24,6 +24,7 @@ const props = defineProps<{
   editorText: string
   apiBaseUrl: string
   token: string
+  snapshotLocked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -214,6 +215,7 @@ function restoreCompletedAlt() {
 
 /** 将素材转换并追加到当前编辑器文本，不触发自动保存。 */
 function insertAsset(asset: AdminAsset) {
+  if (props.snapshotLocked) return
   insertError.value = ''
   try {
     const result = insertSnapshotAsset(props.editorText, toSnapshotAsset(asset, assetAlts[asset.id] || { zhCN: '' }))
@@ -229,7 +231,7 @@ function insertAsset(asset: AdminAsset) {
 
 /** 仅允许可用、未重复且具有中文替代文本的素材进入快照。 */
 function canInsert(asset: AdminAsset): boolean {
-  return asset.status === 'ready'
+  return !props.snapshotLocked && asset.status === 'ready'
     && !existingAssetIds.value.has(asset.id)
     && Boolean(assetAlts[asset.id]?.zhCN.trim())
 }

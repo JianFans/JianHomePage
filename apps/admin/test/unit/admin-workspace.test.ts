@@ -70,6 +70,49 @@ afterEach(() => {
 })
 
 describe('管理工作区', () => {
+  it('标记未保存文本并在保存冲突后保留本地内容和修订号', async () => {
+    const { workspace } = await mountWorkspace()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse(version()))
+      .mockResolvedValueOnce(jsonResponse({ code: 'revision_conflict', message: 'Conflict', requestId: 'req_conflict' }, 409)))
+    workspace.versionId = 'ver_1'
+    await workspace.loadVersion()
+    expect(workspace.dirty).toBe(false)
+    const text = `${workspace.editorText}\n`
+    workspace.editorText = text
+    expect(workspace.dirty).toBe(true)
+    expect(workspace.canSubmitReview).toBe(false)
+    await workspace.saveDraft()
+    expect(workspace.editorText).toBe(text)
+    expect(workspace.version?.revision).toBe(1)
+    expect(workspace.dirty).toBe(true)
+    expect(workspace.workflow.requestId).toBe('req_conflict')
+  })
+
+  it('保存期间拒绝并发载入和导入，迟到响应不会覆盖新文本', async () => {
+    const { workspace } = await mountWorkspace()
+    let resolveResponse!: (value: Response) => void
+    const response = new Promise<Response>((resolve) => { resolveResponse = resolve })
+    const fetcher = vi.fn().mockReturnValue(response)
+    vi.stubGlobal('fetch', fetcher)
+    workspace.editorText = JSON.stringify(fixture)
+    const saving = workspace.saveDraft()
+    workspace.versionId = 'ver_other'
+    await workspace.loadVersion()
+    const read = vi.fn().mockResolvedValue('{}')
+    await workspace.importSnapshot({ name: 'other.json', size: 2, text: read })
+    await workspace.saveDraft()
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(read).not.toHaveBeenCalled()
+    const newerText = `${workspace.editorText}\n`
+    workspace.editorText = newerText
+    resolveResponse(jsonResponse(version()))
+    await saving
+    expect(workspace.editorText).toBe(newerText)
+    expect(workspace.version?.id).toBe('ver_1')
+    expect(workspace.dirty).toBe(true)
+  })
+
   it('拒绝空版本 ID 和无效快照', async () => {
     const { workspace } = await mountWorkspace()
 

@@ -9,6 +9,7 @@
     "postinstall": "nuxt prepare",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@nuxt/test-utils": "4.3.3",
+    "@playwright/test": "1.63.0",
     "@vitest/coverage-v8": "4.1.11",
     "@vue/test-utils": "2.5.1",
     "happy-dom": "20.14.5",

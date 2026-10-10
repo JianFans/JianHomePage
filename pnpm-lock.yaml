@@ -68,6 +68,9 @@ importers:
       '@nuxt/test-utils':
         specifier: 4.3.3
         version: 4.3.3(3a269fc7c7f3dcf6edb24609d8798c11)
+      '@playwright/test':
+        specifier: 1.63.0
+        version: 1.63.0
       '@vitest/coverage-v8':
         specifier: 4.1.11
         version: 4.1.11(vitest@4.1.11)

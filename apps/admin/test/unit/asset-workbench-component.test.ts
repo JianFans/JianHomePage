@@ -13,6 +13,20 @@ afterEach(/** 还原全局 fetch 和 spy，防止跨测试共享网络响应或�
 })
 
 describe('素材工作台组件', () => {
+  it('保存快照期间阻止素材插入', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_new')] })))
+    const wrapper = mountWorkbench()
+    await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="asset-alt-zh"]').setValue('封面')
+    expect(wrapper.get('[data-testid="asset-insert"]').attributes('disabled')).toBeUndefined()
+    await wrapper.setProps({ snapshotLocked: true })
+    expect(wrapper.get('[data-testid="asset-insert"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="asset-insert"]').trigger('click')
+    expect(wrapper.emitted('update:editorText')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('共享样式作用于子组件内部的按钮和标题', /** 挂载真实共享样式并读取 computed style，覆盖触控尺寸、禁用反馈和标题布局。 */ () => {
     const stylesheet = document.createElement('style')
     stylesheet.textContent = readFileSync(resolve(process.cwd(), 'assets/css/main.css'), 'utf8')

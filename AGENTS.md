@@ -177,6 +177,7 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 - 公开站：对应 Vitest 文件、`pnpm --filter @yujian/web typecheck`、`pnpm --filter @yujian/web generate`。
 - 首页交互、响应式或无障碍：`pnpm --filter @yujian/web test:e2e`。
 - 管理端：`pnpm --filter @yujian/admin test`、`pnpm --filter @yujian/admin typecheck`。
+- 管理端表单、快照交接或交互：另运行 `pnpm --filter @yujian/admin test:e2e`；保存场景使用拦截 API，只验证契约，不替代真实服务端联调。
 - Go 服务：在 `apps/server` 运行目标包测试，再运行 `pnpm verify:go`。
 - 覆盖率策略或测试范围：`pnpm test:coverage` 和 `pnpm test:coverage:go`。
 - Docker 或 GitHub 配置：`pnpm test:automation`，并在 Docker 可用时构建镜像和检查 `/healthz`。

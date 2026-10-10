@@ -52,6 +52,7 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
     'pnpm test:coverage:go',
     'pnpm --filter @yujian/web playwright:install',
     'pnpm --filter @yujian/web test:e2e',
+    'pnpm --filter @yujian/admin test:e2e',
   ]) {
     assert.ok(commands.includes(command), `工作流缺少命令：${command}`)
   }
@@ -71,6 +72,10 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
   assert.match(rootPackage.scripts['verify:go'], /^pnpm check:format:go && /)
   const webPackage = JSON.parse(await readText('apps/web/package.json'))
   assert.equal(webPackage.scripts['playwright:install'], 'playwright install --with-deps chromium')
+  const adminPackage = JSON.parse(await readText('apps/admin/package.json'))
+  assert.equal(adminPackage.scripts['test:e2e'], 'playwright test')
+  assert.equal(adminPackage.devDependencies['@playwright/test'], webPackage.devDependencies['@playwright/test'])
+  assert.ok(workflow.jobs.e2e.steps.some(step => step.uses?.startsWith('actions/upload-artifact@') && step.with?.path === 'apps/admin/test-results'))
 })
 
 test('Dependabot 覆盖所有依赖生态并按周执行', async () => {

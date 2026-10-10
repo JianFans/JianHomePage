@@ -1,15 +1,26 @@
 <script setup lang="ts">
 import { useHead } from '#imports'
 import { Download, FileUp } from '@lucide/vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, toRef } from 'vue'
 import AssetWorkbench from '../components/AssetWorkbench.vue'
+import MusicWorkbench from '../components/MusicWorkbench.vue'
 import SnapshotInsights from '../components/SnapshotInsights.vue'
 import { useAdminWorkspace } from '../composables/useAdminWorkspace'
+import { useMusicWorkspace } from '../composables/useMusicWorkspace'
 import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
+import type { SnapshotImportFile } from '../utils/snapshot-workbench'
 
 const locale = ref<'zh-CN' | 'en'>('zh-CN')
 const workspace = reactive(useAdminWorkspace(locale))
+const music = reactive(useMusicWorkspace({
+  editorText: toRef(workspace, 'editorText'),
+  busy: toRef(workspace, 'busy'),
+  snapshot: computed(() => workspace.editorAnalysis.snapshot),
+}))
 const snapshotFileInput = ref<HTMLInputElement | null>(null)
+type Replacement = { kind: 'load'; id: string } | { kind: 'import'; file: SnapshotImportFile }
+const pendingReplacement = shallowRef<Replacement | null>(null)
+const unsaved = computed(() => workspace.dirty || music.dirty)
 
 useHead(/** 同步文档语言供辅助技术读取，不改变管理端路由。 */ () => ({
   htmlAttrs: { lang: locale.value },
@@ -46,6 +57,10 @@ const copy = computed(() => locale.value === 'en'
       importSnapshot: 'Import JSON',
       exportSnapshot: 'Export snapshot',
       validSnapshot: 'Valid',
+      unsaved: 'Unsaved snapshot',
+      replacePrompt: 'Replace the snapshot and discard local changes?',
+      keep: 'Keep editing',
+      discard: 'Discard and continue',
       /** 使用当前分析结果格式化英文错误数量，保持状态播报一致。 */
       issueCount: (count: number) => `${count} issues`,
     }
@@ -78,6 +93,10 @@ const copy = computed(() => locale.value === 'en'
       importSnapshot: '导入 JSON',
       exportSnapshot: '导出快照',
       validSnapshot: '有效',
+      unsaved: '快照未保存',
+      replacePrompt: '替换快照并放弃本地修改？',
+      keep: '继续编辑',
+      discard: '放弃并继续',
       /** 使用当前分析结果格式化中文错误数量，保持状态播报一致。 */
       issueCount: (count: number) => `${count} 项错误`,
     })
@@ -103,14 +122,64 @@ function toggleLocale() {
 
 /** 通过可访问工具按钮打开隐藏的 JSON 文件选择器。 */
 function openSnapshotImport() {
+  if (workspace.busy) return
   snapshotFileInput.value?.click()
+}
+
+/** 保留被替换内容，只有明确确认或工作区干净时才执行载入或导入。 */
+async function requestReplacement(action: Replacement) {
+  if (workspace.busy) return
+  if (unsaved.value) {
+    music.keepEditing()
+    pendingReplacement.value = action
+    return
+  }
+  await replaceSnapshot(action)
+}
+
+/** 执行已确认的替换；失败时保留原表单，避免网络错误导致内容丢失。 */
+async function replaceSnapshot(action: Replacement) {
+  if (workspace.busy) return
+  if (action.kind === 'load') {
+    workspace.versionId = action.id
+    await workspace.loadVersion()
+  } else await workspace.importSnapshot(action.file, locale.value)
+  if (workspace.workflow.status === 'success') music.reset()
+}
+
+/** 在点击载入时冻结目标版本，确认期间的字段变化不会偷偷更换载入对象。 */
+function requestLoadVersion() {
+  return requestReplacement({ kind: 'load', id: workspace.versionId.trim() })
+}
+
+/** 放弃按钮只执行此前明确选择的文件或版本，并保留失败时的当前内容。 */
+async function discardForReplacement() {
+  if (workspace.busy || !pendingReplacement.value) return
+  const action = pendingReplacement.value
+  pendingReplacement.value = null
+  await replaceSnapshot(action)
+}
+
+/** 禁止保存未应用表单；成功后重新读取作品，避免格式化造成伪过期基线。 */
+async function saveDraft() {
+  if (workspace.busy || music.dirty) return
+  const selected = music.draft?.release.id
+  await workspace.saveDraft()
+  if (workspace.workflow.status === 'success' && selected) music.select(selected)
+}
+
+/** 仅当存在真实未保存内容时请求浏览器标准离开确认，不持久化草稿。 */
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (!unsaved.value) return
+  event.preventDefault()
+  event.returnValue = ''
 }
 
 /** 导入用户选择的首个文件，并重置输入以允许再次选择同名文件。 */
 async function handleSnapshotFile(event: Event) {
   const input = event.currentTarget as HTMLInputElement
   const file = input.files?.[0]
-  if (file) await workspace.importSnapshot(file, locale.value)
+  if (file) await requestReplacement({ kind: 'import', file })
   input.value = ''
 }
 
@@ -133,6 +202,10 @@ function downloadSnapshot() {
 
 onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时访问 navigator。 */ () => {
   locale.value = resolveAdminLocale(undefined, navigator.language)
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草稿提示。 */ () => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 </script>
 
@@ -219,6 +292,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
               type="url"
               autocomplete="url"
               spellcheck="false"
+              :disabled="workspace.busy"
             >
           </label>
           <label>
@@ -227,6 +301,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
               v-model="workspace.token"
               type="password"
               autocomplete="off"
+              :disabled="workspace.busy"
             >
           </label>
           <label>
@@ -237,17 +312,66 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
                 type="text"
                 autocomplete="off"
                 spellcheck="false"
+                :disabled="workspace.busy"
               >
               <button
                 class="button button--quiet"
                 type="button"
                 :disabled="workspace.busy"
-                @click="workspace.loadVersion"
+                data-testid="version-load"
+                @click="requestLoadVersion"
               >{{ copy.load }}</button>
             </div>
           </label>
         </div>
       </section>
+
+      <div
+        v-if="pendingReplacement"
+        class="music-notice"
+        role="alert"
+        data-testid="snapshot-replace-prompt"
+      >
+        <p>{{ copy.replacePrompt }}</p>
+        <div class="music-tools">
+          <button
+            type="button"
+            class="button"
+            data-testid="snapshot-replace-keep"
+            :disabled="workspace.busy"
+            @click="pendingReplacement = null"
+          >
+            {{ copy.keep }}
+          </button>
+          <button
+            type="button"
+            class="button button--danger"
+            data-testid="snapshot-replace-discard"
+            :disabled="workspace.busy"
+            @click="discardForReplacement"
+          >
+            {{ copy.discard }}
+          </button>
+        </div>
+      </div>
+
+      <MusicWorkbench
+        v-model:draft="music.draft"
+        :snapshot="workspace.editorAnalysis.snapshot"
+        :api-base-url="workspace.apiBaseUrl"
+        :locale="locale"
+        :busy="workspace.busy"
+        :dirty="music.dirty"
+        :stale="music.stale"
+        :error="music.error"
+        :issues="music.issues"
+        :pending="Boolean(music.pending)"
+        @select="music.select"
+        @apply="music.apply"
+        @close="music.close"
+        @keep="music.keepEditing"
+        @discard="music.discardPending"
+      />
 
       <section class="workspace-grid">
         <article
@@ -273,6 +397,12 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
               </div>
               <div class="editor-tools">
                 <span
+                  v-if="workspace.dirty"
+                  class="status-pill"
+                  data-testid="snapshot-unsaved"
+                  role="status"
+                >{{ copy.unsaved }}</span>
+                <span
                   class="status-pill"
                   :class="{ 'status-pill--valid': !workspace.editorAnalysis.issues.length }"
                   data-testid="snapshot-validation"
@@ -297,7 +427,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
                   type="button"
                   :aria-label="copy.exportSnapshot"
                   :title="copy.exportSnapshot"
-                  :disabled="!workspace.editorAnalysis.snapshot"
+                  :disabled="!workspace.editorAnalysis.snapshot || music.dirty"
                   data-testid="snapshot-export"
                   @click="downloadSnapshot"
                 >
@@ -323,7 +453,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
             v-model="workspace.editorText"
             class="json-editor"
             :aria-label="copy.editorLabel"
-            :disabled="workspace.importing"
+            :disabled="workspace.busy"
             spellcheck="false"
           />
           <p
@@ -337,15 +467,16 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
             <button
               class="button button--primary"
               type="button"
-              :disabled="!workspace.canSave"
-              @click="workspace.saveDraft"
+              :disabled="!workspace.canSave || music.dirty"
+              data-testid="snapshot-save"
+              @click="saveDraft"
             >
               {{ copy.save }}
             </button>
             <button
               class="button"
               type="button"
-              :disabled="!workspace.canSubmitReview"
+              :disabled="!workspace.canSubmitReview || music.dirty"
               @click="workspace.submitReview"
             >
               {{ copy.submit }}
@@ -384,6 +515,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
         :locale="locale"
         :api-base-url="workspace.apiBaseUrl"
         :token="workspace.token"
+        :snapshot-locked="workspace.busy"
       />
 
       <section class="workflow-grid">
@@ -406,7 +538,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
             <button
               class="button"
               type="button"
-              :disabled="!workspace.canApprove"
+              :disabled="!workspace.canApprove || music.dirty"
               @click="workspace.approveReview"
             >
               {{ copy.approve }}
@@ -422,7 +554,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
             <button
               class="button button--danger"
               type="button"
-              :disabled="workspace.busy || !workspace.version || workspace.version.status !== 'in_review'"
+              :disabled="workspace.busy || unsaved || !workspace.version || workspace.version.status !== 'in_review'"
               @click="workspace.rejectReview"
             >
               {{ copy.reject }}
@@ -452,7 +584,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
             <button
               class="button button--primary"
               type="button"
-              :disabled="!workspace.canPublish"
+              :disabled="!workspace.canPublish || music.dirty"
               @click="workspace.publish"
             >
               {{ copy.publishAction }}
@@ -468,7 +600,7 @@ onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时
             <button
               class="button button--danger"
               type="button"
-              :disabled="!workspace.canRollback"
+              :disabled="!workspace.canRollback || unsaved"
               @click="workspace.rollback"
             >
               {{ copy.rollback }}

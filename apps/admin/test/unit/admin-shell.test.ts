@@ -21,6 +21,35 @@ afterEach(() => {
 })
 
 describe('管理端页面', () => {
+  it('保护未保存快照的导入，并为未应用表单注册离开提示', async () => {
+    const wrapper = await mountSuspended(AdminPage)
+    vi.useFakeTimers()
+    await wrapper.get('.json-editor').setValue(JSON.stringify(fixtureData))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(wrapper.get('[data-testid="snapshot-unsaved"]').text()).toMatch(/未保存|Unsaved/)
+    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="release-title-zh"]').setValue('未应用')
+    expect(wrapper.get('[data-testid="snapshot-save"]').attributes('disabled')).toBeDefined()
+    const leaving = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(leaving)
+    expect(leaving.defaultPrevented).toBe(true)
+    const input = wrapper.get('[data-testid="snapshot-file-input"]')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['{}'], 'replace.json')] })
+    await input.trigger('change')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="snapshot-replace-prompt"]').exists()).toBe(true)
+    expect((wrapper.get('.json-editor').element as HTMLTextAreaElement).value).toContain('release_01')
+    await wrapper.get('[data-testid="snapshot-replace-keep"]').trigger('click')
+    expect(wrapper.get('[data-testid="release-title-zh"]').element).toHaveProperty('value', '未应用')
+    await input.trigger('change')
+    await flushPromises()
+    await wrapper.get('[data-testid="snapshot-replace-discard"]').trigger('click')
+    await flushPromises()
+    expect((wrapper.get('.json-editor').element as HTMLTextAreaElement).value).toBe('{}')
+    expect(wrapper.find('[data-testid="release-title-zh"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('渲染内容工作台和安全的公开站链接', async () => {
     const wrapper = await mountSuspended(AdminPage)
 
