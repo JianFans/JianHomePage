@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
+	"sync"
 	"testing"
+	"time"
 
 	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/content"
@@ -12,6 +15,51 @@ import (
 	"yujian.me/server/internal/publish"
 )
 
+// TestAssetSourceRepairIsAtomic verifies competing providers cannot change a
+// frozen URL and that repairing a deleted record leaves its lifecycle intact.
+func TestAssetSourceRepairIsAtomic(t *testing.T) {
+	repository := NewAssetRepository(NewState())
+	deletedAt := time.Now().UTC()
+	asset := domain.AssetRecord{ID: "legacy", Status: domain.AssetDeleted, DeletedAt: &deletedAt,
+		Metadata: json.RawMessage(`{"retainBlob":true}`), Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`)}
+	if err := repository.CreateAsset(t.Context(), asset); err != nil {
+		t.Fatal(err)
+	}
+	var workers sync.WaitGroup
+	results := make(chan string, 2)
+	for _, candidate := range []string{"https://media-a.example/source.webp", "https://media-b.example/source.webp"} {
+		workers.Go(func() {
+			stored, err := repository.EnsureAssetSourceURL(t.Context(), asset.ID, candidate)
+			if err != nil {
+				t.Error(err)
+			}
+			results <- stored
+		})
+	}
+	workers.Wait()
+	close(results)
+	stored, err := repository.GetAsset(t.Context(), asset.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for result := range results {
+		if result == "" || result != stored.SourceURL {
+			t.Fatalf("competing repairs returned different URLs: %q vs %q", result, stored.SourceURL)
+		}
+	}
+	if stored.Status != asset.Status || stored.DeletedAt == nil || !stored.DeletedAt.Equal(deletedAt) || string(stored.Metadata) != string(asset.Metadata) || string(stored.Rights) != string(asset.Rights) {
+		t.Fatal("source repair changed lifecycle or metadata")
+	}
+	if _, err := repository.EnsureAssetSourceURL(t.Context(), "missing", "https://media.example/source.webp"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("missing record: %v", err)
+	}
+	if _, err := repository.EnsureAssetSourceURL(t.Context(), asset.ID, ""); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("empty source: %v", err)
+	}
+}
+
+// TestRepositoriesRejectCancelledTransactions applies the same cancellation
+// contract to content, asset and publish transaction entry points.
 func TestRepositoriesRejectCancelledTransactions(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -40,6 +88,8 @@ func TestRepositoriesRejectCancelledTransactions(t *testing.T) {
 	}
 }
 
+// TestAssetRepositoryLifecycleAndCloneIsolation checks transactional auditing,
+// defensive JSON copies and distinct duplicate, missing and status-conflict errors.
 func TestAssetRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	state := NewState()
 	repository := NewAssetRepository(state)
@@ -92,6 +142,65 @@ func TestAssetRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	}
 }
 
+// TestAssetRepositoryListsByStatusAndStableCursor checks filtering and timestamp
+// ties, and confirms returned metadata cannot mutate the stored asset record.
+func TestAssetRepositoryListsByStatusAndStableCursor(t *testing.T) {
+	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	state := NewState()
+	repository := NewAssetRepository(state)
+	for _, asset := range []domain.AssetRecord{
+		{ID: "asset_a", Status: domain.AssetPending, CreatedAt: createdAt.Add(-time.Minute)},
+		{ID: "asset_b", Status: domain.AssetReady, CreatedAt: createdAt},
+		{ID: "asset_c", Status: domain.AssetPending, CreatedAt: createdAt},
+		{ID: "asset_d", Status: domain.AssetDeleted, CreatedAt: createdAt.Add(time.Minute)},
+	} {
+		if err := repository.CreateAsset(t.Context(), asset); err != nil {
+			t.Fatalf("create %s: %v", asset.ID, err)
+		}
+	}
+
+	first, err := repository.ListAssets(t.Context(), assets.ListQuery{
+		Statuses: []domain.AssetStatus{domain.AssetPending, domain.AssetReady},
+		Limit:    2,
+	})
+	if err != nil {
+		t.Fatalf("list first page: %v", err)
+	}
+	if got := listedAssetIDs(first); !slices.Equal(got, []string{"asset_c", "asset_b"}) {
+		t.Fatalf("unexpected first page %v", got)
+	}
+	first[0].Metadata = json.RawMessage(`{"changed":true}`)
+	stored, err := repository.GetAsset(t.Context(), "asset_c")
+	if err != nil || string(stored.Metadata) == string(first[0].Metadata) {
+		t.Fatalf("listed asset was not cloned: %#v err=%v", stored, err)
+	}
+
+	second, err := repository.ListAssets(t.Context(), assets.ListQuery{
+		Statuses:        []domain.AssetStatus{domain.AssetPending, domain.AssetReady},
+		BeforeCreatedAt: &createdAt,
+		BeforeID:        "asset_b",
+		Limit:           2,
+	})
+	if err != nil {
+		t.Fatalf("list second page: %v", err)
+	}
+	if got := listedAssetIDs(second); !slices.Equal(got, []string{"asset_a"}) {
+		t.Fatalf("unexpected second page %v", got)
+	}
+}
+
+// listedAssetIDs retains result order for keyset assertions while excluding
+// metadata unrelated to the repository's pagination contract.
+func listedAssetIDs(items []domain.AssetRecord) []string {
+	ids := make([]string, len(items))
+	for index, item := range items {
+		ids[index] = item.ID
+	}
+	return ids
+}
+
+// TestContentRepositoryLifecycleAndCloneIsolation verifies caller mutations do
+// not alter stored snapshots and revision mismatches cannot replace a version.
 func TestContentRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	state := NewState()
 	repository := NewContentRepository(state)

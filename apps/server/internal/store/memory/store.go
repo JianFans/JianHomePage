@@ -6,6 +6,8 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"slices"
+	"strings"
 	"sync"
 
 	"yujian.me/server/internal/assets"
@@ -126,6 +128,8 @@ func (repository *AssetRepository) CreateAsset(_ context.Context, asset domain.A
 	})
 }
 
+// GetAsset returns a deep copy under the repository read lock so callers cannot
+// mutate stored metadata or rights through a returned record.
 func (repository *AssetRepository) GetAsset(_ context.Context, id string) (domain.AssetRecord, error) {
 	var value domain.AssetRecord
 	err := repository.withRead(func() error {
@@ -139,6 +143,45 @@ func (repository *AssetRepository) GetAsset(_ context.Context, id string) (domai
 	return value, err
 }
 
+// ListAssets returns cloned records using the shared descending keyset order.
+func (repository *AssetRepository) ListAssets(_ context.Context, query assets.ListQuery) ([]domain.AssetRecord, error) {
+	items := make([]domain.AssetRecord, 0, query.Limit)
+	err := repository.withRead(func() error {
+		for _, asset := range repository.state.assets {
+			if !slices.Contains(query.Statuses, asset.Status) || !assetBeforeCursor(asset, query) {
+				continue
+			}
+			items = append(items, cloneAsset(asset))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(items, func(left, right domain.AssetRecord) int {
+		if compared := right.CreatedAt.Compare(left.CreatedAt); compared != 0 {
+			return compared
+		}
+		return -strings.Compare(left.ID, right.ID)
+	})
+	if len(items) > query.Limit {
+		items = items[:query.Limit]
+	}
+	return items, nil
+}
+
+// assetBeforeCursor uses ID as the strict tie-breaker when timestamps match,
+// keeping the in-memory boundary equivalent to PostgreSQL tuple comparison.
+func assetBeforeCursor(asset domain.AssetRecord, query assets.ListQuery) bool {
+	if query.BeforeCreatedAt == nil {
+		return true
+	}
+	return asset.CreatedAt.Before(*query.BeforeCreatedAt) ||
+		(asset.CreatedAt.Equal(*query.BeforeCreatedAt) && asset.ID < query.BeforeID)
+}
+
+// UpdateAsset replaces a cloned record only if its stored status still matches
+// the caller's expectation, separating missing records from concurrent changes.
 func (repository *AssetRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	return repository.withWrite(func() error {
 		current, exists := repository.state.assets[asset.ID]
@@ -153,6 +196,30 @@ func (repository *AssetRepository) UpdateAsset(_ context.Context, asset domain.A
 	})
 }
 
+// EnsureAssetSourceURL fills the address under the write lock without changing
+// the asset's current status or metadata and preserves any competing repair.
+func (repository *AssetRepository) EnsureAssetSourceURL(_ context.Context, id, sourceURL string) (string, error) {
+	if sourceURL == "" {
+		return "", domain.ErrInvalidInput
+	}
+	var stored string
+	err := repository.withWrite(func() error {
+		asset, exists := repository.state.assets[id]
+		if !exists {
+			return domain.ErrNotFound
+		}
+		if asset.SourceURL == "" {
+			asset.SourceURL = sourceURL
+			repository.state.assets[id] = asset
+		}
+		stored = asset.SourceURL
+		return nil
+	})
+	return stored, err
+}
+
+// AppendAudit copies the event under the shared write lock so a transactional
+// asset transition and its audit use the same protected state.
 func (repository *AssetRepository) AppendAudit(_ context.Context, entry domain.AuditEntry) error {
 	return repository.withWrite(func() error {
 		repository.state.audits = append(repository.state.audits, cloneAudit(entry))

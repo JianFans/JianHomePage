@@ -48,4 +48,9 @@ it('从发布快照生成静态 SEO head', async () => {
   expect(metaByName.get('og:image')).toBe('https://release.yujian.me/media/hero-stage.webp')
   expect(head.link?.find(link => link.rel === 'canonical')?.href).toBe('https://release.yujian.me')
   expect(config.nitro?.prerender?.routes).toEqual(expect.arrayContaining(['/robots.txt', '/sitemap.xml']))
+
+  const nuxtRuntimePattern = config.nitro?.externals?.inline?.find(value => value instanceof RegExp)
+  expect(nuxtRuntimePattern).toBeInstanceOf(RegExp)
+  expect((nuxtRuntimePattern as RegExp).test('C:\\repo\\node_modules\\nuxt\\dist\\runtime\\server.js')).toBe(true)
+  expect((nuxtRuntimePattern as RegExp).test('/repo/node_modules/nuxt/dist/runtime/server.js')).toBe(true)
 })

@@ -39,6 +39,13 @@ type statusWriter struct {
 	status      int
 }
 
+// Unwrap preserves ResponseController capabilities through the logging wrapper.
+func (writer *statusWriter) Unwrap() http.ResponseWriter {
+	return writer.ResponseWriter
+}
+
+// WriteHeader records and forwards only the first status, keeping request logs
+// consistent with the response already committed to the underlying connection.
 func (writer *statusWriter) WriteHeader(status int) {
 	if writer.wroteHeader {
 		return

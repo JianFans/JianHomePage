@@ -32,6 +32,7 @@ describe('管理端页面', () => {
     expect(wrapper.get('[data-testid="snapshot-file-input"]').attributes('aria-label')).toBeTruthy()
     expect(wrapper.get('[data-testid="snapshot-file-input"]').attributes('tabindex')).toBe('-1')
     expect(wrapper.get('[data-testid="snapshot-validation"]').text()).toMatch(/错误|issue/i)
+    expect(wrapper.find('[data-testid="asset-workbench"]').exists()).toBe(true)
     expect(wrapper.get('a[href="https://yujian.me"]').attributes('rel')).toBe('noopener noreferrer')
   })
 

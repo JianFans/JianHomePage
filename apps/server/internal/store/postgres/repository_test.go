@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/domain"
 	snapshotdata "yujian.me/server/internal/snapshot"
@@ -82,8 +83,11 @@ type recordingExecutor struct {
 	execQueries []string
 	execArgs    [][]any
 	rowQueries  []string
+	queries     []string
+	queryArgs   [][]any
 	row         Row
 	rows        Rows
+	rowsErr     error
 	result      ExecResult
 	begin       *recordingTx
 	execErr     error
@@ -95,15 +99,23 @@ func (executor *recordingExecutor) ExecContext(_ context.Context, query string, 
 	return executor.result, executor.execErr
 }
 
+// QueryRowContext records single-record SQL, including transaction locking
+// clauses, while returning the row chosen by the repository test.
 func (executor *recordingExecutor) QueryRowContext(_ context.Context, query string, _ ...any) Row {
 	executor.rowQueries = append(executor.rowQueries, query)
 	return executor.row
 }
 
-func (executor *recordingExecutor) QueryContext(context.Context, string, ...any) (Rows, error) {
-	return executor.rows, nil
+// QueryContext records generated SQL and parameter order, then returns injected
+// rows or query errors without requiring a live database in repository tests.
+func (executor *recordingExecutor) QueryContext(_ context.Context, query string, args ...any) (Rows, error) {
+	executor.queries = append(executor.queries, query)
+	executor.queryArgs = append(executor.queryArgs, args)
+	return executor.rows, executor.rowsErr
 }
 
+// BeginTx creates a recording scope whose commit and rollback markers let tests
+// assert ownership of transaction success and failure paths.
 func (executor *recordingExecutor) BeginTx(context.Context) (Tx, error) {
 	executor.begin = &recordingTx{recordingExecutor: recordingExecutor{result: executor.result}}
 	return executor.begin, nil
@@ -199,6 +211,8 @@ func TestContentRepositoryPreservesLookupErrorsAfterZeroRowsUpdate(t *testing.T)
 	}
 }
 
+// TestAssetRepositoryPersistsStableSourceURL covers insert, read and transition
+// SQL so the frozen address is not lost when a pending asset becomes ready.
 func TestAssetRepositoryPersistsStableSourceURL(t *testing.T) {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
 	asset := domain.AssetRecord{
@@ -243,6 +257,79 @@ func TestAssetRepositoryPersistsStableSourceURL(t *testing.T) {
 	}
 }
 
+// TestAssetRepositoryListsWithStatusAndKeysetPagination binds the active-status
+// predicate, tuple boundary and limit arguments to the decoded record order.
+func TestAssetRepositoryListsWithStatusAndKeysetPagination(t *testing.T) {
+	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	executor := &recordingExecutor{rows: &recordingRows{rows: []recordingRow{
+		{values: []any{
+			"asset_c", "assets/asset_c/source.webp", "https://media.yujian.me/assets/asset_c/source.webp",
+			"ready", []byte(`{"fileName":"cover.webp"}`), []byte(`{"source":{"zh-CN":"authorized"}}`),
+			"editor-1", createdAt, sql.NullTime{},
+		}},
+		{values: []any{
+			"asset_b", "assets/asset_b/source.mp3", "https://media.yujian.me/assets/asset_b/source.mp3",
+			"pending", []byte(`{"fileName":"song.mp3"}`), []byte(`{"source":{"zh-CN":"authorized"}}`),
+			"editor-1", createdAt, sql.NullTime{},
+		}},
+	}}}
+
+	items, err := NewAssetRepository(executor).ListAssets(t.Context(), assets.ListQuery{
+		Statuses:        []domain.AssetStatus{domain.AssetPending, domain.AssetReady},
+		BeforeCreatedAt: &createdAt,
+		BeforeID:        "asset_d",
+		Limit:           3,
+	})
+	if err != nil {
+		t.Fatalf("list assets: %v", err)
+	}
+	if len(items) != 2 || items[0].ID != "asset_c" || items[1].ID != "asset_b" {
+		t.Fatalf("unexpected assets %#v", items)
+	}
+	if len(executor.queries) != 1 ||
+		!strings.Contains(executor.queries[0], "status IN ('pending', 'ready')") ||
+		!strings.Contains(executor.queries[0], "(created_at, id) < ($1, $2)") ||
+		!strings.Contains(executor.queries[0], "ORDER BY created_at DESC, id DESC") {
+		t.Fatalf("unexpected list query %#v", executor.queries)
+	}
+	args := executor.queryArgs[0]
+	if len(args) != 3 || args[0] != createdAt || args[1] != "asset_d" || args[2] != 3 {
+		t.Fatalf("unexpected list args %#v", args)
+	}
+}
+
+// TestAssetRepositoryListPropagatesQueryAndRowsErrors distinguishes execution
+// failures from iteration failures so an empty result cannot conceal either.
+func TestAssetRepositoryListPropagatesQueryAndRowsErrors(t *testing.T) {
+	queryErr := errors.New("query failed")
+	executor := &recordingExecutor{rowsErr: queryErr}
+	if _, err := NewAssetRepository(executor).ListAssets(t.Context(), assets.ListQuery{Limit: 1}); !errors.Is(err, queryErr) {
+		t.Fatalf("expected query error, got %v", err)
+	}
+
+	rowsErr := errors.New("rows failed")
+	executor = &recordingExecutor{rows: &errorRows{err: rowsErr}}
+	if _, err := NewAssetRepository(executor).ListAssets(t.Context(), assets.ListQuery{Limit: 1}); !errors.Is(err, rowsErr) {
+		t.Fatalf("expected rows error, got %v", err)
+	}
+}
+
+type errorRows struct{ err error }
+
+// Next terminates iteration immediately so the repository must consult Err.
+func (*errorRows) Next() bool { return false }
+
+// Scan satisfies Rows without adding a second failure to the iteration test.
+func (*errorRows) Scan(...any) error { return nil }
+
+// Err exposes the injected iteration failure after Next reports no more rows.
+func (rows *errorRows) Err() error { return rows.err }
+
+// Close allows deferred cleanup without masking the injected iteration error.
+func (*errorRows) Close() error { return nil }
+
+// TestAssetRepositoryReadsLegacyNullSourceURL keeps nullable upgrade records
+// readable until the service repairs them with a stable provider address.
 func TestAssetRepositoryReadsLegacyNullSourceURL(t *testing.T) {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{

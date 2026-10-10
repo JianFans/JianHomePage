@@ -39,6 +39,65 @@ describe('admin API client', () => {
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
+  it('encodes asset list filters and keeps bearer authentication on the management API', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe('https://api.yujian.me/api/v1/assets?status=ready&limit=25&cursor=a%2Fb%3F')
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer session-token')
+      return response(200, { items: [], nextCursor: 'next' })
+    })
+    const api = createAdminApi({ baseUrl: 'https://api.yujian.me', token: 'session-token', fetcher })
+
+    await expect(api.listAssets({ status: 'ready', limit: 25, cursor: 'a/b?' })).resolves.toEqual({
+      items: [],
+      nextCursor: 'next',
+    })
+  })
+
+  it('creates and completes uploads through authenticated management requests', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const headers = new Headers(init?.headers)
+      expect(headers.get('Authorization')).toBe('Bearer session-token')
+      if (url.endsWith('/api/v1/assets/uploads')) {
+        expect(init?.method).toBe('POST')
+        expect(JSON.parse(String(init?.body))).toMatchObject({ fileName: 'cover.webp', checksum: 'sha256:test' })
+        return response(201, { asset: { id: 'asset/a' }, uploadUrl: 'https://upload.example.test/signed', expiresAt: '2026-10-09T09:00:00Z' })
+      }
+      expect(url).toBe('https://api.yujian.me/api/v1/assets/asset%2Fa/complete')
+      return response(200, { id: 'asset/a', status: 'ready' })
+    })
+    const api = createAdminApi({ baseUrl: 'https://api.yujian.me', token: 'session-token', fetcher })
+
+    const upload = await api.createAssetUpload({
+      fileName: 'cover.webp', contentType: 'image/webp', size: 1, checksum: 'sha256:test',
+      rights: { source: { 'zh-CN': '官方授权' } },
+    })
+    await expect(api.completeAssetUpload(upload.asset.id)).resolves.toMatchObject({ status: 'ready' })
+  })
+
+  it('uploads the blob with only signed headers and never leaks the bearer token', async () => {
+    const file = new Blob(['asset'], { type: 'image/webp' })
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe('https://upload.example.test/signed')
+      expect(init?.method).toBe('PUT')
+      expect(init?.body).toBe(file)
+      const headers = new Headers(init?.headers)
+      expect(headers.get('X-Yujian-Checksum')).toBe('sha256:test')
+      expect(headers.get('Content-Type')).toBe('image/webp')
+      expect(headers.has('Authorization')).toBe(false)
+      expect(headers.has('Accept')).toBe(false)
+      return new Response(null, { status: 200 })
+    })
+    const api = createAdminApi({ baseUrl: 'https://api.yujian.me', token: 'session-token', fetcher })
+
+    await api.uploadAssetBlob({
+      asset: { id: 'asset_1', src: '', status: 'pending', metadata: {}, rights: { source: { 'zh-CN': '官方授权' } } },
+      uploadUrl: 'https://upload.example.test/signed',
+      headers: { 'X-Yujian-Checksum': 'sha256:test', 'Content-Type': 'image/webp' },
+      expiresAt: '2026-10-09T09:00:00Z',
+    }, file)
+  })
+
   it('turns structured API errors into safe typed errors', async () => {
     const api = createAdminApi({
       baseUrl: 'https://api.yujian.me',

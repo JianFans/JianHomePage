@@ -3,18 +3,24 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"yujian.me/server/internal/config"
+	"yujian.me/server/internal/httpapi"
 	"yujian.me/server/internal/ports"
 	"yujian.me/server/internal/providers/edgeone"
 	"yujian.me/server/internal/providers/local"
@@ -22,6 +28,105 @@ import (
 	"yujian.me/server/internal/store/postgres"
 )
 
+// TestLocalUploadOutlivesAPIDeadlines exercises real socket deadlines through
+// the production logging wrapper; ordinary requests keep the server limit.
+func TestLocalUploadOutlivesAPIDeadlines(t *testing.T) {
+	dependencies := developmentDependencies()
+	t.Cleanup(func() { _ = dependencies.Close() })
+	handler, err := buildHandler(config.Config{Environment: "development"}, dependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("slow-video-upload")
+	upload, err := dependencies.LocalUploads.(*local.BlobStore).CreateUpload(t.Context(), ports.UploadRequest{
+		BlobKey: "assets/slow/source.mp4", ContentType: "video/mp4", Size: int64(len(payload)),
+		Checksum: fmt.Sprintf("sha256:%x", sha256.Sum256(payload)), ExpiresIn: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := url.Parse(upload.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{signed.RequestURI(), "/deadline-control"} {
+		t.Run(target, func(t *testing.T) {
+			entered := make(chan struct{})
+			readErrors := make(chan error, 1)
+			respond := make(chan struct{})
+			allowResponse := sync.OnceFunc(func() { close(respond) })
+			endpoint := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				close(entered)
+				if request.URL.Path == "/deadline-control" {
+					_, readErr := io.Copy(io.Discard, request.Body)
+					readErrors <- readErr
+					// Wait until both deadlines have elapsed before writing. The
+					// read deadline starts slightly earlier than the write deadline.
+					<-respond
+					writer.WriteHeader(http.StatusNoContent)
+					return
+				}
+				handler.ServeHTTP(writer, request)
+			})
+			server := httptest.NewUnstartedServer(httpapi.LoggingMiddleware(endpoint, slog.New(slog.NewTextHandler(io.Discard, nil))))
+			server.Config.ReadTimeout = 50 * time.Millisecond
+			server.Config.WriteTimeout = 50 * time.Millisecond
+			server.Start()
+			defer server.Close()
+			defer allowResponse()
+			body, sender := io.Pipe()
+			defer body.Close()
+			defer sender.Close()
+			request, err := http.NewRequestWithContext(t.Context(), http.MethodPut, server.URL+target, body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.ContentLength = int64(len(payload))
+			for key, value := range upload.Headers {
+				request.Header.Set(key, value)
+			}
+			client := server.Client()
+			client.Timeout = 3 * time.Second
+			type result struct {
+				response *http.Response
+				err      error
+			}
+			finished := make(chan result, 1)
+			go func() {
+				response, err := client.Do(request)
+				finished <- result{response, err}
+			}()
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("request did not reach handler")
+			}
+			// Exceed both default deadlines before delivering the reserved body.
+			time.Sleep(150 * time.Millisecond)
+			_, _ = sender.Write(payload)
+			_ = sender.Close()
+			allowResponse()
+			got := <-finished
+			if got.response != nil {
+				defer got.response.Body.Close()
+			}
+			if target == "/deadline-control" {
+				var timeout net.Error
+				if readErr := <-readErrors; !errors.As(readErr, &timeout) || !timeout.Timeout() {
+					t.Fatalf("ordinary request read did not time out: %v", readErr)
+				}
+				if got.err == nil {
+					t.Fatal("ordinary request unexpectedly outlived server deadlines")
+				}
+			} else if got.err != nil || got.response.StatusCode != http.StatusNoContent {
+				t.Fatalf("reserved slow upload failed: response=%v error=%v", got.response, got.err)
+			}
+		})
+	}
+}
+
+// TestHealthHandler fixes the unauthenticated probe's status, MIME and JSON body
+// so deployment health checks do not depend on application credentials.
 func TestHealthHandler(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -50,6 +155,8 @@ func TestHealthHandlerRejectsUnsupportedMethod(t *testing.T) {
 	}
 }
 
+// TestDevelopmentHandlerRunsDraftReviewAndPublishLoop verifies the role-specific
+// draft, review and publish routes share one development dependency state.
 func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 	settings := config.Config{
 		Environment:      "development",
@@ -108,6 +215,131 @@ func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 	}
 }
 
+// TestDevelopmentHandlerRunsAssetUploadRoundTrip exercises creation, signed
+// PUT, completion, stable media reads and ready-list lookup through one router.
+func TestDevelopmentHandlerRunsAssetUploadRoundTrip(t *testing.T) {
+	settings := config.Config{
+		Environment:      "development",
+		Address:          "127.0.0.1:0",
+		AllowDevIdentity: true,
+	}
+	dependencies := developmentDependencies()
+	t.Cleanup(func() {
+		if err := dependencies.Close(); err != nil {
+			t.Errorf("close development dependencies: %v", err)
+		}
+	})
+	handler, err := buildHandler(settings, dependencies)
+	if err != nil {
+		t.Fatalf("build handler: %v", err)
+	}
+	payload, err := os.ReadFile("../../../web/public/media/cover-05.webp")
+	if err != nil {
+		t.Fatalf("read WebP fixture: %v", err)
+	}
+	checksum := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
+
+	create := httptest.NewRecorder()
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/v1/assets/uploads", bytes.NewReader(mustJSON(map[string]any{
+		"fileName": "cover.webp", "contentType": "image/webp", "size": len(payload), "checksum": checksum,
+		"rights": map[string]any{"source": map[string]string{"zh-CN": "本地闭环测试"}},
+	})))
+	devHeaders(createRequest, "editor-1", "editor")
+	handler.ServeHTTP(create, createRequest)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create asset upload: status=%d body=%s", create.Code, create.Body.String())
+	}
+	var created struct {
+		Asset struct {
+			ID     string `json:"id"`
+			Src    string `json:"src"`
+			Status string `json:"status"`
+		} `json:"asset"`
+		UploadURL string            `json:"uploadUrl"`
+		Headers   map[string]string `json:"headers"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode asset upload: %v", err)
+	}
+	if created.Asset.Status != "pending" || created.Asset.Src == "" {
+		t.Fatalf("unexpected pending asset %#v", created.Asset)
+	}
+	signedURL, err := url.Parse(created.UploadURL)
+	if err != nil {
+		t.Fatalf("parse signed upload URL: %v", err)
+	}
+
+	upload := httptest.NewRecorder()
+	uploadRequest := httptest.NewRequest(http.MethodPut, signedURL.RequestURI(), bytes.NewReader(payload))
+	for key, value := range created.Headers {
+		uploadRequest.Header.Set(key, value)
+	}
+	handler.ServeHTTP(upload, uploadRequest)
+	if upload.Code != http.StatusNoContent {
+		t.Fatalf("upload asset blob: status=%d body=%s", upload.Code, upload.Body.String())
+	}
+
+	complete := httptest.NewRecorder()
+	completeRequest := httptest.NewRequest(http.MethodPost, "/api/v1/assets/"+created.Asset.ID+"/complete", bytes.NewReader([]byte(`{}`)))
+	devHeaders(completeRequest, "editor-1", "editor")
+	handler.ServeHTTP(complete, completeRequest)
+	if complete.Code != http.StatusOK {
+		t.Fatalf("complete asset upload: status=%d body=%s", complete.Code, complete.Body.String())
+	}
+	var completed struct {
+		ID     string `json:"id"`
+		Src    string `json:"src"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(complete.Body.Bytes(), &completed); err != nil {
+		t.Fatalf("decode completed asset: %v", err)
+	}
+	if completed.ID != created.Asset.ID || completed.Src != created.Asset.Src || completed.Status != "ready" {
+		t.Fatalf("unexpected completed asset %#v", completed)
+	}
+
+	media := httptest.NewRecorder()
+	handler.ServeHTTP(media, httptest.NewRequest(http.MethodGet, completed.Src, nil))
+	if media.Code != http.StatusOK || media.Header().Get("Content-Type") != "image/webp" || !bytes.Equal(media.Body.Bytes(), payload) {
+		t.Fatalf("read stable media: status=%d type=%q size=%d", media.Code, media.Header().Get("Content-Type"), media.Body.Len())
+	}
+
+	list := httptest.NewRecorder()
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/assets?status=ready", nil)
+	devHeaders(listRequest, "editor-1", "editor")
+	handler.ServeHTTP(list, listRequest)
+	if list.Code != http.StatusOK || !bytes.Contains(list.Body.Bytes(), []byte(created.Asset.ID)) {
+		t.Fatalf("list ready assets: status=%d body=%s", list.Code, list.Body.String())
+	}
+}
+
+// TestDevelopmentDependenciesCloseLocalBlobStore verifies that the application
+// dependency bundle exposes cleanup for its shared temporary upload store.
+func TestDevelopmentDependenciesCloseLocalBlobStore(t *testing.T) {
+	dependencies := developmentDependencies()
+	store, ok := dependencies.LocalUploads.(*local.BlobStore)
+	if !ok || dependencies.Close == nil {
+		t.Fatalf("development dependencies do not expose local cleanup: %#v", dependencies)
+	}
+	payload := []byte("temporary-media")
+	if err := store.Put(t.Context(), "assets/temporary/source.webp", bytes.NewReader(payload), ports.BlobMetadata{
+		ContentType: "image/webp",
+		Size:        int64(len(payload)),
+		Checksum:    fmt.Sprintf("sha256:%x", sha256.Sum256(payload)),
+	}); err != nil {
+		t.Fatalf("put local object: %v", err)
+	}
+
+	if err := dependencies.Close(); err != nil {
+		t.Fatalf("close development dependencies: %v", err)
+	}
+	if _, err := store.Stat(t.Context(), "assets/temporary/source.webp"); err == nil {
+		t.Fatal("development cleanup retained local object")
+	}
+}
+
+// TestBuildProductionDependenciesCreatesServicesAndClosesDatabase verifies
+// provider configuration, migration wiring and ownership of database cleanup.
 func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.T) {
 	database := &productionDatabaseFake{legacyAsset: true}
 	var blobConfig providerS3.Config
@@ -200,6 +432,8 @@ func TestPublishReconcilerRunsImmediatelyAndStopsWithContext(t *testing.T) {
 	}
 }
 
+// TestPublishReconcilerLogsFailuresAndUsesDefaultInterval waits for both the
+// immediate reconciliation and its log before testing cancellation of the loop.
 func TestPublishReconcilerLogsFailuresAndUsesDefaultInterval(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	reconciler := &publishReconcilerFake{
@@ -234,6 +468,36 @@ func TestPublishReconcilerLogsFailuresAndUsesDefaultInterval(t *testing.T) {
 	}
 }
 
+// TestStartPublishReconcilerWaitsForActiveRunBeforeStopping protects resource
+// shutdown from racing an in-flight reconciliation.
+func TestStartPublishReconcilerWaitsForActiveRunBeforeStopping(t *testing.T) {
+	reconciler := &blockingPublishReconciler{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	stop := startPublishReconciler(context.Background(), time.Hour, reconciler, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	<-reconciler.started
+
+	stopped := make(chan struct{})
+	go func() {
+		stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+		t.Fatal("reconciler stop returned before the active run completed")
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(reconciler.release)
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("reconciler stop did not wait for completion")
+	}
+}
+
+// TestRunDevelopmentStopsWithCanceledContext checks cancellation at startup
+// still unwinds the shared development resources without a shutdown error.
 func TestRunDevelopmentStopsWithCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -299,6 +563,8 @@ func TestRunServerReturnsListenError(t *testing.T) {
 	}
 }
 
+// TestRunServerShutsDownWhenContextIsCanceled verifies that a canceled lifetime
+// drains a server without requiring a request to trigger its exit path.
 func TestRunServerShutsDownWhenContextIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -312,6 +578,100 @@ func TestRunServerShutsDownWhenContextIsCanceled(t *testing.T) {
 	}
 }
 
+// TestRunServerClosesActiveUploadAfterShutdownTimeout ensures resource cleanup
+// cannot wait for the extended upload deadline after graceful shutdown expires.
+func TestRunServerClosesActiveUploadAfterShutdownTimeout(t *testing.T) {
+	store := local.NewBlobStore()
+	t.Cleanup(func() { _ = store.Close() })
+	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
+		BlobKey: "assets/shutdown/source.mp4", ContentType: "video/mp4", Size: 4,
+		Checksum: fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("body"))), ExpiresIn: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := url.Parse(upload.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	_ = listener.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		request.Body = &uploadReadSignalBody{ReadCloser: request.Body, started: started}
+		store.ServeHTTP(writer, request)
+	})
+	done := make(chan struct{})
+	var shutdownErr error
+	go func() {
+		shutdownErr = runServer(ctx, config.Config{
+			Address: address, ShutdownTimeout: 50 * time.Millisecond,
+		}, slog.New(slog.NewTextHandler(io.Discard, nil)), handler)
+		shutdownErr = errors.Join(shutdownErr, store.Close())
+		close(done)
+	}()
+	var connection net.Conn
+	t.Cleanup(func() {
+		cancel()
+		if connection != nil {
+			_ = connection.Close()
+		}
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Error("server cleanup did not exit after client disconnected")
+		}
+	})
+	connectDeadline := time.Now().Add(time.Second)
+	for time.Now().Before(connectDeadline) {
+		connection, err = net.DialTimeout("tcp", address, 20*time.Millisecond)
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("connect to server: %v", err)
+	}
+	_ = connection.SetWriteDeadline(time.Now().Add(time.Second))
+	if _, err := fmt.Fprintf(connection, "PUT %s HTTP/1.1\r\nHost: %s\r\nContent-Length: 4\r\nContent-Type: video/mp4\r\nX-Yujian-Checksum: %s\r\n\r\nb", signed.RequestURI(), address, upload.Headers["X-Yujian-Checksum"]); err != nil {
+		t.Fatalf("send partial upload: %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("upload did not start reading its reserved body")
+	}
+	cancel()
+	select {
+	case <-done:
+		if !errors.Is(shutdownErr, context.DeadlineExceeded) {
+			t.Fatalf("shutdown lost its timeout error: %v", shutdownErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("server cleanup exceeded the shutdown bound with an active upload")
+	}
+}
+
+type uploadReadSignalBody struct {
+	io.ReadCloser
+	started chan struct{}
+	once    sync.Once
+}
+
+// Read signals entry into the store's body read without replacing socket I/O.
+func (body *uploadReadSignalBody) Read(buffer []byte) (int, error) {
+	body.once.Do(func() { close(body.started) })
+	return body.ReadCloser.Read(buffer)
+}
+
+// TestBuildProductionDependenciesRejectsNonProductionEnvironment ensures the
+// production builder does not allocate providers or return cleanup on rejection.
 func TestBuildProductionDependenciesRejectsNonProductionEnvironment(t *testing.T) {
 	_, closeResources, err := buildProductionDependencies(context.Background(), config.Config{Environment: "development"}, productionFactory{})
 	if err == nil {
@@ -420,6 +780,11 @@ type publishReconcilerFake struct {
 	err   error
 }
 
+type blockingPublishReconciler struct {
+	started chan struct{}
+	release chan struct{}
+}
+
 type notifyingWriter struct {
 	bytes.Buffer
 	wrote chan struct{}
@@ -434,11 +799,22 @@ func (writer *notifyingWriter) Write(value []byte) (int, error) {
 	return written, err
 }
 
+// Reconcile signals an attempted pass before returning an injected error,
+// allowing lifecycle tests to synchronize without relying on timer guesses.
 func (reconciler *publishReconcilerFake) Reconcile(context.Context) error {
 	reconciler.calls <- struct{}{}
 	return reconciler.err
 }
 
+// Reconcile holds one run open until the lifecycle test releases it.
+func (reconciler *blockingPublishReconciler) Reconcile(context.Context) error {
+	close(reconciler.started)
+	<-reconciler.release
+	return nil
+}
+
+// ExecContext models a successful single-row write for dependency wiring tests;
+// SQL generation and persistence are verified by dedicated repository suites.
 func (*productionDatabaseFake) ExecContext(context.Context, string, ...any) (postgres.ExecResult, error) {
 	return productionResultFake(1), nil
 }

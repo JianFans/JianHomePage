@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -27,6 +28,8 @@ import (
 	"yujian.me/server/internal/store/postgres"
 )
 
+// main validates startup settings and translates process signals into the
+// cancellation used by HTTP, reconciliation and dependency cleanup.
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	settings, err := config.Load(os.Getenv)
@@ -44,6 +47,8 @@ func main() {
 	}
 }
 
+// run selects environment-specific services and shuts down the HTTP server and
+// reconciler before releasing storage, preserving cleanup errors on exit.
 func run(ctx context.Context, settings config.Config, logger *slog.Logger) (returnErr error) {
 	dependencies := ServiceDependencies{}
 	closeResources := func() error { return nil }
@@ -53,16 +58,43 @@ func run(ctx context.Context, settings config.Config, logger *slog.Logger) (retu
 		if err != nil {
 			return err
 		}
-		defer func() { returnErr = errors.Join(returnErr, closeResources()) }()
+	} else {
+		dependencies = developmentDependencies()
+		closeResources = dependencies.Close
 	}
+	defer func() { returnErr = errors.Join(returnErr, closeResources()) }()
 	handler, err := buildHandler(settings, dependencies)
 	if err != nil {
 		return err
 	}
 	if dependencies.PublishReconciler != nil {
-		go runPublishReconciler(ctx, 15*time.Second, dependencies.PublishReconciler, logger)
+		stopReconciler := startPublishReconciler(ctx, 15*time.Second, dependencies.PublishReconciler, logger)
+		defer stopReconciler()
 	}
 	return runServer(ctx, settings, logger, handler)
+}
+
+// startPublishReconciler starts one cancellable reconciliation loop and returns
+// an idempotent stop function that waits for the active reconciliation to exit.
+func startPublishReconciler(
+	parent context.Context,
+	interval time.Duration,
+	reconciler publishReconciler,
+	logger *slog.Logger,
+) func() {
+	ctx, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runPublishReconciler(ctx, interval, reconciler, logger)
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			cancel()
+			<-done
+		})
+	}
 }
 
 type publishReconciler interface {
@@ -75,6 +107,7 @@ type ServiceDependencies struct {
 	Publish           httpapi.PublishService
 	PublishReconciler publishReconciler
 	LocalUploads      http.Handler
+	Close             func() error
 }
 
 type productionDatabase interface {
@@ -102,6 +135,8 @@ func defaultProductionFactory() productionFactory {
 	}
 }
 
+// buildProductionDependencies migrates PostgreSQL and assembles production
+// adapters, closing the database on setup failure or returning its cleanup owner.
 func buildProductionDependencies(
 	ctx context.Context,
 	settings config.Config,
@@ -160,6 +195,8 @@ func buildProductionDependencies(
 	return dependencies, database.Close, nil
 }
 
+// buildHandler wires authentication, exact-origin CORS and the shared services.
+// Production rejects incomplete dependencies instead of using development state.
 func buildHandler(settings config.Config, dependencies ServiceDependencies) (http.Handler, error) {
 	if settings.Environment != "production" && dependencies.Content == nil && dependencies.Assets == nil && dependencies.Publish == nil {
 		dependencies = developmentDependencies()
@@ -197,6 +234,8 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 	}), nil
 }
 
+// developmentDependencies shares one in-memory state and temporary blob store
+// across development services; the caller must invoke Close to remove files.
 func developmentDependencies() ServiceDependencies {
 	state := memory.NewState()
 	validator := contract.NewValidator()
@@ -220,9 +259,12 @@ func developmentDependencies() ServiceDependencies {
 		Publish:           publishService,
 		PublishReconciler: publishService,
 		LocalUploads:      blobs,
+		Close:             blobs.Close,
 	}
 }
 
+// runPublishReconciler reconciles immediately, then waits between completed
+// runs; cancellation stops the loop and suppresses expected shutdown errors.
 func runPublishReconciler(ctx context.Context, interval time.Duration, reconciler publishReconciler, logger *slog.Logger) {
 	if interval <= 0 {
 		interval = 15 * time.Second
@@ -243,6 +285,8 @@ func runPublishReconciler(ctx context.Context, interval time.Duration, reconcile
 	}
 }
 
+// runServer drains requests on cancellation, then disconnects remaining clients
+// on timeout so dependency cleanup cannot wait for extended upload deadlines.
 func runServer(ctx context.Context, settings config.Config, logger *slog.Logger, handler http.Handler) error {
 	handler = httpapi.LoggingMiddleware(handler, logger)
 
@@ -266,7 +310,7 @@ func runServer(ctx context.Context, settings config.Config, logger *slog.Logger,
 		shutdownContext, cancel := context.WithTimeout(context.Background(), settings.ShutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(shutdownContext); err != nil {
-			return err
+			return errors.Join(err, server.Close())
 		}
 		return nil
 	case err := <-serveErrors:

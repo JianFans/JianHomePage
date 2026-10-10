@@ -107,6 +107,40 @@
         "responses": { "200": { "$ref": "#/components/responses/VersionResponse" } }
       }
     },
+    "/api/v1/assets": {
+      "get": {
+        "operationId": "listAssets",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "enum": ["pending", "ready", "deleted"] }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "minLength": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "素材分页",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AssetPage" } }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/assets/uploads": {
       "post": {
         "operationId": "createAssetUpload",
@@ -351,7 +385,18 @@
           },
           "status": { "enum": ["pending", "ready", "deleted"] },
           "metadata": { "type": "object", "additionalProperties": true },
-          "rights": { "$ref": "#/components/schemas/AssetRights" }
+          "rights": { "$ref": "#/components/schemas/AssetRights" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AssetPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Asset" } },
+          "nextCursor": { "type": "string", "minLength": 1 }
         }
       },
       "AssetUpload": {

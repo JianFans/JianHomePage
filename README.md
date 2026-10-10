@@ -12,7 +12,7 @@
 - `zh-CN` / `en` 双语：优先读取 `localStorage`，其次读取浏览器语言，无法识别时回退到默认语言并显示非阻断提示。
 - 单实例音乐试听：封面播放入口、底部 Dock、进度控制、上一首/下一首和平台降级入口。
 - 静态 SEO：canonical、Open Graph、JSON-LD、`robots.txt` 和 `sitemap.xml`。
-- Nuxt 管理端：快照即时契约诊断、内容摘要、本地导入导出、审核、发布状态和回滚操作台。
+- Nuxt 管理端：快照契约诊断、本地导入导出、素材分页查询、签名直传与快照插入、审核、发布状态和回滚操作台。
 - Go 内容服务：PostgreSQL、OIDC、S3 兼容对象存储、EdgeOne 构建触发与后台任务对账。
 - 验证体系：ESLint、TypeScript、Vitest 覆盖率、Playwright、axe、Go test、Go vet、Go 覆盖率、容器检查、静态产物校验和独立的生产依赖审计。
 
@@ -106,7 +106,7 @@ go run ./cmd/api
 | `pnpm fixture:images` | 重新生成开发图片 fixture |
 | `pnpm fixture:audio` | 重新生成开发音频 fixture |
 
-管理端编辑器直接复用 `packages/schema` 的 canonical 校验规则。只有完整通过 Schema 与跨记录语义校验的快照才能保存或导出；本地 JSON 导入不会上传文件，也不会把会话 Token、API 地址或发布状态写入导出内容。详细限制见 [apps/admin/README.md](apps/admin/README.md)。
+管理端编辑器直接复用 `packages/schema` 的 canonical 校验规则。界面诊断使用 250 ms 防抖，保存和导出始终重新校验当前文本。只有完整通过 Schema 与跨记录语义校验的快照才能保存或导出；本地 JSON 导入不会上传文件，也不会把会话 Token、API 地址或发布状态写入导出内容。素材工作台支持 WebP、GIF、MP3、WAV 和 MP4，使用分块 SHA-256 与对象存储签名直传。上传完成后仍需把 `ready` 素材插入快照、保存草稿并走完审核发布流程。详细限制见 [apps/admin/README.md](apps/admin/README.md)。
 
 ## 内容快照
 
@@ -152,6 +152,8 @@ pnpm audit --prod --registry=https://registry.npmjs.org
 
 测试通过只表示代码和本地产物达到发布候选标准。未完成腾讯云 COS、EdgeOne、OIDC、数据库迁移和生产域名冒烟前，不应宣称已经上线。
 
+PostgreSQL 集成测试需要显式设置 `YUJIAN_TEST_POSTGRES_URL`，否则会跳过。账号权限和隔离 Schema 的执行方式见 [服务端集成验证](apps/server/README.md#postgresql-集成验证)。`apps/web` 的 Playwright 门禁覆盖公开站；管理端素材闭环目前由 Go HTTP 集成测试与 Vue/API 单元测试分别覆盖，尚无完整浏览器上传 E2E。
+
 ## 生产上线
 
 ### 公开静态站
@@ -181,6 +183,8 @@ docker rm --force yujian-server-local
 生产运行时通过平台密钥和环境变量注入真实依赖，不把 `.env`、凭据或公开站静态产物写入镜像。
 
 首次部署包含 `0003_publish_target_freeze.sql` 的版本前，必须确认没有 `pending` 或 `building` 发布任务。升级已有数据库时，`0004_asset_source_url.sql` 会使用当前 `MEDIA_PUBLIC_BASE_URL` 回填旧素材；迁移完成前不得切换公开媒体域名。为兼容滚动升级和旧二进制回滚，本版本暂不把 `source_url` 收紧为 `NOT NULL`；旧实例全部退出并度过回滚窗口后，再由后续迁移完成约束收紧。不要手工修改 checksum，也不要跳过迁移。
+
+`0005_asset_list_indexes.sql` 在启动事务中建立素材分页索引，首次执行会暂时阻塞素材表写入。已有大表应安排维护窗口，并为首次迁移预留启动时间。完整迁移约束见 [服务端安全与运维](apps/server/README.md#安全与运维)。
 
 ### 上线检查清单
 

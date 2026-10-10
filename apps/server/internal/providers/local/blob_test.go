@@ -2,19 +2,24 @@ package local
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"yujian.me/server/internal/ports"
 )
 
+// TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata exercises a signed
+// PUT and verifies that Stat exposes the validated size, MIME and checksum.
 func TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata(t *testing.T) {
-	store := NewBlobStore()
+	store := newTestBlobStore(t)
 	payload := []byte("image-data")
 	checksum := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
 	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
@@ -44,8 +49,41 @@ func TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata(t *testing.T) {
 	}
 }
 
+// TestUploadHandlerStreamsPayloadWithBoundedReads rejects read buffers over
+// 64 KiB so an upload cannot regress to whole-payload buffering unnoticed.
+func TestUploadHandlerStreamsPayloadWithBoundedReads(t *testing.T) {
+	store := newTestBlobStore(t)
+	payload := bytes.Repeat([]byte("streamed-media"), 128*1024)
+	checksum := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
+	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
+		BlobKey: "assets/asset_stream/source.mp4", ContentType: "video/mp4",
+		Size: int64(len(payload)), Checksum: checksum, ExpiresIn: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("create upload: %v", err)
+	}
+	body := &boundedReadReader{reader: bytes.NewReader(payload), maxRead: 64 * 1024}
+	request := httptest.NewRequest(http.MethodPut, upload.URL, body)
+	request.ContentLength = int64(len(payload))
+	for key, value := range upload.Headers {
+		request.Header.Set(key, value)
+	}
+	recorder := httptest.NewRecorder()
+
+	store.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected streamed upload to return 204, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if body.largestRead > body.maxRead {
+		t.Fatalf("upload requested %d-byte read, limit is %d", body.largestRead, body.maxRead)
+	}
+}
+
+// TestBlobStorePublishesUploadedObjectAtStableLocalURL checks that a stored
+// payload is reachable through its canonical /media path with the declared MIME.
 func TestBlobStorePublishesUploadedObjectAtStableLocalURL(t *testing.T) {
-	store := NewBlobStore()
+	store := newTestBlobStore(t)
 	payload := []byte("audio-data")
 	key := "assets/asset_1/source.mp3"
 	if err := store.Put(t.Context(), key, bytes.NewReader(payload), ports.BlobMetadata{
@@ -79,6 +117,130 @@ func TestBlobStorePublishesUploadedObjectAtStableLocalURL(t *testing.T) {
 	}
 }
 
+// TestBlobStoreCloseRemovesLocalObjects verifies that shutdown clears object
+// lookup state rather than leaving metadata for removed temporary payloads.
+func TestBlobStoreCloseRemovesLocalObjects(t *testing.T) {
+	store := NewBlobStore()
+	payload := []byte("temporary-data")
+	key := "files/temporary.txt"
+	if err := store.Put(t.Context(), key, bytes.NewReader(payload), ports.BlobMetadata{
+		ContentType: "text/plain",
+		Size:        int64(len(payload)),
+		Checksum:    fmt.Sprintf("sha256:%x", sha256.Sum256(payload)),
+	}); err != nil {
+		t.Fatalf("put local object: %v", err)
+	}
+
+	if err := store.Close(); err != nil {
+		t.Fatalf("close local store: %v", err)
+	}
+	if _, err := store.Stat(t.Context(), key); err == nil {
+		t.Fatal("closed local store retained object metadata")
+	}
+}
+
+// TestBlobStoreCloseWaitsForConcurrentRootCreationAndRemovesIt verifies that
+// shutdown cannot delete the temporary root underneath an active writer.
+func TestBlobStoreCloseWaitsForConcurrentRootCreationAndRemovesIt(t *testing.T) {
+	store := NewBlobStore()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	store.createRoot = func() (string, error) {
+		close(started)
+		<-release
+		return os.MkdirTemp("", "yujian-local-blobs-race-*")
+	}
+
+	putDone := make(chan error, 1)
+	go func() {
+		putDone <- store.Put(t.Context(), "files/race.txt", bytes.NewBufferString("data"), ports.BlobMetadata{
+			ContentType: "text/plain",
+			Size:        4,
+			Checksum:    checksumFor([]byte("data")),
+		})
+	}()
+	<-started
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- store.Close() }()
+	select {
+	case err := <-closeDone:
+		t.Fatalf("close returned during root creation: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(release)
+
+	if err := <-putDone; !errors.Is(err, errBlobStoreClosed) {
+		t.Fatalf("expected concurrent put to observe closed store, got %v", err)
+	}
+	if err := <-closeDone; err != nil {
+		t.Fatalf("close local store: %v", err)
+	}
+	if store.rootPath == "" {
+		t.Fatal("test did not create a temporary root")
+	}
+	if _, err := os.Stat(store.rootPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary root still exists after close: %v", err)
+	}
+}
+
+// TestBlobStorePutHonorsCanceledContext requires a canceled write to propagate
+// context.Canceled instead of publishing a temporary object.
+func TestBlobStorePutHonorsCanceledContext(t *testing.T) {
+	store := newTestBlobStore(t)
+	payload := []byte("canceled-data")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := store.Put(ctx, "files/canceled.txt", bytes.NewReader(payload), ports.BlobMetadata{
+		ContentType: "text/plain",
+		Size:        int64(len(payload)),
+		Checksum:    fmt.Sprintf("sha256:%x", sha256.Sum256(payload)),
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected canceled put, got %v", err)
+	}
+}
+
+// TestBlobStorePutWithoutChecksumRemainsIdempotent preserves internal callers'
+// repeat-write contract when they supply size but no expected checksum.
+func TestBlobStorePutWithoutChecksumRemainsIdempotent(t *testing.T) {
+	store := newTestBlobStore(t)
+	metadata := ports.BlobMetadata{ContentType: "text/plain", Size: 4}
+	if err := store.Put(t.Context(), "files/data.txt", bytes.NewBufferString("data"), metadata); err != nil {
+		t.Fatalf("put object without checksum: %v", err)
+	}
+	if err := store.Put(t.Context(), "files/data.txt", bytes.NewBufferString("data"), metadata); err != nil {
+		t.Fatalf("repeat idempotent put without checksum: %v", err)
+	}
+}
+
+// TestUploadHandlerRejectsUnknownLengthPayloadTooLarge ensures that streaming
+// size enforcement still returns 413 when Content-Length cannot preflight it.
+func TestUploadHandlerRejectsUnknownLengthPayloadTooLarge(t *testing.T) {
+	store := newTestBlobStore(t)
+	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
+		BlobKey: "assets/asset_1/source.webp", ContentType: "image/webp", Size: 4,
+		Checksum: "sha256:" + fmt.Sprintf("%x", sha256.Sum256([]byte("data"))), ExpiresIn: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("create upload: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPut, upload.URL, bytes.NewBufferString("too-large"))
+	request.ContentLength = -1
+	request.Header.Set("Content-Type", upload.Headers["Content-Type"])
+	request.Header.Set("X-Yujian-Checksum", upload.Headers["X-Yujian-Checksum"])
+	recorder := httptest.NewRecorder()
+
+	store.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+// TestUploadHandlerRejectsInvalidPayloads covers MIME, declared-size and checksum
+// violations using reserved uploads rather than bypassing signature handling.
 func TestUploadHandlerRejectsInvalidPayloads(t *testing.T) {
 	for _, test := range []struct {
 		name        string
@@ -91,7 +253,7 @@ func TestUploadHandlerRejectsInvalidPayloads(t *testing.T) {
 		{name: "checksum", contentType: "image/webp", body: []byte("xxxx"), status: http.StatusBadRequest},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			store := NewBlobStore()
+			store := newTestBlobStore(t)
 			upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
 				BlobKey: "assets/asset_1/source.webp", ContentType: "image/webp", Size: 4,
 				Checksum: "sha256:" + fmt.Sprintf("%x", sha256.Sum256([]byte("data"))), ExpiresIn: time.Minute,
@@ -109,4 +271,35 @@ func TestUploadHandlerRejectsInvalidPayloads(t *testing.T) {
 			}
 		})
 	}
+}
+
+// newTestBlobStore registers temporary-file cleanup even when an assertion
+// aborts a test, keeping filesystem-backed upload tests isolated.
+func newTestBlobStore(t *testing.T) *BlobStore {
+	t.Helper()
+	store := NewBlobStore()
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("close local blob store: %v", err)
+		}
+	})
+	return store
+}
+
+type boundedReadReader struct {
+	reader      io.Reader
+	maxRead     int
+	largestRead int
+}
+
+// Read records the largest requested buffer and fails above the streaming
+// budget, exposing allocation regressions without allocating a huge fixture.
+func (reader *boundedReadReader) Read(buffer []byte) (int, error) {
+	if len(buffer) > reader.largestRead {
+		reader.largestRead = len(buffer)
+	}
+	if len(buffer) > reader.maxRead {
+		return 0, errors.New("read buffer exceeded streaming limit")
+	}
+	return reader.reader.Read(buffer)
 }

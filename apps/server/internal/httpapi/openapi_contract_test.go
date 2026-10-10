@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+// TestOpenAPIContainsManagementOperationsAndSecurity checks route identifiers,
+// bearer requirements and the documented asset query, rights and URL contracts.
 func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	raw, err := os.ReadFile("../../../../packages/schema/openapi/admin.yaml")
 	if err != nil {
@@ -31,6 +33,7 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 				Required   []string `json:"required"`
 				Properties map[string]struct {
 					Ref         string   `json:"$ref"`
+					Format      string   `json:"format"`
 					Enum        []string `json:"enum"`
 					Description string   `json:"description"`
 					OneOf       []struct {
@@ -56,6 +59,7 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 		"POST /api/v1/versions/{versionId}/review":   "submitReview",
 		"POST /api/v1/versions/{versionId}/approve":  "approveReview",
 		"POST /api/v1/versions/{versionId}/reject":   "rejectReview",
+		"GET /api/v1/assets":                         "listAssets",
 		"POST /api/v1/assets/uploads":                "createAssetUpload",
 		"POST /api/v1/assets/{assetId}/complete":     "completeAssetUpload",
 		"DELETE /api/v1/assets/{assetId}":            "deleteAsset",
@@ -82,6 +86,7 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	assertRequiredHeader(t, document.Paths["/api/v1/versions/{versionId}"]["put"].Parameters, "If-Match")
 	assertRequiredHeader(t, document.Paths["/api/v1/publishes"]["post"].Parameters, "Idempotency-Key")
 	assertRequiredHeader(t, document.Paths["/api/v1/rollbacks"]["post"].Parameters, "Idempotency-Key")
+	assertOptionalParameters(t, document.Paths["/api/v1/assets"]["get"].Parameters, "status", "limit", "cursor")
 	contentTypes := document.Components.Schemas["AssetUploadRequest"].Properties["contentType"].Enum
 	if len(contentTypes) != 5 {
 		t.Fatalf("asset upload MIME enum is not aligned with snapshot schema: %#v", contentTypes)
@@ -104,8 +109,13 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 		source.OneOf[1].Pattern != "^/media/" {
 		t.Fatalf("asset src must document the stable HTTPS or local media contract: %#v", source)
 	}
+	if assetSchema.Properties["createdAt"].Format != "date-time" || assetSchema.Properties["deletedAt"].Format != "date-time" {
+		t.Fatalf("asset timestamps must be documented: %#v", assetSchema.Properties)
+	}
 }
 
+// TestOpenAPISourceIsSyncedIntoServerModule compares the canonical contract with
+// the embedded server copy so go generate cannot leave runtime docs stale.
 func TestOpenAPISourceIsSyncedIntoServerModule(t *testing.T) {
 	source, err := os.ReadFile("../../../../packages/schema/openapi/admin.yaml")
 	if err != nil {
@@ -152,6 +162,8 @@ func assertRequiredHeader(t *testing.T, parameters []struct {
 	t.Fatalf("missing required header %s", name)
 }
 
+// containsString checks required-property membership without assuming order,
+// since OpenAPI's required array expresses a set rather than response layout.
 func containsString(values []string, expected string) bool {
 	for _, value := range values {
 		if value == expected {
@@ -159,4 +171,25 @@ func containsString(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+// assertOptionalParameters verifies presence without accidentally making asset
+// filters mandatory for clients that rely on server-side defaults.
+func assertOptionalParameters(t *testing.T, parameters []struct {
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+}, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		found := false
+		for _, parameter := range parameters {
+			if parameter.Name == name && !parameter.Required {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing optional parameter %s", name)
+		}
+	}
 }

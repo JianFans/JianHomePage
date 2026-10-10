@@ -75,11 +75,23 @@ type publishServiceStub struct {
 }
 
 type assetServiceStub struct {
+	listFn     func(context.Context, domain.Principal, assets.ListOptions) (assets.ListPage, error)
 	createFn   func(context.Context, domain.Principal, assets.CreateUploadInput) (assets.CreateUploadResult, error)
 	completeFn func(context.Context, domain.Principal, string) (domain.AssetRecord, error)
 	deleteFn   func(context.Context, domain.Principal, string) error
 }
 
+// List forwards the authenticated actor and filters to a test-specific callback,
+// defaulting to an empty page for router tests unrelated to asset queries.
+func (stub *assetServiceStub) List(ctx context.Context, actor domain.Principal, options assets.ListOptions) (assets.ListPage, error) {
+	if stub.listFn == nil {
+		return assets.ListPage{}, nil
+	}
+	return stub.listFn(ctx, actor, options)
+}
+
+// CreateUpload forwards the decoded declaration to a test-specific callback,
+// leaving unrelated router tests independent of storage-provider behavior.
 func (stub *assetServiceStub) CreateUpload(ctx context.Context, actor domain.Principal, input assets.CreateUploadInput) (assets.CreateUploadResult, error) {
 	if stub.createFn == nil {
 		return assets.CreateUploadResult{}, nil

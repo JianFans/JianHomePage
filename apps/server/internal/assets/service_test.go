@@ -3,9 +3,12 @@ package assets
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +36,8 @@ func (repository *memoryRepository) CreateAsset(_ context.Context, asset domain.
 	return nil
 }
 
+// GetAsset exposes the fixture's current lifecycle state and models missing IDs
+// separately from status conflicts injected by UpdateAsset.
 func (repository *memoryRepository) GetAsset(_ context.Context, id string) (domain.AssetRecord, error) {
 	asset, exists := repository.assets[id]
 	if !exists {
@@ -41,6 +46,35 @@ func (repository *memoryRepository) GetAsset(_ context.Context, id string) (doma
 	return asset, nil
 }
 
+// ListAssets models status filtering and the strict timestamp/ID boundary so
+// service tests can verify cursor generation independently of a database.
+func (repository *memoryRepository) ListAssets(_ context.Context, query ListQuery) ([]domain.AssetRecord, error) {
+	items := make([]domain.AssetRecord, 0, len(repository.assets))
+	for _, asset := range repository.assets {
+		if !slices.Contains(query.Statuses, asset.Status) {
+			continue
+		}
+		if query.BeforeCreatedAt != nil &&
+			(asset.CreatedAt.After(*query.BeforeCreatedAt) ||
+				(asset.CreatedAt.Equal(*query.BeforeCreatedAt) && asset.ID >= query.BeforeID)) {
+			continue
+		}
+		items = append(items, asset)
+	}
+	slices.SortFunc(items, func(left, right domain.AssetRecord) int {
+		if compared := right.CreatedAt.Compare(left.CreatedAt); compared != 0 {
+			return compared
+		}
+		return -strings.Compare(left.ID, right.ID)
+	})
+	if len(items) > query.Limit {
+		items = items[:query.Limit]
+	}
+	return items, nil
+}
+
+// UpdateAsset can inject a competing change before checking expected status,
+// letting service tests exercise lost-update protection deterministically.
 func (repository *memoryRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	if repository.updateErr != nil {
 		return repository.updateErr
@@ -60,9 +94,30 @@ func (repository *memoryRepository) UpdateAsset(_ context.Context, asset domain.
 	return nil
 }
 
+// AppendAudit captures service events so tests can distinguish idempotent retries
+// from transitions that should create a new audit record.
 func (repository *memoryRepository) AppendAudit(_ context.Context, entry domain.AuditEntry) error {
 	repository.audits = append(repository.audits, entry)
 	return nil
+}
+
+// EnsureAssetSourceURL models the narrow atomic repair contract for service tests.
+func (repository *memoryRepository) EnsureAssetSourceURL(_ context.Context, id, sourceURL string) (string, error) {
+	if sourceURL == "" {
+		return "", domain.ErrInvalidInput
+	}
+	if repository.updateErr != nil {
+		return "", repository.updateErr
+	}
+	asset, exists := repository.assets[id]
+	if !exists {
+		return "", domain.ErrNotFound
+	}
+	if asset.SourceURL == "" {
+		asset.SourceURL = sourceURL
+		repository.assets[id] = asset
+	}
+	return asset.SourceURL, nil
 }
 
 type blobStoreFake struct {
@@ -71,6 +126,7 @@ type blobStoreFake struct {
 	deletedKeys []string
 	publicURL   string
 	publicCalls int
+	publicErr   error
 	createErr   error
 	statErr     error
 	statCalls   int
@@ -105,12 +161,19 @@ func (store *blobStoreFake) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+// SignedReadURL supplies a deterministic temporary read URL independently of the
+// stable PublicURL used by asset snapshots and legacy-address repair.
 func (store *blobStoreFake) SignedReadURL(context.Context, string, time.Duration) (string, error) {
 	return "https://read.example.com/signed", nil
 }
 
+// PublicURL records resolution attempts and injects provider failures or URL
+// changes to test that persisted addresses are repaired once and then frozen.
 func (store *blobStoreFake) PublicURL(_ context.Context, key string) (string, error) {
 	store.publicCalls++
+	if store.publicErr != nil {
+		return "", store.publicErr
+	}
 	if store.publicURL != "" {
 		return store.publicURL, nil
 	}
@@ -132,10 +195,158 @@ func editor() domain.Principal {
 	return domain.Principal{Subject: "editor-1", Roles: []domain.Role{domain.RoleEditor}}
 }
 
+// admin supplies the delete permission omitted from editor fixtures so asset
+// lifecycle tests can verify both write roles without authentication machinery.
 func admin() domain.Principal {
 	return domain.Principal{Subject: "admin-1", Roles: []domain.Role{domain.RoleAdmin}}
 }
 
+// TestListAssetsUsesStableCursorAndDefaultStatuses covers equal-time ID ordering,
+// deleted-record exclusion and a final page without a continuation cursor.
+func TestListAssetsUsesStableCursorAndDefaultStatuses(t *testing.T) {
+	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+	repository := newMemoryRepository()
+	repository.assets = map[string]domain.AssetRecord{
+		"asset_a": {ID: "asset_a", Status: domain.AssetPending, CreatedAt: createdAt.Add(-time.Minute)},
+		"asset_b": {ID: "asset_b", Status: domain.AssetReady, CreatedAt: createdAt},
+		"asset_c": {ID: "asset_c", Status: domain.AssetPending, CreatedAt: createdAt},
+		"asset_d": {ID: "asset_d", Status: domain.AssetDeleted, CreatedAt: createdAt.Add(time.Minute)},
+	}
+	service := assetServiceForTest(repository, &blobStoreFake{})
+
+	first, err := service.List(t.Context(), editor(), ListOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("list first page: %v", err)
+	}
+	if got := assetIDs(first.Items); !slices.Equal(got, []string{"asset_c", "asset_b"}) {
+		t.Fatalf("unexpected first page %v", got)
+	}
+	if first.NextCursor == "" {
+		t.Fatal("expected next cursor")
+	}
+
+	second, err := service.List(t.Context(), editor(), ListOptions{Limit: 2, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatalf("list second page: %v", err)
+	}
+	if got := assetIDs(second.Items); !slices.Equal(got, []string{"asset_a"}) {
+		t.Fatalf("unexpected second page %v", got)
+	}
+	if second.NextCursor != "" {
+		t.Fatalf("unexpected trailing cursor %q", second.NextCursor)
+	}
+}
+
+// TestListRepairsLegacySources covers records written by old instances after
+// startup migration, without replacing existing provider URLs or lookahead rows.
+func TestListRepairsLegacySources(t *testing.T) {
+	for _, status := range []domain.AssetStatus{domain.AssetPending, domain.AssetReady, domain.AssetDeleted} {
+		t.Run(string(status), func(t *testing.T) {
+			repository := newMemoryRepository()
+			now := time.Now().UTC()
+			for _, id := range []string{"asset_a", "asset_b", "asset_c"} {
+				repository.assets[id] = domain.AssetRecord{ID: id, BlobKey: "assets/" + id + "/source.webp", Status: status, CreatedAt: now}
+			}
+			blobs := &blobStoreFake{}
+			service := assetServiceForTest(repository, blobs)
+			page, err := service.List(t.Context(), editor(), ListOptions{Status: status, Limit: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page.Items) != 1 || page.Items[0].SourceURL != "https://media.example.com/assets/asset_c/source.webp" {
+				t.Fatalf("legacy URL not repaired: %#v", page)
+			}
+			if repository.assets["asset_c"].SourceURL != page.Items[0].SourceURL || blobs.publicCalls != 1 || repository.assets["asset_b"].SourceURL != "" {
+				t.Fatal("repair must persist only returned page records")
+			}
+			blobs.publicURL = "https://other-provider.example/changed.webp"
+			if _, err := service.List(t.Context(), editor(), ListOptions{Status: status, Limit: 1}); err != nil {
+				t.Fatal(err)
+			}
+			if blobs.publicCalls != 1 {
+				t.Fatal("persisted source URL was recalculated")
+			}
+		})
+	}
+}
+
+// TestListLegacySourceRepairPropagatesErrors ensures neither URL resolution nor
+// persistence failure returns a partially repaired page to callers.
+func TestListLegacySourceRepairPropagatesErrors(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.assets["asset_legacy"] = domain.AssetRecord{ID: "asset_legacy", BlobKey: "assets/legacy/source.webp", Status: domain.AssetReady, CreatedAt: time.Now()}
+	providerErr := errors.New("provider unavailable")
+	blobs := &blobStoreFake{publicErr: providerErr}
+	page, err := assetServiceForTest(repository, blobs).List(t.Context(), editor(), ListOptions{})
+	if !errors.Is(err, providerErr) || len(page.Items) != 0 || repository.assets["asset_legacy"].SourceURL != "" {
+		t.Fatalf("provider failure must not return invalid page: page=%#v error=%v", page, err)
+	}
+	blobs.publicErr = nil
+	repository.updateErr = errors.New("database unavailable")
+	page, err = assetServiceForTest(repository, blobs).List(t.Context(), editor(), ListOptions{})
+	if !errors.Is(err, repository.updateErr) || len(page.Items) != 0 {
+		t.Fatalf("storage repair failure must propagate: page=%#v error=%v", page, err)
+	}
+}
+
+// TestListAssetsSupportsExplicitDeletedStatus verifies that deleted records stay
+// accessible through an explicit filter despite being hidden by the default.
+func TestListAssetsSupportsExplicitDeletedStatus(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.assets["asset_deleted"] = domain.AssetRecord{
+		ID: "asset_deleted", Status: domain.AssetDeleted, CreatedAt: time.Now(),
+	}
+	service := assetServiceForTest(repository, &blobStoreFake{})
+
+	page, err := service.List(t.Context(), editor(), ListOptions{Status: domain.AssetDeleted})
+	if err != nil {
+		t.Fatalf("list deleted assets: %v", err)
+	}
+	if got := assetIDs(page.Items); !slices.Equal(got, []string{"asset_deleted"}) {
+		t.Fatalf("unexpected deleted assets %v", got)
+	}
+}
+
+// TestListAssetsRejectsInvalidOptions covers status and page-size limits plus
+// malformed, incomplete and NUL-bearing cursors at the service boundary.
+func TestListAssetsRejectsInvalidOptions(t *testing.T) {
+	service := assetServiceForTest(newMemoryRepository(), &blobStoreFake{})
+	for _, options := range []ListOptions{
+		{Status: domain.AssetStatus("unknown")},
+		{Limit: -1},
+		{Limit: 101},
+		{Cursor: "not-base64"},
+		{Cursor: "e30"},
+		{Cursor: base64.RawURLEncoding.EncodeToString([]byte(`{"createdAt":"2026-10-09T00:00:00Z","id":"asset_\u0000"}`))},
+	} {
+		if _, err := service.List(t.Context(), editor(), options); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Fatalf("options %#v: expected invalid input, got %v", options, err)
+		}
+	}
+}
+
+// TestListAssetsRequiresCreatePermission prevents review-only identities from
+// reading the asset library without the editor's create_asset permission.
+func TestListAssetsRequiresCreatePermission(t *testing.T) {
+	service := assetServiceForTest(newMemoryRepository(), &blobStoreFake{})
+	actor := domain.Principal{Subject: "reviewer", Roles: []domain.Role{domain.RoleReviewer}}
+	if _, err := service.List(t.Context(), actor, ListOptions{}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected forbidden, got %v", err)
+	}
+}
+
+// assetIDs preserves page order while projecting records for pagination
+// assertions, avoiding comparisons of unrelated metadata and timestamps.
+func assetIDs(items []domain.AssetRecord) []string {
+	ids := make([]string, len(items))
+	for index, item := range items {
+		ids[index] = item.ID
+	}
+	return ids
+}
+
+// TestCreateUploadValidatesTypeAndCreatesProviderIndependentKey checks that one
+// reservation uses a stable asset key, public URL and bounded signature lifetime.
 func TestCreateUploadValidatesTypeAndCreatesProviderIndependentKey(t *testing.T) {
 	repository := newMemoryRepository()
 	blobs := &blobStoreFake{}

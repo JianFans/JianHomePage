@@ -98,6 +98,8 @@ WHERE id = $8 AND revision = $9`,
 	return compareAndSwapResult(ctx, repository.exec, result, version.ID)
 }
 
+// AppendAudit uses the repository's current executor so a scoped transaction
+// stores its content audit in the same commit as the associated state change.
 func (repository *ContentRepository) AppendAudit(ctx context.Context, entry domain.AuditEntry) error {
 	_, err := repository.exec.ExecContext(ctx, `
 INSERT INTO audit_log (actor_sub, action, resource_type, resource_id, metadata, created_at)
@@ -106,16 +108,23 @@ VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
 	return err
 }
 
-type AssetRepository struct{ exec Executor }
+type AssetRepository struct {
+	exec          Executor
+	inTransaction bool
+}
 
+// NewAssetRepository keeps asset persistence behind Executor, allowing live pgx
+// transactions and recording test executors to share the same SQL implementation.
 func NewAssetRepository(exec Executor) *AssetRepository { return &AssetRepository{exec: exec} }
 
+// WithinTransaction marks the scoped repository for locking reads and commits
+// only a successful callback; callback or commit errors trigger rollback.
 func (repository *AssetRepository) WithinTransaction(ctx context.Context, run func(assets.Repository) error) error {
 	tx, err := begin(ctx, repository.exec)
 	if err != nil {
 		return err
 	}
-	transaction := &AssetRepository{exec: tx}
+	transaction := &AssetRepository{exec: tx, inTransaction: true}
 	if err := run(transaction); err != nil {
 		_ = tx.Rollback(context.Background())
 		return err
@@ -127,6 +136,8 @@ func (repository *AssetRepository) WithinTransaction(ctx context.Context, run fu
 	return nil
 }
 
+// CreateAsset persists the original blob key, public URL and JSON metadata;
+// legacy empty URLs remain SQL NULL for rolling-upgrade compatibility.
 func (repository *AssetRepository) CreateAsset(ctx context.Context, asset domain.AssetRecord) error {
 	_, err := repository.exec.ExecContext(ctx, `
 INSERT INTO assets (id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at)
@@ -135,12 +146,71 @@ VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)`,
 	return err
 }
 
+// GetAsset locks the row inside a transaction so completion or deletion cannot
+// overwrite a concurrent address repair; ordinary reads remain unlocked.
 func (repository *AssetRepository) GetAsset(ctx context.Context, id string) (domain.AssetRecord, error) {
-	return scanAsset(repository.exec.QueryRowContext(ctx, `
+	query := `
 SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at
-FROM assets WHERE id = $1`, id))
+FROM assets WHERE id = $1`
+	// Completion and deletion read before updating. Hold the row until commit so
+	// a concurrent URL repair cannot be overwritten by that stale record.
+	if repository.inTransaction {
+		query += " FOR UPDATE"
+	}
+	return scanAsset(repository.exec.QueryRowContext(ctx, query, id))
 }
 
+// ListAssets returns records using descending creation-time and ID keyset pagination.
+func (repository *AssetRepository) ListAssets(ctx context.Context, query assets.ListQuery) ([]domain.AssetRecord, error) {
+	statuses := make([]string, len(query.Statuses))
+	for index, status := range query.Statuses {
+		statuses[index] = string(status)
+	}
+	predicate := "status = ANY($1)"
+	args := []any{statuses}
+	if len(statuses) == 1 {
+		predicate = "status = $1"
+		args[0] = statuses[0]
+	} else if len(statuses) == 2 &&
+		((statuses[0] == "pending" && statuses[1] == "ready") || (statuses[0] == "ready" && statuses[1] == "pending")) {
+		// A literal predicate allows PostgreSQL's generic prepared plans to use
+		// the partial index without proving the contents of a parameter array.
+		predicate = "status IN ('pending', 'ready')"
+		args = nil
+	}
+	if query.BeforeCreatedAt != nil {
+		predicate += fmt.Sprintf(" AND (created_at, id) < ($%d, $%d)", len(args)+1, len(args)+2)
+		args = append(args, *query.BeforeCreatedAt, query.BeforeID)
+	}
+	statement := fmt.Sprintf(`
+SELECT id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at
+FROM assets
+WHERE %s
+ORDER BY created_at DESC, id DESC
+LIMIT $%d`, predicate, len(args)+1)
+	args = append(args, query.Limit)
+	rows, err := repository.exec.QueryContext(ctx, statement, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.AssetRecord, 0, query.Limit)
+	for rows.Next() {
+		asset, err := scanAsset(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, asset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// UpdateAsset performs a status-based compare-and-swap and reports whether a
+// rejected update was caused by a missing asset or a competing transition.
 func (repository *AssetRepository) UpdateAsset(ctx context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	result, err := repository.exec.ExecContext(ctx, `
 UPDATE assets
@@ -153,6 +223,8 @@ WHERE id = $7 AND status = $8`,
 	return compareAndSwapAssetResult(ctx, repository.exec, result, asset.ID)
 }
 
+// nullableAssetSourceURL maps legacy empty addresses to SQL NULL while keeping
+// a persisted stable URL unchanged for later reads and upgrade repairs.
 func nullableAssetSourceURL(sourceURL string) any {
 	if sourceURL == "" {
 		return nil
@@ -160,6 +232,25 @@ func nullableAssetSourceURL(sourceURL string) any {
 	return sourceURL
 }
 
+// EnsureAssetSourceURL fills only a missing URL and returns the persisted winner.
+// COALESCE is evaluated under the row lock; metadata and status are never copied
+// from a stale list result, and concurrent provider repairs cannot replace a URL.
+func (repository *AssetRepository) EnsureAssetSourceURL(ctx context.Context, id, sourceURL string) (string, error) {
+	if sourceURL == "" {
+		return "", domain.ErrInvalidInput
+	}
+	var stored string
+	err := repository.exec.QueryRowContext(ctx, `
+UPDATE assets SET source_url = COALESCE(source_url, $2)
+WHERE id = $1 RETURNING source_url`, id, sourceURL).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", domain.ErrNotFound
+	}
+	return stored, err
+}
+
+// compareAndSwapAssetResult resolves a zero-row update into not-found or conflict
+// without hiding row-count and follow-up query failures.
 func compareAndSwapAssetResult(ctx context.Context, exec Executor, result ExecResult, id string) error {
 	affected, err := result.RowsAffected()
 	if err != nil {

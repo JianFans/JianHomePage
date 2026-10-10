@@ -37,7 +37,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -50,6 +51,21 @@ button {
   cursor: pointer;
 }
 
+.eyebrow { margin: 0 0 .35rem; color: var(--muted); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; }
+.panel { background: var(--surface); border: 1px solid var(--border); padding: 1.25rem; }
+.panel-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: start; margin-bottom: 1rem; }
+.panel-heading h2 { margin: 0; font-size: 1rem; font-weight: 500; }
+.icon-tool { width: 2.75rem; min-width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border: 1px solid var(--border); color: var(--muted); background: transparent; }
+.icon-tool:hover:not(:disabled) { color: var(--text); border-color: var(--accent); background: var(--surface-soft); }
+.icon-tool:disabled { cursor: not-allowed; opacity: .38; }
+.button { min-height: 2.75rem; border: 1px solid var(--border); background: transparent; color: var(--text); padding: .6rem .85rem; }
+.button:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-soft); }
+.button--primary { color: #111615; background: var(--accent); border-color: var(--accent); }
+.button--primary:hover:not(:disabled) { background: #c0cdca; }
+.button--quiet { min-height: 2.5rem; color: var(--muted); white-space: nowrap; }
+.button--danger { color: var(--danger); }
+.button:disabled { cursor: not-allowed; opacity: .42; }
+
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
@@ -58,4 +74,12 @@ button {
 ::selection {
   background: var(--warm);
   color: var(--bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
 }
