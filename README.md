@@ -139,6 +139,7 @@ pnpm test:coverage
 pnpm test:coverage:go
 pnpm verify:go
 pnpm --filter @yujian/web test:e2e
+pnpm --filter @yujian/admin test:e2e
 ```
 
 TypeScript 门槛为行和语句 80%、函数 75%、分支 70%；Go 语句覆盖率门槛为 80%。GitHub Actions 在 `master` 的 push、Pull Request 和手动触发时并行执行前端、Go、覆盖率、E2E 与容器门禁。Go 门禁还会执行 race 测试，前端和 Go 生成命令执行后必须保持已跟踪契约文件不变。失败的 Playwright 报告和覆盖率产物会保留为工作流制品。

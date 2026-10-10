@@ -28,6 +28,8 @@
 
 音乐板块允许重复引用作品。排序以该作品的首个出现位置为准，跳过相邻相同引用，与最近的不同作品交换位置；没有可交换条目时禁用按钮。排序保留全部引用，不自动去重。
 
+作品的 `trackIds` 也允许重复引用同一曲目。表单按引用顺序显示，编辑任意一处会同步该曲目的所有引用；移动或移除只作用于选中的引用位置。只要仍有引用，快照中的曲目记录就会保留，应用时每个曲目 ID 只写入一条记录。
+
 ### 未保存与冲突保护
 
 - 「表单未应用」与「快照未保存」分别表示临时表单输入和当前 JSON 的保存状态。表单有未应用输入时，保存、导出与审核入口会禁用，需先应用或放弃表单。
@@ -121,6 +123,7 @@ Go 开发服务的签名 URL 固定指向 `http://127.0.0.1:8080/local-upload/*`
 
 ```bash
 pnpm --filter @yujian/admin test
+pnpm --filter @yujian/admin test:coverage
 pnpm --filter @yujian/admin typecheck
 pnpm --filter @yujian/admin build
 pnpm --filter @yujian/admin exec playwright install chromium

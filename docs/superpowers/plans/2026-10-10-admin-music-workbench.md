@@ -23,7 +23,7 @@ interface MusicDraft {
 }
 ```
 
-- [x] 先写新增作品与曲目、更新和排序、重复 ID、跨作品曲目、移除被引用曲目、素材类型及首页隐藏目标测试。
+- [x] 先写新增作品与曲目、更新和排序、记录 ID 冲突、跨作品曲目、移除被引用曲目、素材类型及首页隐藏目标测试。
 - [x] 运行 `pnpm --filter @yujian/admin test test/unit/music-workbench.test.ts`，确认功能缺失导致失败。
 - [x] 实现 `createMusicDraft(snapshot, releaseId)` 和 `applyMusicDraft(text, baseline, draft)`。应用结果包含原文或新文本、稳定错误代码及共享诊断；所有失败保持原文。
 - [x] 同步 `release.trackIds` 与曲目归属；只修改当前作品、其原有曲目及显式编辑的音乐板块条目，不变更其他内容。
@@ -75,17 +75,21 @@ interface MusicDraft {
 
 本轮已完成音乐工作台，未修改公开内容 Schema、公开站内容加载方式或服务端 API。
 
+首版已运行完整仓库门禁。最终代码复核基于 `master...d51b1cc`，重新运行管理端覆盖率、类型检查、生产构建 Playwright、lint 和自动化配置测试；下表区分首版记录与最终复核结果。
+
 | 验证 | 结果 |
 | --- | --- |
-| `pnpm verify` | lint、全部类型检查、220 项单元测试、21 项脚本测试、静态生成和产物检查通过；首屏 JavaScript 286 KiB |
-| `pnpm test:coverage` | Schema、管理端、公开站均达标；管理端行覆盖率 89.17%，分支 78.80%，函数 80.92% |
+| `pnpm verify`（首版） | lint、全部类型检查、220 项单元测试、21 项脚本测试、静态生成和产物检查通过；首屏 JavaScript 286 KiB |
+| `pnpm test:coverage`（首版） | Schema、管理端、公开站均达标；最终管理端覆盖率见下一行 |
+| `pnpm --filter @yujian/admin test:coverage` | 最终复核 15 个文件、126 项测试通过；语句 86.40%、分支 78.92%、函数 81.90%、行 89.63%，门槛均达标 |
+| `pnpm --filter @yujian/admin typecheck`、`pnpm lint` | 最终复核通过 |
 | `pnpm test:automation` | 3 项通过，包含管理端 E2E 入口、依赖版本一致性与结果归档 |
 | 管理端生产构建 | 通过；Playwright 使用生产构建预览，避免开发服务器首次编译影响页面就绪 |
-| 管理端 Playwright | 桌面与手机共 8 项通过，覆盖创建、编辑、素材、编排、导出再导入、过期保护、内部引用与保存契约 |
-| 公开站 Playwright | 11 项通过，包含 axe、键盘、响应式、试听、语言和 SEO |
-| `pnpm verify:go` | 格式、生成、全包测试和 vet 通过 |
-| `pnpm test:coverage:go` | 全包语句覆盖率 82.45%，达到 80% 门槛 |
+| 管理端 Playwright | 最终复核桌面与手机共 10 项通过，覆盖创建、编辑、素材、重复引用与排序、导出再导入、过期保护、内部引用与保存契约 |
+| 公开站 Playwright（首版） | 11 项通过，包含 axe、键盘、响应式、试听、语言和 SEO |
+| `pnpm verify:go`（首版） | 格式、生成、全包测试和 vet 通过 |
+| `pnpm test:coverage:go`（首版） | 全包语句覆盖率 82.45%，达到 80% 门槛 |
 
-独立代码审查未发现 P1/P2 缺陷。列表未显示作品类型的 P3 规格缺口已补齐，并通过中英文组件回归。已检查浏览器窄屏截图与横向溢出断言。
+审查期间已补齐列表作品类型，修复合法重复引用被误拒绝及相邻重复作品阻塞排序的问题，并增加单元、组件和浏览器回归。最终完整审查与独立复核未发现新的可确认缺陷。已检查浏览器窄屏截图与横向溢出断言，`git diff --check master...HEAD` 通过。
 
 管理端保存 E2E 使用请求拦截，只验证浏览器与 API 的契约。未配置 `YUJIAN_TEST_POSTGRES_URL`，数据库集成测试按既有规则跳过；真实 OIDC、Go API、COS、EdgeOne 与域名联调尚未验证。本轮未执行部署。
