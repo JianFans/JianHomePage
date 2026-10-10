@@ -39,6 +39,7 @@ const assetAlts = reactive<Record<string, LocalizedDraft>>({})
 const insertError = ref('')
 const pendingAlt = ref<LocalizedDraft | null>(null)
 
+/** 随界面语言切换表单、阶段和错误提示，不把提示文本存入素材记录。 */
 const copy = computed(() => props.locale === 'en'
   ? {
       title: 'Assets',
@@ -151,7 +152,9 @@ const copy = computed(() => props.locale === 'en'
       },
     })
 
+/** 摘要至完成确认期间锁定上传输入，终态重新允许用户编辑和重试。 */
 const activeUpload = computed(() => ['hashing', 'creating', 'uploading', 'completing'].includes(workspace.stage))
+/** 从当前文本提取重复 ID 以禁用按钮；完整契约校验仍由插入函数执行。 */
 const existingAssetIds = computed(() => {
   try {
     const value = JSON.parse(props.editorText) as { assets?: unknown }
@@ -163,13 +166,13 @@ const existingAssetIds = computed(() => {
   }
 })
 
-watch(() => workspace.assets, (items) => {
+watch(() => workspace.assets, /** 为新加载的历史素材初始化独立替代文本，保留当前用户编辑。 */ (items) => {
   items.forEach((asset) => {
     assetAlts[asset.id] ||= { zhCN: '', en: '' }
   })
 }, { deep: false, immediate: true })
 
-watch(() => workspace.connectionBaseUrl, () => {
+watch(() => workspace.connectionBaseUrl, /** 连接切换时清除旧服务的替代文本缓存，避免同 ID 跨服务继承。 */ () => {
   Object.keys(assetAlts).forEach(id => delete assetAlts[id])
   pendingAlt.value = null
   insertError.value = ''

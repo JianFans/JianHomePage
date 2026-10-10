@@ -123,6 +123,8 @@ var mediaRules = map[string]mediaRule{
 	"video/mp4":  {extension: ".mp4", limit: videoLimit},
 }
 
+// NewService binds provider-independent asset ports, defaulting the clock and
+// secure ID generator while allowing deterministic replacements in tests.
 func NewService(options ServiceOptions) *Service {
 	now := options.Now
 	if now == nil {
@@ -245,6 +247,8 @@ func decodeListCursor(value string) (listCursor, error) {
 	return cursor, nil
 }
 
+// CreateUpload validates permissions and media declarations before reserving an
+// upload, then persists its frozen public URL and creation audit atomically.
 func (service *Service) CreateUpload(
 	ctx context.Context,
 	actor domain.Principal,

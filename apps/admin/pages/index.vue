@@ -11,10 +11,11 @@ const locale = ref<'zh-CN' | 'en'>('zh-CN')
 const workspace = reactive(useAdminWorkspace(locale))
 const snapshotFileInput = ref<HTMLInputElement | null>(null)
 
-useHead(() => ({
+useHead(/** 同步文档语言供辅助技术读取，不改变管理端路由。 */ () => ({
   htmlAttrs: { lang: locale.value },
 }))
 
+/** 按会话语言生成工作台标签，诊断数量格式随同一语言切换。 */
 const copy = computed(() => locale.value === 'en'
   ? {
       brand: 'Meet Jian',
@@ -45,6 +46,7 @@ const copy = computed(() => locale.value === 'en'
       importSnapshot: 'Import JSON',
       exportSnapshot: 'Export snapshot',
       validSnapshot: 'Valid',
+      /** 使用当前分析结果格式化英文错误数量，保持状态播报一致。 */
       issueCount: (count: number) => `${count} issues`,
     }
   : {
@@ -76,14 +78,19 @@ const copy = computed(() => locale.value === 'en'
       importSnapshot: '导入 JSON',
       exportSnapshot: '导出快照',
       validSnapshot: '有效',
+      /** 使用当前分析结果格式化中文错误数量，保持状态播报一致。 */
       issueCount: (count: number) => `${count} 项错误`,
     })
 
+/** 未载入版本时保持占位，避免界面显示不存在的草稿状态。 */
 const statusLabel = computed(() => workspace.version?.status || '—')
+/** 没有发布任务时显示本地化空态，而不是假设已经发布。 */
 const publishStatusLabel = computed(() => workspace.publishJob?.status || copy.value.noJob)
+/** 使用防抖后的解析结果展示格式化 JSON，解析失败时保留具体提示。 */
 const previewText = computed(() => workspace.parsedEditor.snapshot
   ? JSON.stringify(workspace.parsedEditor.snapshot, null, 2)
   : workspace.parsedEditor.error || '')
+/** 使用同一防抖分析生成数量标签，避免输入期间重复状态播报。 */
 const validationLabel = computed(() => workspace.editorAnalysis.issues.length
   ? copy.value.issueCount(workspace.editorAnalysis.issues.length)
   : copy.value.validSnapshot)
@@ -120,11 +127,11 @@ function downloadSnapshot() {
     anchor.download = exported.filename
     anchor.click()
   } finally {
-    setTimeout(() => URL.revokeObjectURL(url), 0)
+    setTimeout(/** 等浏览器接管下载后释放临时 URL，链接始终保持未挂载。 */ () => URL.revokeObjectURL(url), 0)
   }
 }
 
-onMounted(() => {
+onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时访问 navigator。 */ () => {
   locale.value = resolveAdminLocale(undefined, navigator.language)
 })
 </script>

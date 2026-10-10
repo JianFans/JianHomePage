@@ -336,6 +336,8 @@ func (handler *Handler) rejectReview(writer http.ResponseWriter, request *http.R
 	writeVersion(writer, http.StatusOK, version)
 }
 
+// createAssetUpload decodes the bounded declaration and returns only the public
+// asset plus the provider's expiring URL and required direct-upload headers.
 func (handler *Handler) createAssetUpload(writer http.ResponseWriter, request *http.Request) {
 	var input assetUploadRequest
 	if !decodeJSON(writer, request, &input) {
@@ -433,6 +435,8 @@ func parseAssetListOptions(request *http.Request) (assets.ListOptions, bool) {
 	return options, true
 }
 
+// completeAssetUpload delegates object verification and lifecycle transitions
+// to the service, mapping its result to the same public asset shape as listing.
 func (handler *Handler) completeAssetUpload(writer http.ResponseWriter, request *http.Request) {
 	actor, ok := principal(writer, request)
 	if !ok || handler.assets == nil {

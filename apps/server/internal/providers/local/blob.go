@@ -219,6 +219,8 @@ func (store *BlobStore) serveRead(writer http.ResponseWriter, request *http.Requ
 	http.ServeContent(writer, request, path.Base(key), time.Time{}, file)
 }
 
+// Stat returns the metadata of a published local object without reading its
+// payload; unfinished uploads and deleted keys report the domain not-found error.
 func (store *BlobStore) Stat(_ context.Context, key string) (ports.BlobMetadata, error) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -335,6 +337,8 @@ func (store *BlobStore) beginOperation() (func(), error) {
 	return store.active.Done, nil
 }
 
+// SignedReadURL validates the requested lifetime but returns an unsigned local
+// development URL; it does not provide production access-control semantics.
 func (store *BlobStore) SignedReadURL(_ context.Context, key string, expiresIn time.Duration) (string, error) {
 	if expiresIn <= 0 {
 		return "", domain.ErrInvalidInput
@@ -372,6 +376,8 @@ func escapeKeyPath(key string) string {
 	return strings.Join(parts, "/")
 }
 
+// validateKey requires a canonical relative object path, rejecting traversal,
+// absolute paths and Windows separators before resolving it under the local root.
 func validateKey(key string) error {
 	if key == "" || strings.HasPrefix(key, "/") || strings.Contains(key, "\\") || path.Clean(key) != key || key == "." {
 		return domain.ErrInvalidInput
@@ -384,6 +390,8 @@ func validateKey(key string) error {
 	return nil
 }
 
+// secureEqual compares equal-length reservation tokens in constant time and
+// rejects differing lengths without accepting a partial token match.
 func secureEqual(left, right string) bool {
 	if len(left) != len(right) {
 		return false
@@ -476,6 +484,8 @@ func (reader *contextReader) Read(buffer []byte) (int, error) {
 	return reader.reader.Read(buffer)
 }
 
+// checksumFor produces the domain's prefixed lowercase digest for small in-memory
+// fixtures; uploaded payloads use the streaming hash in writeTemporaryObject.
 func checksumFor(data []byte) string {
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(data))
 }

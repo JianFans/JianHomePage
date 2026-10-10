@@ -99,6 +99,8 @@ func (executor *recordingExecutor) ExecContext(_ context.Context, query string, 
 	return executor.result, executor.execErr
 }
 
+// QueryRowContext records single-record SQL, including transaction locking
+// clauses, while returning the row chosen by the repository test.
 func (executor *recordingExecutor) QueryRowContext(_ context.Context, query string, _ ...any) Row {
 	executor.rowQueries = append(executor.rowQueries, query)
 	return executor.row
@@ -112,6 +114,8 @@ func (executor *recordingExecutor) QueryContext(_ context.Context, query string,
 	return executor.rows, executor.rowsErr
 }
 
+// BeginTx creates a recording scope whose commit and rollback markers let tests
+// assert ownership of transaction success and failure paths.
 func (executor *recordingExecutor) BeginTx(context.Context) (Tx, error) {
 	executor.begin = &recordingTx{recordingExecutor: recordingExecutor{result: executor.result}}
 	return executor.begin, nil
@@ -207,6 +211,8 @@ func TestContentRepositoryPreservesLookupErrorsAfterZeroRowsUpdate(t *testing.T)
 	}
 }
 
+// TestAssetRepositoryPersistsStableSourceURL covers insert, read and transition
+// SQL so the frozen address is not lost when a pending asset becomes ready.
 func TestAssetRepositoryPersistsStableSourceURL(t *testing.T) {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
 	asset := domain.AssetRecord{
@@ -322,6 +328,8 @@ func (rows *errorRows) Err() error { return rows.err }
 // Close allows deferred cleanup without masking the injected iteration error.
 func (*errorRows) Close() error { return nil }
 
+// TestAssetRepositoryReadsLegacyNullSourceURL keeps nullable upgrade records
+// readable until the service repairs them with a stable provider address.
 func TestAssetRepositoryReadsLegacyNullSourceURL(t *testing.T) {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{

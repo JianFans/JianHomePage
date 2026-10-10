@@ -125,6 +125,8 @@ func TestLocalUploadOutlivesAPIDeadlines(t *testing.T) {
 	}
 }
 
+// TestHealthHandler fixes the unauthenticated probe's status, MIME and JSON body
+// so deployment health checks do not depend on application credentials.
 func TestHealthHandler(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -153,6 +155,8 @@ func TestHealthHandlerRejectsUnsupportedMethod(t *testing.T) {
 	}
 }
 
+// TestDevelopmentHandlerRunsDraftReviewAndPublishLoop verifies the role-specific
+// draft, review and publish routes share one development dependency state.
 func TestDevelopmentHandlerRunsDraftReviewAndPublishLoop(t *testing.T) {
 	settings := config.Config{
 		Environment:      "development",
@@ -334,6 +338,8 @@ func TestDevelopmentDependenciesCloseLocalBlobStore(t *testing.T) {
 	}
 }
 
+// TestBuildProductionDependenciesCreatesServicesAndClosesDatabase verifies
+// provider configuration, migration wiring and ownership of database cleanup.
 func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.T) {
 	database := &productionDatabaseFake{legacyAsset: true}
 	var blobConfig providerS3.Config
@@ -426,6 +432,8 @@ func TestPublishReconcilerRunsImmediatelyAndStopsWithContext(t *testing.T) {
 	}
 }
 
+// TestPublishReconcilerLogsFailuresAndUsesDefaultInterval waits for both the
+// immediate reconciliation and its log before testing cancellation of the loop.
 func TestPublishReconcilerLogsFailuresAndUsesDefaultInterval(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	reconciler := &publishReconcilerFake{
@@ -488,6 +496,8 @@ func TestStartPublishReconcilerWaitsForActiveRunBeforeStopping(t *testing.T) {
 	}
 }
 
+// TestRunDevelopmentStopsWithCanceledContext checks cancellation at startup
+// still unwinds the shared development resources without a shutdown error.
 func TestRunDevelopmentStopsWithCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -553,6 +563,8 @@ func TestRunServerReturnsListenError(t *testing.T) {
 	}
 }
 
+// TestRunServerShutsDownWhenContextIsCanceled verifies that a canceled lifetime
+// drains a server without requiring a request to trigger its exit path.
 func TestRunServerShutsDownWhenContextIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -658,6 +670,8 @@ func (body *uploadReadSignalBody) Read(buffer []byte) (int, error) {
 	return body.ReadCloser.Read(buffer)
 }
 
+// TestBuildProductionDependenciesRejectsNonProductionEnvironment ensures the
+// production builder does not allocate providers or return cleanup on rejection.
 func TestBuildProductionDependenciesRejectsNonProductionEnvironment(t *testing.T) {
 	_, closeResources, err := buildProductionDependencies(context.Background(), config.Config{Environment: "development"}, productionFactory{})
 	if err == nil {
@@ -785,6 +799,8 @@ func (writer *notifyingWriter) Write(value []byte) (int, error) {
 	return written, err
 }
 
+// Reconcile signals an attempted pass before returning an injected error,
+// allowing lifecycle tests to synchronize without relying on timer guesses.
 func (reconciler *publishReconcilerFake) Reconcile(context.Context) error {
 	reconciler.calls <- struct{}{}
 	return reconciler.err
@@ -797,6 +813,8 @@ func (reconciler *blockingPublishReconciler) Reconcile(context.Context) error {
 	return nil
 }
 
+// ExecContext models a successful single-row write for dependency wiring tests;
+// SQL generation and persistence are verified by dedicated repository suites.
 func (*productionDatabaseFake) ExecContext(context.Context, string, ...any) (postgres.ExecResult, error) {
 	return productionResultFake(1), nil
 }

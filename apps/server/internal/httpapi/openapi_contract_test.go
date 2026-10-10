@@ -114,6 +114,8 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	}
 }
 
+// TestOpenAPISourceIsSyncedIntoServerModule compares the canonical contract with
+// the embedded server copy so go generate cannot leave runtime docs stale.
 func TestOpenAPISourceIsSyncedIntoServerModule(t *testing.T) {
 	source, err := os.ReadFile("../../../../packages/schema/openapi/admin.yaml")
 	if err != nil {
@@ -160,6 +162,8 @@ func assertRequiredHeader(t *testing.T, parameters []struct {
 	t.Fatalf("missing required header %s", name)
 }
 
+// containsString checks required-property membership without assuming order,
+// since OpenAPI's required array expresses a set rather than response layout.
 func containsString(values []string, expected string) bool {
 	for _, value := range values {
 		if value == expected {

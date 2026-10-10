@@ -7,13 +7,13 @@ import AssetWorkbench from '../../components/AssetWorkbench.vue'
 import type { AdminAsset } from '../../utils/admin-api'
 import { analyzeSnapshotText } from '../../utils/snapshot-workbench'
 
-afterEach(() => {
+afterEach(/** 还原全局 fetch 和 spy，防止跨测试共享网络响应或样式读取 mock。 */ () => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
 describe('素材工作台组件', () => {
-  it('共享样式作用于子组件内部的按钮和标题', () => {
+  it('共享样式作用于子组件内部的按钮和标题', /** 挂载真实共享样式并读取 computed style，覆盖触控尺寸、禁用反馈和标题布局。 */ () => {
     const stylesheet = document.createElement('style')
     stylesheet.textContent = readFileSync(resolve(process.cwd(), 'assets/css/main.css'), 'utf8')
     document.head.append(stylesheet)
@@ -39,7 +39,7 @@ describe('素材工作台组件', () => {
     }
   })
 
-  it('切换 API 后同 ID 素材不继承旧连接的替代文本', async () => {
+  it('切换 API 后同 ID 素材不继承旧连接的替代文本', /** 两个服务端返回同一 ID 时，旧连接的替代文本不能使新素材绕过插入门禁。 */ async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_shared')] })))
     const wrapper = mountWorkbench()
     await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
@@ -58,7 +58,7 @@ describe('素材工作台组件', () => {
   it.each([
     ['/media/assets/asset_local/source.webp', 'http://127.0.0.1:8080/media/assets/asset_local/source.webp'],
     ['https://media.yujian.me/assets/asset_local/source.webp', 'https://media.yujian.me/assets/asset_local/source.webp'],
-  ])('仅为图片预览解析地址 %s，快照保留原始地址', async (src, preview) => {
+  ])('仅为图片预览解析地址 %s，快照保留原始地址', /** 相对地址仅在展示时基于 API origin 解析，插入快照仍使用服务端原始地址。 */ async (src, preview) => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [{ ...asset('asset_local'), src }] })))
     const wrapper = mountWorkbench()
     await wrapper.setProps({ apiBaseUrl: 'http://127.0.0.1:8080' })
@@ -73,7 +73,7 @@ describe('素材工作台组件', () => {
     wrapper.unmount()
   })
 
-  it('展示双语字段和可访问工具按钮', async () => {
+  it('展示双语字段和可访问工具按钮', /** 切换语言后可访问名称同步更新，上传状态保留 polite 播报且文件选择限制 MIME。 */ async () => {
     const wrapper = mountWorkbench()
 
     expect(wrapper.get('[data-testid="asset-workbench"]').attributes('aria-labelledby')).toBe('asset-workbench-title')
@@ -90,7 +90,7 @@ describe('素材工作台组件', () => {
     expect(wrapper.get('[data-testid="asset-kind-filter"]').attributes('aria-label')).toBe('Type')
   })
 
-  it('使用独立文案报告素材列表加载失败', async () => {
+  it('使用独立文案报告素材列表加载失败', /** 模拟列表请求离线，确认界面不会误报为创建上传失败。 */ async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('offline')
     }))
@@ -103,7 +103,7 @@ describe('素材工作台组件', () => {
     expect(wrapper.text()).not.toContain('无法创建上传')
   })
 
-  it('按 ready、重复 ID 和替代文本状态控制快照插入', async () => {
+  it('按 ready、重复 ID 和替代文本状态控制快照插入', /** 仅允许具备替代文本且 ID 未占用的 ready 素材插入，并校验生成的 canonical 快照。 */ async () => {
     const existingId = fixtureData.assets[0]!.id
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
       items: [
@@ -135,7 +135,7 @@ describe('素材工作台组件', () => {
     expect(String(text)).toContain('asset_new')
   })
 
-  it('只在服务端返回游标时显示加载更多并追加素材', async () => {
+  it('只在服务端返回游标时显示加载更多并追加素材', /** 两页响应验证游标传递、列表追加，以及末页隐藏加载更多入口。 */ async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ items: [asset('asset_a')], nextCursor: 'next-page' }))
       .mockResolvedValueOnce(jsonResponse({ items: [asset('asset_b')] }))
@@ -153,7 +153,7 @@ describe('素材工作台组件', () => {
     expect(String(fetcher.mock.calls[1]?.[0])).toContain('cursor=next-page')
   })
 
-  it('上传期间锁定文件和文本输入，完成后恢复编辑并保留替代文本', async () => {
+  it('上传期间锁定文件和文本输入，完成后恢复编辑并保留替代文本', /** 用挂起的创建请求检查上传表单锁定，释放后验证输入恢复及替代文本转移到素材卡片。 */ async () => {
     const uploadGate = deferred<Response>()
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -196,7 +196,7 @@ describe('素材工作台组件', () => {
     wrapper.unmount()
   })
 
-  it.each(['', 'pending'])('完成确认重试保留修改后的替代文本，状态筛选为 %s', async (status) => {
+  it.each(['', 'pending'])('完成确认重试保留修改后的替代文本，状态筛选为 %s', /** 确认失败后编辑双语替代文本，重试成功并切回默认筛选仍须保留最新输入。 */ async (status) => {
     let completeAttempts = 0
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)

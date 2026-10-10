@@ -61,11 +61,12 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
   let listSequence = 0
   let disposed = false
   let uploadsDuringList = new Map<string, AdminAsset>()
+  /** 用规范化地址识别连接归属，末尾斜杠变化不会丢弃同服务的确认重试。 */
   const connectionBaseUrl = computed(() => normalizeBaseUrl(options.apiBaseUrl.value))
 
   // Changing servers invalidates IDs, cursors and all in-flight results. Token
   // refreshes on the same server keep a pending upload available for retry.
-  watch(connectionBaseUrl, () => {
+  watch(connectionBaseUrl, /** 使旧连接序号失效并清空服务所属状态，保留可重新上传的文件与表单。 */ () => {
     uploadSequence++
     listSequence++
     uploadsDuringList = new Map()
@@ -80,7 +81,9 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
     listError.value = false
   }, { flush: 'sync' })
 
+  /** 只有对象已直传且确认失败时才开放确认重试，避免把上传失败误判为已完成。 */
   const canRetryComplete = computed(() => Boolean(pendingUpload.value && blobUploaded.value && errorCode.value === 'complete-failed'))
+  /** 类型与文本筛选只扫描已加载页，服务端状态筛选继续决定分页范围。 */
   const filteredAssets = computed(() => {
     const needle = searchText.value.trim().toLowerCase()
     return assets.value.filter((asset) => {
@@ -93,7 +96,7 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
   })
 
   if (getCurrentScope()) {
-    onScopeDispose(() => {
+    onScopeDispose(/** 销毁后使所有迟到响应失效，不宣称撤销已经发出的直传请求。 */ () => {
       disposed = true
       uploadSequence++
       listSequence++

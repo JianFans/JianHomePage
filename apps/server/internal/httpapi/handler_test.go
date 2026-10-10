@@ -90,6 +90,8 @@ func (stub *assetServiceStub) List(ctx context.Context, actor domain.Principal, 
 	return stub.listFn(ctx, actor, options)
 }
 
+// CreateUpload forwards the decoded declaration to a test-specific callback,
+// leaving unrelated router tests independent of storage-provider behavior.
 func (stub *assetServiceStub) CreateUpload(ctx context.Context, actor domain.Principal, input assets.CreateUploadInput) (assets.CreateUploadResult, error) {
 	if stub.createFn == nil {
 		return assets.CreateUploadResult{}, nil

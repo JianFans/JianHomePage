@@ -4,7 +4,7 @@ import { useAssetWorkspace, type AssetWorkspaceApi } from '../../composables/use
 import type { AdminAsset, AdminAssetUpload } from '../../utils/admin-api'
 
 describe('asset workspace state machine', () => {
-  it('invalidates completion retries and library state when the API connection changes', async () => {
+  it('invalidates completion retries and library state when the API connection changes', /** 切换服务端后旧确认目标和分页失效，但未提交的表单仍可用于新上传。 */ async () => {
     const firstApi = createApi()
     firstApi.listAssets.mockResolvedValueOnce({ items: [readyAsset('asset_a')], nextCursor: 'cursor-a' })
     firstApi.completeAssetUpload.mockRejectedValueOnce(new Error('temporary failure'))
@@ -36,7 +36,7 @@ describe('asset workspace state machine', () => {
     expect(secondApi.listAssets).not.toHaveBeenCalled()
   })
 
-  it('ignores an old connection list and does not continue an old upload after hashing', async () => {
+  it('ignores an old connection list and does not continue an old upload after hashing', /** 用挂起的列表和摘要模拟连接竞争，确保迟到响应不能写回或创建旧连接上传。 */ async () => {
     const oldList = deferred<{ items: AdminAsset[], nextCursor: string }>()
     const hash = deferred<string>()
     const firstApi = createApi()
@@ -65,7 +65,7 @@ describe('asset workspace state machine', () => {
     expect(firstApi.createAssetUpload).not.toHaveBeenCalled()
   })
 
-  it('keeps the pending upload when only the token or trailing URL slash changes', async () => {
+  it('keeps the pending upload when only the token or trailing URL slash changes', /** 同一服务端的凭据刷新不丢失确认目标，重试使用更新后的客户端。 */ async () => {
     const firstApi = createApi()
     firstApi.completeAssetUpload.mockRejectedValueOnce(new Error('temporary failure'))
     const refreshedApi = createApi()
@@ -87,7 +87,7 @@ describe('asset workspace state machine', () => {
     expect(workspace.stage.value).toBe('succeeded')
   })
 
-  it('runs the successful upload stages in order and adds the ready asset', async () => {
+  it('runs the successful upload stages in order and adds the ready asset', /** 同步收集阶段转换，验证权利信息、一次直传和确认后的列表及文件清理。 */ async () => {
     const stages: string[] = []
     const api = createApi()
     const workspace = useAssetWorkspace({
@@ -115,7 +115,7 @@ describe('asset workspace state machine', () => {
     expect(workspace.file.value).toBeNull()
   })
 
-  it('retains the form after blob upload failure so a new signature can be requested', async () => {
+  it('retains the form after blob upload failure so a new signature can be requested', /** 直传失败保留用户输入，同时禁止将未上传的对象当作可重试确认的素材。 */ async () => {
     const api = createApi()
     api.uploadAssetBlob.mockRejectedValueOnce(new Error('signature expired'))
     const workspace = createWorkspace(api)
@@ -133,7 +133,7 @@ describe('asset workspace state machine', () => {
     expect(workspace.canRetryComplete.value).toBe(false)
   })
 
-  it('retries completion without creating or uploading another blob', async () => {
+  it('retries completion without creating or uploading another blob', /** 首次确认失败后仅重试元数据确认，避免重新分配素材或重复传输文件。 */ async () => {
     const api = createApi()
     api.completeAssetUpload
       .mockRejectedValueOnce(new Error('metadata unavailable'))
@@ -155,7 +155,7 @@ describe('asset workspace state machine', () => {
     expect(workspace.stage.value).toBe('succeeded')
   })
 
-  it('appends pages without duplicate IDs and resets results for a status filter', async () => {
+  it('appends pages without duplicate IDs and resets results for a status filter', /** 重叠分页按 ID 去重，状态变化则重新请求固定页大小并清除旧游标。 */ async () => {
     const api = createApi()
     api.listAssets
       .mockResolvedValueOnce({ items: [readyAsset('asset_a'), readyAsset('asset_b')], nextCursor: 'next' })
@@ -173,7 +173,7 @@ describe('asset workspace state machine', () => {
     expect(workspace.nextCursor.value).toBe('')
   })
 
-  it('filters loaded assets by type or text without another request', async () => {
+  it('filters loaded assets by type or text without another request', /** 类型和大小写不敏感的文本搜索只处理已加载记录，不触发额外网络请求。 */ async () => {
     const api = createApi()
     api.listAssets.mockResolvedValueOnce({
       items: [
@@ -192,7 +192,7 @@ describe('asset workspace state machine', () => {
     expect(api.listAssets).toHaveBeenCalledTimes(1)
   })
 
-  it('does not update Vue state after its scope is disposed', async () => {
+  it('does not update Vue state after its scope is disposed', /** 销毁作用域后才完成列表请求，验证组件卸载后的响应不会再修改响应式状态。 */ async () => {
     const pending = deferred<{ items: AdminAsset[] }>()
     const api = createApi()
     api.listAssets.mockReturnValueOnce(pending.promise)
@@ -208,7 +208,7 @@ describe('asset workspace state machine', () => {
     expect(workspace.loading.value).toBe(true)
   })
 
-  it('does not let an older list response remove a newly completed upload', async () => {
+  it('does not let an older list response remove a newly completed upload', /** 上传确认先于旧列表返回时，迟到的空列表不能覆盖刚加入的 ready 素材。 */ async () => {
     const pendingList = deferred<{ items: AdminAsset[] }>()
     const api = createApi()
     api.listAssets.mockReturnValueOnce(pendingList.promise)
@@ -226,7 +226,7 @@ describe('asset workspace state machine', () => {
     expect(workspace.loading.value).toBe(false)
   })
 
-  it.each(['pending', 'deleted'] as const)('preserves an in-flight %s list when an upload completes', async (status) => {
+  it.each(['pending', 'deleted'] as const)('preserves an in-flight %s list when an upload completes', /** 确认期间保留其他状态的分页请求，排除已转 ready 的记录但保留其他素材和游标。 */ async (status) => {
     const pendingList = deferred<{ items: AdminAsset[], nextCursor: string }>()
     const api = createApi()
     api.listAssets.mockReturnValueOnce(pendingList.promise)

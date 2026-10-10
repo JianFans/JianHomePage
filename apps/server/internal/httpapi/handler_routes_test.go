@@ -128,6 +128,8 @@ func TestReviewRoutesForwardRevisionAndReason(t *testing.T) {
 	}
 }
 
+// TestAssetLifecycleRoutesReturnStableRepresentations checks creation and
+// completion expose the public asset shape while deletion returns an empty 204.
 func TestAssetLifecycleRoutesReturnStableRepresentations(t *testing.T) {
 	deletedAt := time.Date(2026, 8, 30, 2, 0, 0, 0, time.UTC)
 	asset := domain.AssetRecord{
@@ -249,6 +251,8 @@ func TestListAssetsRejectsInvalidQueryBeforeService(t *testing.T) {
 	}
 }
 
+// TestPublishRoutesForwardIdentifiersAndReturnJob verifies publish and rollback
+// route arguments, idempotency keys and response status through the router.
 func TestPublishRoutesForwardIdentifiersAndReturnJob(t *testing.T) {
 	tests := []struct {
 		name       string

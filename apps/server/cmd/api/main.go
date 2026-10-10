@@ -28,6 +28,8 @@ import (
 	"yujian.me/server/internal/store/postgres"
 )
 
+// main validates startup settings and translates process signals into the
+// cancellation used by HTTP, reconciliation and dependency cleanup.
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	settings, err := config.Load(os.Getenv)
@@ -133,6 +135,8 @@ func defaultProductionFactory() productionFactory {
 	}
 }
 
+// buildProductionDependencies migrates PostgreSQL and assembles production
+// adapters, closing the database on setup failure or returning its cleanup owner.
 func buildProductionDependencies(
 	ctx context.Context,
 	settings config.Config,
@@ -191,6 +195,8 @@ func buildProductionDependencies(
 	return dependencies, database.Close, nil
 }
 
+// buildHandler wires authentication, exact-origin CORS and the shared services.
+// Production rejects incomplete dependencies instead of using development state.
 func buildHandler(settings config.Config, dependencies ServiceDependencies) (http.Handler, error) {
 	if settings.Environment != "production" && dependencies.Content == nil && dependencies.Assets == nil && dependencies.Publish == nil {
 		dependencies = developmentDependencies()
@@ -257,6 +263,8 @@ func developmentDependencies() ServiceDependencies {
 	}
 }
 
+// runPublishReconciler reconciles immediately, then waits between completed
+// runs; cancellation stops the loop and suppresses expected shutdown errors.
 func runPublishReconciler(ctx context.Context, interval time.Duration, reconciler publishReconciler, logger *slog.Logger) {
 	if interval <= 0 {
 		interval = 15 * time.Second

@@ -58,6 +58,8 @@ func TestAssetSourceRepairIsAtomic(t *testing.T) {
 	}
 }
 
+// TestRepositoriesRejectCancelledTransactions applies the same cancellation
+// contract to content, asset and publish transaction entry points.
 func TestRepositoriesRejectCancelledTransactions(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -86,6 +88,8 @@ func TestRepositoriesRejectCancelledTransactions(t *testing.T) {
 	}
 }
 
+// TestAssetRepositoryLifecycleAndCloneIsolation checks transactional auditing,
+// defensive JSON copies and distinct duplicate, missing and status-conflict errors.
 func TestAssetRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	state := NewState()
 	repository := NewAssetRepository(state)
@@ -195,6 +199,8 @@ func listedAssetIDs(items []domain.AssetRecord) []string {
 	return ids
 }
 
+// TestContentRepositoryLifecycleAndCloneIsolation verifies caller mutations do
+// not alter stored snapshots and revision mismatches cannot replace a version.
 func TestContentRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	state := NewState()
 	repository := NewContentRepository(state)

@@ -12,6 +12,8 @@ import (
 	"yujian.me/server/internal/ports"
 )
 
+// TestBuildTriggerLifecycle ensures development builds have distinct identities,
+// readable success states and a not-found result for unknown build IDs.
 func TestBuildTriggerLifecycle(t *testing.T) {
 	trigger := NewBuildTrigger()
 	if _, err := trigger.Status(t.Context(), "missing"); !errors.Is(err, domain.ErrNotFound) {

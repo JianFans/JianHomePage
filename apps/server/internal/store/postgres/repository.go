@@ -98,6 +98,8 @@ WHERE id = $8 AND revision = $9`,
 	return compareAndSwapResult(ctx, repository.exec, result, version.ID)
 }
 
+// AppendAudit uses the repository's current executor so a scoped transaction
+// stores its content audit in the same commit as the associated state change.
 func (repository *ContentRepository) AppendAudit(ctx context.Context, entry domain.AuditEntry) error {
 	_, err := repository.exec.ExecContext(ctx, `
 INSERT INTO audit_log (actor_sub, action, resource_type, resource_id, metadata, created_at)
@@ -111,6 +113,8 @@ type AssetRepository struct {
 	inTransaction bool
 }
 
+// NewAssetRepository keeps asset persistence behind Executor, allowing live pgx
+// transactions and recording test executors to share the same SQL implementation.
 func NewAssetRepository(exec Executor) *AssetRepository { return &AssetRepository{exec: exec} }
 
 // WithinTransaction marks the scoped repository for locking reads and commits
@@ -132,6 +136,8 @@ func (repository *AssetRepository) WithinTransaction(ctx context.Context, run fu
 	return nil
 }
 
+// CreateAsset persists the original blob key, public URL and JSON metadata;
+// legacy empty URLs remain SQL NULL for rolling-upgrade compatibility.
 func (repository *AssetRepository) CreateAsset(ctx context.Context, asset domain.AssetRecord) error {
 	_, err := repository.exec.ExecContext(ctx, `
 INSERT INTO assets (id, blob_key, source_url, status, metadata, rights, created_by, created_at, deleted_at)
@@ -203,6 +209,8 @@ LIMIT $%d`, predicate, len(args)+1)
 	return items, nil
 }
 
+// UpdateAsset performs a status-based compare-and-swap and reports whether a
+// rejected update was caused by a missing asset or a competing transition.
 func (repository *AssetRepository) UpdateAsset(ctx context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	result, err := repository.exec.ExecContext(ctx, `
 UPDATE assets
@@ -215,6 +223,8 @@ WHERE id = $7 AND status = $8`,
 	return compareAndSwapAssetResult(ctx, repository.exec, result, asset.ID)
 }
 
+// nullableAssetSourceURL maps legacy empty addresses to SQL NULL while keeping
+// a persisted stable URL unchanged for later reads and upgrade repairs.
 func nullableAssetSourceURL(sourceURL string) any {
 	if sourceURL == "" {
 		return nil
@@ -239,6 +249,8 @@ WHERE id = $1 RETURNING source_url`, id, sourceURL).Scan(&stored)
 	return stored, err
 }
 
+// compareAndSwapAssetResult resolves a zero-row update into not-found or conflict
+// without hiding row-count and follow-up query failures.
 func compareAndSwapAssetResult(ctx context.Context, exec Executor, result ExecResult, id string) error {
 	affected, err := result.RowsAffected()
 	if err != nil {

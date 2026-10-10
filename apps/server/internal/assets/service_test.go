@@ -36,6 +36,8 @@ func (repository *memoryRepository) CreateAsset(_ context.Context, asset domain.
 	return nil
 }
 
+// GetAsset exposes the fixture's current lifecycle state and models missing IDs
+// separately from status conflicts injected by UpdateAsset.
 func (repository *memoryRepository) GetAsset(_ context.Context, id string) (domain.AssetRecord, error) {
 	asset, exists := repository.assets[id]
 	if !exists {
@@ -71,6 +73,8 @@ func (repository *memoryRepository) ListAssets(_ context.Context, query ListQuer
 	return items, nil
 }
 
+// UpdateAsset can inject a competing change before checking expected status,
+// letting service tests exercise lost-update protection deterministically.
 func (repository *memoryRepository) UpdateAsset(_ context.Context, asset domain.AssetRecord, expectedStatus domain.AssetStatus) error {
 	if repository.updateErr != nil {
 		return repository.updateErr
@@ -90,6 +94,8 @@ func (repository *memoryRepository) UpdateAsset(_ context.Context, asset domain.
 	return nil
 }
 
+// AppendAudit captures service events so tests can distinguish idempotent retries
+// from transitions that should create a new audit record.
 func (repository *memoryRepository) AppendAudit(_ context.Context, entry domain.AuditEntry) error {
 	repository.audits = append(repository.audits, entry)
 	return nil
@@ -155,6 +161,8 @@ func (store *blobStoreFake) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+// SignedReadURL supplies a deterministic temporary read URL independently of the
+// stable PublicURL used by asset snapshots and legacy-address repair.
 func (store *blobStoreFake) SignedReadURL(context.Context, string, time.Duration) (string, error) {
 	return "https://read.example.com/signed", nil
 }
@@ -187,6 +195,8 @@ func editor() domain.Principal {
 	return domain.Principal{Subject: "editor-1", Roles: []domain.Role{domain.RoleEditor}}
 }
 
+// admin supplies the delete permission omitted from editor fixtures so asset
+// lifecycle tests can verify both write roles without authentication machinery.
 func admin() domain.Principal {
 	return domain.Principal{Subject: "admin-1", Roles: []domain.Role{domain.RoleAdmin}}
 }
@@ -335,6 +345,8 @@ func assetIDs(items []domain.AssetRecord) []string {
 	return ids
 }
 
+// TestCreateUploadValidatesTypeAndCreatesProviderIndependentKey checks that one
+// reservation uses a stable asset key, public URL and bounded signature lifetime.
 func TestCreateUploadValidatesTypeAndCreatesProviderIndependentKey(t *testing.T) {
 	repository := newMemoryRepository()
 	blobs := &blobStoreFake{}
