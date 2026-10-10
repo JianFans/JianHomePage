@@ -123,6 +123,49 @@ describe('音乐工作台界面', () => {
     expect(section.limit).toBe(5)
   })
 
+  it('下移越过相邻重复引用，并同步实际展示范围', async () => {
+    const { wrapper, editorText } = mountMusic()
+    const value = structuredClone(fixtureData)
+    const section = value.homepage.sections.find(item => item.type === 'music')!
+    section.itemIds = ['release_01', 'release_01', 'release_02']
+    section.limit = 1
+    // 单独验证排序与可见性；内部目标隐藏保护由事务测试覆盖。
+    for (const slide of value.heroSlides) {
+      if (slide.target?.kind === 'internal') delete slide.target
+    }
+    expect(analyzeSnapshotText(JSON.stringify(value)).issues).toEqual([])
+    editorText.value = JSON.stringify(value)
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    const placement = wrapper.get('[data-testid="section-section_music"]')
+    expect(placement.text()).toContain('位于展示范围内')
+    await placement.get('[data-testid="section-down"]').trigger('click')
+    expect(placement.text()).toContain('超过展示数量或板块未启用')
+    await wrapper.get('[data-testid="music-apply"]').trigger('click')
+    expect(wrapper.find('[data-testid="music-error"]').exists()).toBe(false)
+    const next = JSON.parse(editorText.value).homepage.sections.find((item: { type: string }) => item.type === 'music')
+    expect(next).toEqual({ ...section, itemIds: ['release_02', 'release_01', 'release_01'] })
+    expect(placement.get('[data-testid="section-down"]').attributes('disabled')).toBeDefined()
+    await placement.get('[data-testid="section-up"]').trigger('click')
+    await wrapper.get('[data-testid="music-apply"]').trigger('click')
+    expect(JSON.parse(editorText.value).homepage.sections.find((item: { type: string }) => item.type === 'music').itemIds).toEqual(['release_01', 'release_02', 'release_01'])
+    expect(analyzeSnapshotText(editorText.value).issues).toEqual([])
+  })
+
+  it.each([
+    { name: '尾部重复引用', itemIds: ['release_02', 'release_01', 'release_01'] },
+    { name: '仅有重复引用', itemIds: ['release_01', 'release_01'] },
+  ])('$name 没有可下移条目时禁用按钮', async ({ itemIds }) => {
+    const { wrapper, editorText } = mountMusic()
+    const value = structuredClone(fixtureData)
+    value.homepage.sections.find(item => item.type === 'music')!.itemIds = itemIds
+    editorText.value = JSON.stringify(value)
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    expect(wrapper.get('[data-testid="section-down"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="music-apply"]').attributes('disabled')).toBeDefined()
+  })
+
   it('未应用切换显示内联确认，取消保留 JSON', async () => {
     const { wrapper, editorText } = mountMusic()
     const original = editorText.value

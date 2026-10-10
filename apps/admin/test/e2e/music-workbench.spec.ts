@@ -72,7 +72,7 @@ test('创建作品、绑定素材、编排并导出可重新导入的快照', as
 test('合法重复引用可编辑、排序并按引用移除，曲目记录保持唯一', async ({ page }) => {
   const value = structuredClone(fixture)
   value.releases[0]!.trackIds.push('track_01')
-  value.homepage.sections.find(section => section.type === 'music')!.itemIds.push('release_02')
+  value.homepage.sections.find(section => section.type === 'music')!.itemIds = ['release_01', 'release_01', 'release_02']
   await page.getByTestId('snapshot-file-input').setInputFiles({ name: 'repeated.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) })
   await expect(page.getByTestId('snapshot-validation')).toHaveText('Valid')
   await page.getByTestId('music-release-release_01').click()
@@ -101,6 +101,17 @@ test('合法重复引用可编辑、排序并按引用移除，曲目记录保�
   expect(removed.tracks.filter(track => track.id === 'track_01')).toHaveLength(1)
   await expect(tracks.nth(1).getByTestId('track-title-zh')).toHaveValue('重复引用的曲目')
   await expect(page.getByTestId('snapshot-validation')).toHaveText('Valid')
+  const placement = page.getByTestId('section-section_music')
+  await placement.getByTestId('section-down').click()
+  await page.getByTestId('music-apply').click()
+  await expect(page.getByTestId('music-apply')).toBeDisabled()
+  expect((await editorSnapshot(page)).homepage.sections.find(section => section.type === 'music')!.itemIds).toEqual(['release_02', 'release_01', 'release_01'])
+  await expect(placement.getByTestId('section-down')).toBeDisabled()
+  await placement.getByTestId('section-up').click()
+  await page.getByTestId('music-apply').click()
+  await expect(page.getByTestId('music-apply')).toBeDisabled()
+  expect((await editorSnapshot(page)).homepage.sections.find(section => section.type === 'music')!.itemIds).toEqual(['release_01', 'release_02', 'release_01'])
+  await expect(placement.getByTestId('section-up')).toBeDisabled()
 })
 
 test('保护未应用输入、过期基线和内部目标引用', async ({ page }) => {

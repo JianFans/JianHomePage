@@ -68,12 +68,23 @@ function toggleSection(section: MusicDraft['sections'][number], event: Event) {
   } else section.itemIds = section.itemIds.filter(item => item !== id)
 }
 
-/** 在已有板块中移动当前作品，展示限制和其他条目均保持原值。 */
+/** 从作品的首个位置寻找不同条目，跳过重复引用；无可移动目标时返回 -1。 */
+function sectionMoveTarget(section: MusicDraft['sections'][number], direction: -1 | 1): number {
+  const id = draft.value?.release.id
+  if (!id) return -1
+  const index = section.itemIds.indexOf(id)
+  if (index < 0) return -1
+  let next = index + direction
+  while (next >= 0 && next < section.itemIds.length && section.itemIds[next] === id) next += direction
+  return next >= 0 && next < section.itemIds.length ? next : -1
+}
+
+/** 移动作品的首个出现位置，保留全部重复引用、展示限制和其他条目的相对顺序。 */
 function moveInSection(section: MusicDraft['sections'][number], direction: -1 | 1) {
   if (!draft.value || props.busy) return
   const index = section.itemIds.indexOf(draft.value.release.id)
-  const next = index + direction
-  if (index < 0 || next < 0 || next >= section.itemIds.length) return
+  const next = sectionMoveTarget(section, direction)
+  if (next < 0) return
   ;[section.itemIds[index], section.itemIds[next]] = [section.itemIds[next]!, section.itemIds[index]!]
 }
 
@@ -332,7 +343,7 @@ function visible(section: MusicDraft['sections'][number]): boolean {
                   class="icon-tool"
                   data-testid="section-up"
                   :aria-label="`${copy.up} ${section.id}`"
-                  :disabled="section.itemIds.indexOf(draft.release.id) === 0"
+                  :disabled="sectionMoveTarget(section, -1) < 0"
                   @click="moveInSection(section, -1)"
                 >
                   <ArrowUp
@@ -345,7 +356,7 @@ function visible(section: MusicDraft['sections'][number]): boolean {
                   class="icon-tool"
                   data-testid="section-down"
                   :aria-label="`${copy.down} ${section.id}`"
-                  :disabled="section.itemIds.indexOf(draft.release.id) === section.itemIds.length - 1"
+                  :disabled="sectionMoveTarget(section, 1) < 0"
                   @click="moveInSection(section, 1)"
                 >
                   <ArrowDown
