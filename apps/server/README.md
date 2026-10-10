@@ -64,6 +64,8 @@ go run ./cmd/api
 
 仓库根 `Dockerfile` 使用 Go 多阶段构建，只把静态 API 二进制复制到非 root 的 distroless 运行镜像。公开站和管理端不包含在该镜像中。
 
+Go 标准库会编入 API 二进制。修复标准库漏洞时，需要更新 `Dockerfile` 构建阶段的 Go 补丁版本并重新构建；仅更新 distroless 运行镜像不能替换二进制中的标准库。CI 会扫描最终镜像，并阻止包含 HIGH 或 CRITICAL 漏洞的镜像通过。
+
 在仓库根目录构建并执行开发模式健康检查：
 
 ```bash
