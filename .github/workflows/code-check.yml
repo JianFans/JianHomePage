@@ -150,6 +150,22 @@ jobs:
         run: pnpm --filter @yujian/web playwright:install
       - name: Run E2E
         run: pnpm --filter @yujian/web test:e2e
+      - name: Run admin E2E
+        run: pnpm --filter @yujian/admin test:e2e
+      - name: Upload admin Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: admin-playwright-report
+          path: apps/admin/playwright-report
+          if-no-files-found: ignore
+      - name: Upload admin Playwright test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: admin-playwright-test-results
+          path: apps/admin/test-results
+          if-no-files-found: ignore
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v7
