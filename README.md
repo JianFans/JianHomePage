@@ -12,7 +12,7 @@
 - `zh-CN` / `en` 双语：优先读取 `localStorage`，其次读取浏览器语言，无法识别时回退到默认语言并显示非阻断提示。
 - 单实例音乐试听：封面播放入口、底部 Dock、进度控制、上一首/下一首和平台降级入口。
 - 静态 SEO：canonical、Open Graph、JSON-LD、`robots.txt` 和 `sitemap.xml`。
-- Nuxt 管理端：快照契约诊断、本地导入导出、素材分页查询、签名直传与快照插入、审核、发布状态和回滚操作台。
+- Nuxt 管理端：音乐作品与曲目表单、素材绑定、音乐板块编排、快照契约诊断、本地导入导出、素材签名直传、审核、发布状态和回滚操作台。
 - Go 内容服务：PostgreSQL、OIDC、S3 兼容对象存储、EdgeOne 构建触发与后台任务对账。
 - 验证体系：ESLint、TypeScript、Vitest 覆盖率、Playwright、axe、Go test、Go vet、Go 覆盖率、容器检查、静态产物校验和独立的生产依赖审计。
 
@@ -102,6 +102,7 @@ go run ./cmd/api
 | `pnpm verify` | 运行前端完整门禁并检查静态产物 |
 | `pnpm verify:go` | 检查 gofmt，运行 Go generate、全包测试和 Go vet |
 | `pnpm --filter @yujian/web test:e2e` | 运行 Chrome E2E 与无障碍测试 |
+| `pnpm --filter @yujian/admin test:e2e` | 运行管理端桌面与手机尺寸的音乐编辑及保存契约测试 |
 | `pnpm verify:edgeone` | 使用正式内容快照执行 EdgeOne 发布门禁 |
 | `pnpm fixture:images` | 重新生成开发图片 fixture |
 | `pnpm fixture:audio` | 重新生成开发音频 fixture |
@@ -152,7 +153,7 @@ pnpm audit --prod --registry=https://registry.npmjs.org
 
 测试通过只表示代码和本地产物达到发布候选标准。未完成腾讯云 COS、EdgeOne、OIDC、数据库迁移和生产域名冒烟前，不应宣称已经上线。
 
-PostgreSQL 集成测试需要显式设置 `YUJIAN_TEST_POSTGRES_URL`，否则会跳过。账号权限和隔离 Schema 的执行方式见 [服务端集成验证](apps/server/README.md#postgresql-集成验证)。`apps/web` 的 Playwright 门禁覆盖公开站；管理端素材闭环目前由 Go HTTP 集成测试与 Vue/API 单元测试分别覆盖，尚无完整浏览器上传 E2E。
+PostgreSQL 集成测试需要显式设置 `YUJIAN_TEST_POSTGRES_URL`，否则会跳过。账号权限和隔离 Schema 的执行方式见 [服务端集成验证](apps/server/README.md#postgresql-集成验证)。`apps/web` 的 Playwright 门禁覆盖公开站；管理端 Playwright 覆盖音乐编辑、编排、导出再导入与保存 API 契约。素材上传目前仍由 Go HTTP 集成测试与 Vue/API 单元测试分别覆盖，尚无串联真实身份、Go 服务和对象存储的完整浏览器上传 E2E。
 
 ## 生产上线
 

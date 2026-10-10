@@ -23,50 +23,69 @@ interface MusicDraft {
 }
 ```
 
-- [ ] 先写新增作品与曲目、更新和排序、重复 ID、跨作品曲目、移除被引用曲目、素材类型及首页隐藏目标测试。
-- [ ] 运行 `pnpm --filter @yujian/admin test test/unit/music-workbench.test.ts`，确认功能缺失导致失败。
-- [ ] 实现 `createMusicDraft(snapshot, releaseId)` 和 `applyMusicDraft(text, baseline, draft)`。应用结果包含原文或新文本、稳定错误代码及共享诊断；所有失败保持原文。
-- [ ] 同步 `release.trackIds` 与曲目归属；只修改当前作品、其原有曲目及显式编辑的音乐板块条目，不变更其他内容。
-- [ ] 重新运行目标测试、管理端类型检查与目标文件 lint，再提交 `feat(音乐编辑): 添加快照事务与引用校验`。
+- [x] 先写新增作品与曲目、更新和排序、重复 ID、跨作品曲目、移除被引用曲目、素材类型及首页隐藏目标测试。
+- [x] 运行 `pnpm --filter @yujian/admin test test/unit/music-workbench.test.ts`，确认功能缺失导致失败。
+- [x] 实现 `createMusicDraft(snapshot, releaseId)` 和 `applyMusicDraft(text, baseline, draft)`。应用结果包含原文或新文本、稳定错误代码及共享诊断；所有失败保持原文。
+- [x] 同步 `release.trackIds` 与曲目归属；只修改当前作品、其原有曲目及显式编辑的音乐板块条目，不变更其他内容。
+- [x] 重新运行目标测试、管理端类型检查与目标文件 lint，再提交 `feat(音乐编辑): 添加快照事务与引用校验`。
 
 ## 任务 2：状态与未保存保护
 
 文件：`apps/admin/composables/useMusicWorkspace.ts`、`apps/admin/composables/useAdminWorkspace.ts` 及对应 `test/unit` 测试。
 
-- [ ] 先测试未应用输入、取消、过期基线、忙碌门禁，以及保存冲突保持文本和修订号。
-- [ ] 运行目标测试确认失败，再实现打开、应用、丢弃和切换请求。切换前通过内联继续编辑／放弃提示保留决定权。
-- [ ] 音乐列表复用工作区防抖分析；打开与应用直接校验最新文本，保存直接分析当前文本。
-- [ ] 记录服务端文本基线，区分本地未保存快照与未应用表单。保存期间阻止重入、载入、导入、素材插入和表单改动。
-- [ ] 重新运行 `admin-workspace.test.ts`、`music-workspace.test.ts` 与类型检查，再提交 `feat(音乐编辑): 保护临时表单和未保存快照`。
+- [x] 先测试未应用输入、取消、过期基线、忙碌门禁，以及保存冲突保持文本和修订号。
+- [x] 运行目标测试确认失败，再实现打开、应用、丢弃和切换请求。切换前通过内联继续编辑／放弃提示保留决定权。
+- [x] 音乐列表复用工作区防抖分析；打开与应用直接校验最新文本，保存直接分析当前文本。
+- [x] 记录服务端文本基线，区分本地未保存快照与未应用表单。保存期间阻止重入、载入、导入、素材插入和表单改动。
+- [x] 重新运行 `admin-workspace.test.ts`、`music-workspace.test.ts` 与类型检查，再提交 `feat(音乐编辑): 保护临时表单和未保存快照`。
 
 ## 任务 3：界面
 
 文件：`apps/admin/components/MusicWorkbench.vue`、`LocalizedTextFields.vue`、`PlatformLinkFields.vue`、`MusicTrackFields.vue`、`apps/admin/utils/music-copy.ts`、`apps/admin/pages/index.vue`、`apps/admin/components/AssetWorkbench.vue` 及对应组件测试。
 
-- [ ] 先测试作品选择、新建、应用、取消、双语标签、素材过滤和禁用状态，再运行组件测试确认缺少行为。
-- [ ] 实现作品列表与表单，独立小组件复用双语字段、平台链接和曲目编辑，避免单文件承担全部字段。
-- [ ] 曲目排序与音乐板块排序采用可访问的上下移动按钮。保留原 ID 和选填文案；隐藏值不得因切换界面语言被清除。
-- [ ] 接入页面未保存提示、载入／导入保护和 `beforeunload`。素材插入遵守保存忙碌状态。
-- [ ] 重新运行管理端测试、类型检查、lint，再提交 `feat(音乐工作台): 接入双语作品曲目表单`。
+- [x] 先测试作品选择、新建、应用、取消、双语标签、素材过滤和禁用状态，再运行组件测试确认缺少行为。
+- [x] 实现作品列表与表单，独立小组件复用双语字段、平台链接和曲目编辑，避免单文件承担全部字段。
+- [x] 曲目排序与音乐板块排序采用可访问的上下移动按钮。保留原 ID 和选填文案；隐藏值不得因切换界面语言被清除。
+- [x] 接入页面未保存提示、载入／导入保护和 `beforeunload`。素材插入遵守保存忙碌状态。
+- [x] 重新运行管理端测试、类型检查、lint，再提交 `feat(音乐工作台): 接入双语作品曲目表单`。
 
 ## 任务 4：浏览器与 CI
 
 文件：`apps/admin/playwright.config.ts`、`apps/admin/test/e2e/music-workbench.spec.ts`、`apps/admin/package.json`、`pnpm-lock.yaml`、`.github/workflows/code-check.yml`、`scripts/automation-config.test.mjs`、`apps/admin/README.md`。
 
-- [ ] 先写浏览器测试：导入 fixture、新增作品与曲目、绑定封面／音频、排序、应用、导出并重新校验；另测无效与过期编辑、保存请求修订与冲突。
-- [ ] 新增管理端 E2E 脚本，Playwright 版本与公开站一致；Vitest include 收窄到单元测试以避免加载 Playwright 测试。
-- [ ] 先扩展自动化契约测试要求管理端 E2E 命令与结果归档，确认失败，再接入现有 E2E job；不把依赖版本约束写进工作流。
-- [ ] 桌面与窄屏浏览器运行验证布局、键盘入口和实际字段行为。拦截 API 的测试明确标注为契约测试，不冒充真实服务端或云集成。
-- [ ] 同步 README 的操作路径、未保存行为、支持范围和验证命令，再提交 `test(音乐工作台): 补齐浏览器回归和持续验证`。
+- [x] 先写浏览器测试：导入 fixture、新增作品与曲目、绑定封面／音频、排序、应用、导出并重新校验；另测无效与过期编辑、保存请求修订与冲突。
+- [x] 新增管理端 E2E 脚本，Playwright 版本与公开站一致；Vitest include 收窄到单元测试以避免加载 Playwright 测试。
+- [x] 先扩展自动化契约测试要求管理端 E2E 命令与结果归档，确认失败，再接入现有 E2E job；不把依赖版本约束写进工作流。
+- [x] 桌面与窄屏浏览器运行验证布局、键盘入口和实际字段行为。拦截 API 的测试明确标注为契约测试，不冒充真实服务端或云集成。
+- [x] 同步 README 的操作路径、未保存行为、支持范围和验证命令；浏览器／CI 验证与使用文档分别原子提交。
 
 ## 最终门禁
 
-- [ ] `pnpm --filter @yujian/admin build`
-- [ ] `pnpm test:coverage`
-- [ ] `pnpm test:automation`
-- [ ] `pnpm verify`
-- [ ] `pnpm verify:go`
-- [ ] `pnpm --filter @yujian/admin test:e2e`
-- [ ] `pnpm --filter @yujian/web test:e2e`
-- [ ] 对比 `master...HEAD` 完整审查，修复实际问题后重新验证受影响范围。
-- [ ] 每次提交前检查暂存文件和 `git diff --cached --check`；结束时报告提交、验证与真实环境缺口。
+- [x] `pnpm --filter @yujian/admin build`
+- [x] `pnpm test:coverage`
+- [x] `pnpm test:automation`
+- [x] `pnpm verify`
+- [x] `pnpm verify:go`
+- [x] `pnpm --filter @yujian/admin test:e2e`
+- [x] `pnpm --filter @yujian/web test:e2e`
+- [x] 对比 `master...HEAD` 完整审查，修复实际问题后重新验证受影响范围。
+- [x] 每次提交前检查暂存文件和 `git diff --cached --check`；结束时报告提交、验证与真实环境缺口。
+
+## 验收记录
+
+本轮已完成音乐工作台，未修改公开内容 Schema、公开站内容加载方式或服务端 API。
+
+| 验证 | 结果 |
+| --- | --- |
+| `pnpm verify` | lint、全部类型检查、220 项单元测试、21 项脚本测试、静态生成和产物检查通过；首屏 JavaScript 286 KiB |
+| `pnpm test:coverage` | Schema、管理端、公开站均达标；管理端行覆盖率 89.17%，分支 78.80%，函数 80.92% |
+| `pnpm test:automation` | 3 项通过，包含管理端 E2E 入口、依赖版本一致性与结果归档 |
+| 管理端生产构建 | 通过；Playwright 使用生产构建预览，避免开发服务器首次编译影响页面就绪 |
+| 管理端 Playwright | 桌面与手机共 8 项通过，覆盖创建、编辑、素材、编排、导出再导入、过期保护、内部引用与保存契约 |
+| 公开站 Playwright | 11 项通过，包含 axe、键盘、响应式、试听、语言和 SEO |
+| `pnpm verify:go` | 格式、生成、全包测试和 vet 通过 |
+| `pnpm test:coverage:go` | 全包语句覆盖率 82.45%，达到 80% 门槛 |
+
+独立代码审查未发现 P1/P2 缺陷。列表未显示作品类型的 P3 规格缺口已补齐，并通过中英文组件回归。已检查浏览器窄屏截图与横向溢出断言。
+
+管理端保存 E2E 使用请求拦截，只验证浏览器与 API 的契约。未配置 `YUJIAN_TEST_POSTGRES_URL`，数据库集成测试按既有规则跳过；真实 OIDC、Go API、COS、EdgeOne 与域名联调尚未验证。本轮未执行部署。
