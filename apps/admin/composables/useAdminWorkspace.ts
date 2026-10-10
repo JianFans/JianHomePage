@@ -34,6 +34,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   const publishJob = ref<AdminPublishJob | null>(null)
   const publishOperation = ref<PublishOperation | null>(null)
   const editorText = ref('{}')
+  const savedText = ref(editorText.value)
   const rejectReason = ref('')
   const workflow = ref<WorkflowState>(idleWorkflow())
   const importing = ref(false)
@@ -56,10 +57,11 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   const editorAnalysis = computed(() => analyzeSnapshotText(debouncedEditorText.value))
   const parsedEditor = computed(() => parseSnapshotJSON(debouncedEditorText.value, locale.value))
   const busy = computed(() => importing.value || ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
+  const dirty = computed(() => editorText.value !== savedText.value)
   const canSave = computed(() => Boolean(editorAnalysis.value.snapshot) && !busy.value)
-  const canSubmitReview = computed(() => version.value?.status === 'draft' && !busy.value)
-  const canApprove = computed(() => version.value?.status === 'in_review' && !version.value.reviewApproved && !busy.value)
-  const canPublish = computed(() => version.value?.status === 'in_review' && version.value.reviewApproved === true && !busy.value)
+  const canSubmitReview = computed(() => version.value?.status === 'draft' && !busy.value && !dirty.value)
+  const canApprove = computed(() => version.value?.status === 'in_review' && !version.value.reviewApproved && !busy.value && !dirty.value)
+  const canPublish = computed(() => version.value?.status === 'in_review' && version.value.reviewApproved === true && !busy.value && !dirty.value)
   const canRollback = computed(() => (version.value?.status === 'published' || version.value?.status === 'archived') && !busy.value)
 
   /** 使用最新连接地址和令牌创建一次性 API 客户端。 */
@@ -69,6 +71,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
 
   /** 统一维护异步操作的忙碌、成功和安全错误状态。 */
   async function run<T>(status: WorkflowState['status'], operation: () => Promise<T>, successMessage: string): Promise<T | null> {
+    if (busy.value) return null
     workflow.value = { status, message: '', requestId: '' }
     try {
       const result = await operation()
@@ -81,14 +84,16 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   }
 
   /** 将服务端版本同步到版本标识与 JSON 编辑器。 */
-  function setVersion(next: AdminVersion) {
+  function setVersion(next: AdminVersion, replaceText = true) {
     version.value = next
     versionId.value = next.id
-    editorText.value = JSON.stringify(next.snapshot, null, 2)
+    savedText.value = JSON.stringify(next.snapshot, null, 2)
+    if (replaceText) editorText.value = savedText.value
   }
 
   /** 校验版本 ID 后载入服务端内容版本。 */
   async function loadVersion() {
+    if (busy.value) return
     if (!versionId.value.trim()) {
       workflow.value = workflowError({ message: '请先填写版本 ID' })
       return
@@ -101,6 +106,9 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
    * 直接校验当前编辑器文本，并创建新草稿或乐观更新已有草稿。
    */
   async function saveDraft() {
+    if (busy.value) return
+    const submittedText = editorText.value
+    const currentVersion = version.value
     const currentAnalysis = analyzeSnapshotText(editorText.value)
     const snapshot = currentAnalysis.snapshot as unknown as Record<string, unknown> | null
     if (!snapshot) {
@@ -111,19 +119,20 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
       })
       return
     }
-    if (version.value) {
-      const result = await run('saving', () => api().updateVersion(version.value!.id, version.value!.revision, snapshot), '草稿已保存')
-      if (result) setVersion(result)
+    if (currentVersion) {
+      const result = await run('saving', () => api().updateVersion(currentVersion.id, currentVersion.revision, snapshot), '草稿已保存')
+      if (result) setVersion(result, editorText.value === submittedText)
       return
     }
     const result = await run('saving', () => api().createVersion(snapshot), '草稿已创建')
-    if (result) setVersion(result)
+    if (result) setVersion(result, editorText.value === submittedText)
   }
 
   /**
    * 导入本地快照，并用单调序号保证只有最后一次异步导入可以更新状态。
    */
   async function importSnapshot(file: SnapshotImportFile, locale: AdminLocale = 'zh-CN') {
+    if (['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status)) return
     const sequence = ++importSequence
     importing.value = true
     try {
@@ -149,20 +158,21 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
 
   /** 将当前草稿提交审核，并同步返回的新修订。 */
   async function submitReview() {
-    if (!version.value) return
+    if (!version.value || dirty.value || busy.value) return
     const result = await run('reviewing', () => api().submitReview(version.value!.id, version.value!.revision), '已提交审核')
     if (result) setVersion(result)
   }
 
   /** 批准当前审核版本，并同步审核状态。 */
   async function approveReview() {
-    if (!version.value) return
+    if (!version.value || dirty.value || busy.value) return
     const result = await run('reviewing', () => api().approveReview(version.value!.id, version.value!.revision), '审核已通过')
     if (result) setVersion(result)
   }
 
   /** 校验退回原因后将当前审核版本退回草稿。 */
   async function rejectReview() {
+    if (busy.value || dirty.value) return
     if (!version.value || !rejectReason.value.trim()) {
       workflow.value = workflowError({ message: '请填写退回原因' })
       return
@@ -173,7 +183,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
 
   /** 使用可复用幂等键为当前版本创建发布任务。 */
   async function publish() {
-    if (!version.value) return
+    if (!version.value || dirty.value || busy.value) return
     const current = version.value
     const key = operationKeys.get('publish', current.id)
     const result = await run('publishing', () => api().publish(current.id, key), '发布任务已创建')
@@ -221,6 +231,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     editorAnalysis,
     parsedEditor,
     busy,
+    dirty,
     canSave,
     canSubmitReview,
     canApprove,
