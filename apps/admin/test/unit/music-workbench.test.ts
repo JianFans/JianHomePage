@@ -126,17 +126,64 @@ describe('音乐快照事务', () => {
     expect(applyMusicDraft(text, text, newDraft())).toMatchObject({ text, error: 'invalid-snapshot' })
   })
 
-  it('拒绝重复作品 ID、重复曲目和借用其他作品的曲目 ID', () => {
+  it('拒绝重复作品 ID、同 ID 内容冲突的曲目和借用其他作品的曲目 ID', () => {
     const value = snapshot()
     const text = JSON.stringify(value)
     const duplicate = newDraft(value)
     duplicate.release.id = value.releases[0]!.id
     expect(applyMusicDraft(text, text, duplicate).error).toBe('duplicate-id')
     const draft = createMusicDraft(value, value.releases[0]!.id)!
-    draft.tracks.push(structuredClone(draft.tracks[0]!))
+    draft.tracks.push({ ...structuredClone(draft.tracks[0]!), durationSeconds: 999 })
     expect(applyMusicDraft(text, text, draft).error).toBe('duplicate-id')
     draft.tracks = [structuredClone(value.tracks[1]!)]
     expect(applyMusicDraft(text, text, draft).error).toBe('track-ownership')
+  })
+
+  it('修改标题时保留无关音乐条目的合法重复引用', () => {
+    const value = snapshot()
+    const section = value.homepage.sections.find(item => item.type === 'music')!
+    section.itemIds.push(value.releases[1]!.id)
+    expect(diagnoseContentSnapshot(value)).toEqual([])
+    const text = JSON.stringify(value)
+    const draft = createMusicDraft(value, value.releases[0]!.id)!
+    draft.release.title['zh-CN'] = '修改标题'
+    const result = applyMusicDraft(text, text, draft)
+    expect(result.error).toBeNull()
+    const next = JSON.parse(result.text) as YujianContentSnapshot
+    expect(next.releases[0]!.title['zh-CN']).toBe('修改标题')
+    expect(next.homepage).toEqual(value.homepage)
+    expect(diagnoseContentSnapshot(next)).toEqual([])
+  })
+
+  it('编辑重复引用的曲目时保留顺序且只更新一条记录', () => {
+    const value = snapshot()
+    const extra = { ...structuredClone(value.tracks[0]!), id: 'track_extra' }
+    value.tracks.push(extra)
+    value.releases[0]!.trackIds.push(extra.id, value.tracks[0]!.id)
+    expect(diagnoseContentSnapshot(value)).toEqual([])
+    const text = JSON.stringify(value)
+    const draft = createMusicDraft(value, value.releases[0]!.id)!
+    draft.tracks[2]!.title['zh-CN'] = '重复引用的新标题'
+    const result = applyMusicDraft(text, text, draft)
+    expect(result.error).toBeNull()
+    const next = JSON.parse(result.text) as YujianContentSnapshot
+    expect(next.releases[0]!.trackIds).toEqual(value.releases[0]!.trackIds)
+    expect(next.tracks).toHaveLength(value.tracks.length)
+    expect(next.tracks.find(track => track.id === value.tracks[0]!.id)?.title['zh-CN']).toBe('重复引用的新标题')
+    expect(diagnoseContentSnapshot(next)).toEqual([])
+  })
+
+  it('新增曲目的重复引用只创建一条曲目记录', () => {
+    const value = snapshot()
+    const text = JSON.stringify(value)
+    const draft = newDraft(value)
+    draft.tracks.push(structuredClone(draft.tracks[0]!))
+    const result = applyMusicDraft(text, text, draft)
+    expect(result.error).toBeNull()
+    const next = JSON.parse(result.text) as YujianContentSnapshot
+    expect(next.releases.at(-1)!.trackIds).toEqual([draft.tracks[0]!.id, draft.tracks[0]!.id])
+    expect(next.tracks.filter(track => track.id === draft.tracks[0]!.id)).toHaveLength(1)
+    expect(diagnoseContentSnapshot(next)).toEqual([])
   })
 
   it('拒绝作品改名 ID 和不存在的原作品', () => {

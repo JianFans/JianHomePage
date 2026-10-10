@@ -71,7 +71,13 @@ export function applyMusicDraft(text: string, baseline: string, draft: MusicDraf
   if (original && original.id !== draft.release.id) return fail('immutable-id')
   if (!original && snapshot.releases.some(release => release.id === draft.release.id)) return fail('duplicate-id')
   const trackIds = draft.tracks.map(track => track.id)
-  if (new Set(trackIds).size !== trackIds.length) return fail('duplicate-id')
+  // trackIds 可重复引用同一记录，但不能让同一 ID 的不同字段互相覆盖。
+  const updatedTracks = new Map<string, Track>()
+  for (const track of draft.tracks) {
+    const previous = updatedTracks.get(track.id)
+    if (previous && previous !== track && JSON.stringify(previous) !== JSON.stringify(track)) return fail('duplicate-id')
+    updatedTracks.set(track.id, track)
+  }
   const previousIds = new Set(original?.trackIds ?? [])
   const existingTracks = new Map(snapshot.tracks.map(track => [track.id, track]))
   if (draft.tracks.some(track => track.releaseId !== draft.release.id
@@ -80,11 +86,9 @@ export function applyMusicDraft(text: string, baseline: string, draft: MusicDraf
   const musicSections = snapshot.homepage.sections.filter(section => section.type === 'music')
   const sectionChanges = new Map(draft.sections.map(section => [section.id, section.itemIds]))
   if (sectionChanges.size !== draft.sections.length || sectionChanges.size !== musicSections.length
-    || musicSections.some(section => !sectionChanges.has(section.id))
-    || draft.sections.some(section => new Set(section.itemIds).size !== section.itemIds.length)) return fail('invalid-draft')
+    || musicSections.some(section => !sectionChanges.has(section.id))) return fail('invalid-draft')
 
   const release: Release = { ...draft.release, trackIds: trackIds as Release['trackIds'] }
-  const updatedTracks = new Map(draft.tracks.map(track => [track.id, track]))
   const next: YujianContentSnapshot = {
     ...snapshot,
     releases: original
@@ -93,7 +97,7 @@ export function applyMusicDraft(text: string, baseline: string, draft: MusicDraf
     tracks: [
       ...snapshot.tracks.filter(track => !previousIds.has(track.id) || updatedTracks.has(track.id))
         .map(track => updatedTracks.get(track.id) ?? track),
-      ...draft.tracks.filter(track => !existingTracks.has(track.id)),
+      ...[...updatedTracks.values()].filter(track => !existingTracks.has(track.id)),
     ],
     homepage: {
       ...snapshot.homepage,

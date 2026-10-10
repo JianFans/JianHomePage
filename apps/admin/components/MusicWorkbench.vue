@@ -281,9 +281,10 @@ function visible(section: MusicDraft['sections'][number]): boolean {
             :locale="locale"
           />
           <h3>{{ copy.tracks }}</h3>
+          <!-- 曲目 ID 可以重复；按引用位置标识各组字段。 -->
           <MusicTrackFields
             v-for="(track, index) in draft.tracks"
-            :key="track.id"
+            :key="index"
             v-model="draft.tracks[index]!"
             :locale="locale"
             :audio-assets="audioAssets"
