@@ -204,7 +204,7 @@ function visible(section: MusicDraft['sections'][number]): boolean {
             :size="24"
             aria-hidden="true"
           />
-          <span><strong>{{ release.title[locale] || release.title['zh-CN'] }}</strong><small>{{ release.releaseDate }} · {{ release.trackIds.length }}</small></span>
+          <span><strong>{{ release.title[locale] || release.title['zh-CN'] }}</strong><small>{{ copy[release.kind] }} · {{ release.releaseDate }} · {{ release.trackIds.length }}</small></span>
         </button>
       </nav>
       <div

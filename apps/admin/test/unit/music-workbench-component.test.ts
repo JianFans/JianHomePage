@@ -28,6 +28,14 @@ function mountMusic() {
 }
 
 describe('音乐工作台界面', () => {
+  it('在作品列表按当前语言显示作品类型', async () => {
+    const { wrapper, locale } = mountMusic()
+    expect(wrapper.get('[data-testid="music-release-release_01"] small').text()).toContain('单曲')
+    locale.value = 'en'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="music-release-release_01"] small').text()).toContain('Single')
+  })
+
   it('为本地封面使用 API Origin 预览，不更改快照地址', async () => {
     const { wrapper, editorText } = mountMusic()
     expect(wrapper.get('[data-testid="music-release-release_01"] img').attributes('src')).toMatch(/^http:\/\/127\.0\.0\.1:8080\/media\//)
