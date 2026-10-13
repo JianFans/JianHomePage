@@ -1,0 +1,211 @@
+import type { YujianContentSnapshot } from '@yujian/schema'
+import { flushPromises, mount } from '@vue/test-utils'
+import fixture from '../../../../content/fixtures/homepage.json'
+import HomepageView from '../../components/home/HomepageView.vue'
+import { createAudioPlayerController } from '../../utils/audio-player'
+
+/** Keep each render independent so preview edits cannot leak between mounts. */
+function snapshotFixture(): YujianContentSnapshot {
+  return structuredClone(fixture) as unknown as YujianContentSnapshot
+}
+
+/** Exercise the real controller while replacing only browser media playback. */
+function playerFixture() {
+  return createAudioPlayerController({
+    createAudio: () => ({
+      src: '',
+      preload: '',
+      currentTime: 0,
+      duration: 30,
+      paused: true,
+      play: async () => {},
+      pause: () => {},
+      load: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  })
+}
+
+/** Use a video slide to verify preview permission without changing content policy. */
+function videoSnapshot(autoplay = true) {
+  const snapshot = snapshotFixture()
+  const slide = snapshot.heroSlides[0]!
+  const asset = snapshot.assets.find(item => item.id === slide.assetId)!
+  snapshot.assets.push({ ...asset, id: 'preview-video', kind: 'video', src: '/media/hero.mp4', mimeType: 'video/mp4' })
+  snapshot.heroSlides = [{ ...slide, mediaKind: 'video', assetId: 'preview-video', autoplay }]
+  return snapshot
+}
+
+beforeEach(() => {
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('HomepageView explicit rendering boundary', () => {
+  it('renders all six sections and site identity from the supplied snapshot', () => {
+    const snapshot = snapshotFixture()
+    snapshot.site.brand.en = 'Draft brand'
+    const wrapper = mount(HomepageView, { props: { snapshot, locale: 'en', player: playerFixture() } })
+
+    expect(wrapper.get('h1').text()).toBe('Draft brand')
+    expect(wrapper.get('header').text()).toContain('Draft brand')
+    expect(wrapper.get('footer').text()).toContain('Draft brand')
+    expect(wrapper.findAll('[data-home-section]').map(section => section.attributes('data-home-section')))
+      .toEqual(['hero', 'music', 'video', 'event', 'moment', 'artist'])
+    expect(wrapper.findAll('[data-testid="music-card"]')).toHaveLength(5)
+    expect(wrapper.get('footer').text()).toContain('© 2026')
+  })
+
+  it('emits locale intent and reacts to the locale supplied by its host', async () => {
+    const wrapper = mount(HomepageView, {
+      props: { snapshot: snapshotFixture(), locale: 'zh-CN', player: playerFixture() },
+    })
+
+    await wrapper.get('[aria-label="Switch to English"]').trigger('click')
+    expect(wrapper.emitted('toggleLocale')).toEqual([[]])
+    expect(wrapper.get('h1').text()).toBe('遇健我')
+    await wrapper.setProps({ locale: 'en' })
+    expect(wrapper.get('h1').text()).toBe('Meet Jian')
+  })
+
+  it('routes music preview and active playback state through the supplied controller', async () => {
+    const player = playerFixture()
+    const otherPlayer = playerFixture()
+    const wrapper = mount(HomepageView, {
+      props: { snapshot: snapshotFixture(), locale: 'en', player },
+    })
+    const button = wrapper.findAll('[data-testid="preview-trigger"]')[0]!
+
+    await button.trigger('click')
+    await flushPromises()
+    expect(player.current.value).not.toBeNull()
+    expect(player.status.value).toBe('playing')
+    expect(player.queue.value.length).toBeGreaterThan(1)
+    expect(button.attributes('aria-pressed')).toBe('true')
+    expect(otherPlayer.current.value).toBeNull()
+    await button.trigger('click')
+    expect(player.status.value).toBe('paused')
+    player.close()
+  })
+
+  it('uses snapshot time for hero windows and upcoming events and reacts to replacement', async () => {
+    const snapshot = snapshotFixture()
+    snapshot.generatedAt = '2030-01-01T00:00:00Z'
+    snapshot.heroSlides[0]!.startsAt = '2029-12-01T00:00:00Z'
+    snapshot.heroSlides[0]!.endsAt = '2030-02-01T00:00:00Z'
+    snapshot.heroSlides[1]!.startsAt = '2031-01-01T00:00:00Z'
+    snapshot.heroSlides[2]!.endsAt = '2029-01-01T00:00:00Z'
+    const wrapper = mount(HomepageView, { props: { snapshot, locale: 'en', player: playerFixture() } })
+
+    expect(wrapper.findAll('[data-content-anchor]').map(anchor => anchor.attributes('id')))
+      .toEqual([snapshot.heroSlides[0]!.id])
+    expect(wrapper.find('[data-home-section="event"]').exists()).toBe(false)
+    expect(wrapper.get('footer').text()).toContain('© 2030')
+    await wrapper.setProps({ snapshot: snapshotFixture() })
+    expect(wrapper.find('[data-home-section="event"]').exists()).toBe(true)
+    expect(wrapper.get('footer').text()).toContain('© 2026')
+  })
+
+  it('preserves duplicate section IDs and follows supplied order and enabled state', () => {
+    const snapshot = snapshotFixture()
+    const music = snapshot.homepage.sections.find(section => section.type === 'music')!
+    snapshot.homepage.sections = [music, { ...music }, { ...snapshot.homepage.sections[0]!, enabled: false }]
+    const wrapper = mount(HomepageView, { props: { snapshot, locale: 'en', player: playerFixture() } })
+
+    expect(wrapper.findAll('[data-home-section]').map(section => section.attributes('data-home-section')))
+      .toEqual(['music', 'music'])
+  })
+
+  it.each([
+    [undefined, true, true],
+    [false, true, false],
+    [true, false, false],
+  ])('autoplay permission %s with slide policy %s produces autoplay %s', (permission, policy, expected) => {
+    const wrapper = mount(HomepageView, {
+      props: { snapshot: videoSnapshot(policy), locale: 'en', player: playerFixture(), autoplayEnabled: permission },
+    })
+
+    expect(wrapper.get('video').element.autoplay).toBe(expected)
+    expect(wrapper.find('[aria-label="Turn on sound"]').exists()).toBe(true)
+    if (!expected) expect(wrapper.find('[aria-label="Play video"]').exists()).toBe(true)
+  })
+
+  it('keeps manual video playback available when autoplay is disabled', async () => {
+    const wrapper = mount(HomepageView, {
+      props: { snapshot: videoSnapshot(), locale: 'en', player: playerFixture(), autoplayEnabled: false },
+    })
+    const media = wrapper.get('video').element
+    const play = vi.spyOn(media, 'play').mockImplementation(async () => {
+      Object.defineProperty(media, 'paused', { value: false, configurable: true })
+      await wrapper.get('video').trigger('play')
+    })
+
+    await wrapper.get('[aria-label="Play video"]').trigger('click')
+    await flushPromises()
+    expect(play).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['unmount', 'resolve'],
+    ['unmount', 'reject'],
+    ['replace', 'resolve'],
+    ['replace', 'reject'],
+    ['switch', 'resolve'],
+    ['switch', 'reject'],
+  ])('ignores pending manual playback after %s followed by %s', async (action, outcome) => {
+    const snapshot = videoSnapshot()
+    const slide = snapshot.heroSlides[0]!
+    snapshot.heroSlides.push({ ...slide, id: 'second-video' })
+    const hero = snapshot.homepage.sections.find(section => section.type === 'hero')!
+    hero.itemIds.push('second-video')
+    const errors: unknown[] = []
+    const wrapper = mount(HomepageView, {
+      props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled: false },
+      global: { config: { errorHandler: error => errors.push(error) } },
+    })
+    const media = wrapper.get('video').element
+    let settle!: () => void
+    const pending = new Promise<void>((resolve, reject) => {
+      settle = outcome === 'resolve' ? resolve : () => reject(new Error('playback interrupted'))
+    })
+    vi.spyOn(media, 'play').mockReturnValue(pending)
+
+    await wrapper.get('[aria-label="Play video"]').trigger('click')
+    if (action === 'unmount') wrapper.unmount()
+    else if (action === 'replace') await wrapper.setProps({ snapshot: snapshotFixture() })
+    else await wrapper.get('[aria-label="Next slide"]').trigger('click')
+    Object.defineProperty(media, 'paused', { value: false, configurable: true })
+    settle()
+    await flushPromises()
+
+    expect(errors).toEqual([])
+    if (action === 'switch') expect(wrapper.find('[aria-label="Play video"]').exists()).toBe(true)
+    if (action !== 'unmount') wrapper.unmount()
+  })
+
+  it('keeps a rejected manual playback request paused and retryable', async () => {
+    const errors: unknown[] = []
+    const wrapper = mount(HomepageView, {
+      props: { snapshot: videoSnapshot(), locale: 'en', player: playerFixture(), autoplayEnabled: false },
+      global: { config: { errorHandler: error => errors.push(error) } },
+    })
+    vi.spyOn(wrapper.get('video').element, 'play').mockRejectedValue(new Error('browser denied playback'))
+
+    await wrapper.get('[aria-label="Play video"]').trigger('click')
+    await flushPromises()
+
+    expect(errors).toEqual([])
+    expect(wrapper.find('[aria-label="Play video"]').exists()).toBe(true)
+    expect(wrapper.find('video').exists()).toBe(true)
+    wrapper.unmount()
+  })
+})

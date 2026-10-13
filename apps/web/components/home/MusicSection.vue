@@ -10,7 +10,7 @@ import { computed } from 'vue'
 import type {
   AudioPlayerStatus,
   AudioPlayerTrack,
-} from '../../composables/useAudioPlayer'
+} from '../../utils/audio-player'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
 import FallbackImage from '../ui/FallbackImage.vue'

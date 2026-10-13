@@ -9,7 +9,7 @@ import {
   X,
 } from '@lucide/vue'
 import { computed } from 'vue'
-import type { AudioPlayerController } from '../../composables/useAudioPlayer'
+import type { AudioPlayerController } from '../../utils/audio-player'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
 import FallbackImage from '../ui/FallbackImage.vue'
