@@ -21,7 +21,59 @@ afterEach(() => {
 })
 
 describe('管理端页面', () => {
-  it('保存成功刷新三个已打开工作台基线，409 与忙碌期间保护影像', async () => {
+  it.each([
+    ['draft', false, 'Submit review'],
+    ['in_review', false, 'Approve'],
+    ['in_review', true, 'Publish'],
+    ['published', true, 'Rollback'],
+  ])('现场未应用输入阻止 %s / %s 对应的 %s 操作', async (status, reviewApproved, action) => {
+    localStorage.setItem('yujian:admin-locale', 'en')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ id: 'ver_gate', status, reviewApproved, revision: 1, snapshot: fixtureData, checksum: 'sha256:test' })))
+    const wrapper = await mountSuspended(AdminPage)
+    vi.useFakeTimers()
+    await wrapper.get('.connection-grid input[type="text"]').setValue('ver_gate')
+    await wrapper.get('[data-testid="version-load"]').trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(1000)
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === action)!
+    expect(button.attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="event-open"]').trigger('click')
+    await wrapper.get('[data-testid="event-title-en"]').setValue('Unapplied event')
+    expect(button.attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="event-close"]').trigger('click')
+    await wrapper.get('[data-testid="event-discard"]').trigger('click')
+    expect(button.attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('现场独立输入覆盖全局门禁与离开保护，应用仅改 events 并使其他三表单过期', async () => {
+    const wrapper = await mountSuspended(AdminPage)
+    vi.useFakeTimers()
+    await wrapper.get('.json-editor').setValue(JSON.stringify(fixtureData))
+    await vi.advanceTimersByTimeAsync(1000)
+    await wrapper.get('[data-testid="event-open"]').trigger('click')
+    await wrapper.get('[data-testid="event-title-zh"]').setValue('应用现场')
+    await wrapper.get('[data-testid="preview-open"]').trigger('click')
+    expect(wrapper.find('[data-testid="preview-form-dirty"]').exists()).toBe(true)
+    for (const id of ['snapshot-save', 'snapshot-export']) expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    const leaving = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(leaving)
+    expect(leaving.defaultPrevented).toBe(true)
+    await wrapper.get('[data-testid="video-open"]').trigger('click')
+    await wrapper.get('[data-testid="video-title-zh"]').setValue('影像待处理')
+    await wrapper.get('[data-testid="homepage-open"]').trigger('click')
+    await wrapper.get('[data-testid="homepage-headline-zh"]').setValue('首页待处理')
+    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="release-title-zh"]').setValue('音乐待处理')
+    await wrapper.get('[data-testid="event-apply"]').trigger('click')
+    for (const id of ['video-apply', 'homepage-apply', 'music-apply']) expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    for (const [id, value] of [['video-title-zh', '影像待处理'], ['homepage-headline-zh', '首页待处理'], ['release-title-zh', '音乐待处理']]) expect(wrapper.get(`[data-testid="${id}"]`).element).toHaveProperty('value', value)
+    const value = JSON.parse((wrapper.get('.json-editor').element as HTMLTextAreaElement).value)
+    expect(value).toEqual({ ...fixtureData, events: [{ ...fixtureData.events[0], title: { ...fixtureData.events[0]!.title, 'zh-CN': '应用现场' } }, fixtureData.events[1]] })
+    wrapper.unmount()
+  })
+
+  it('保存成功刷新四个已打开工作台基线，409 与忙碌期间保护影像和现场', async () => {
     const loaded = { id: 'ver_video', status: 'draft', revision: 4, snapshot: fixtureData, checksum: 'sha256:test' }
     const saving = deferred<Response>()
     const fetcher = vi.spyOn(globalThis, 'fetch')
@@ -35,6 +87,7 @@ describe('管理端页面', () => {
     await flushPromises()
     await vi.advanceTimersByTimeAsync(1000)
     await wrapper.get('[data-testid="video-open"]').trigger('click')
+    await wrapper.get('[data-testid="event-open"]').trigger('click')
     await wrapper.get('[data-testid="homepage-open"]').trigger('click')
     await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
     await wrapper.get('[data-testid="video-title-en"]').setValue('Saved video')
@@ -46,7 +99,7 @@ describe('管理端页面', () => {
     await wrapper.get('[data-testid="snapshot-save"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-testid="video-fields"]').attributes('disabled')).toBeDefined()
-    for (const id of ['video-add', 'video-open', 'video-close', 'video-apply']) expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    for (const id of ['video-add', 'video-open', 'video-close', 'video-apply', 'event-add', 'event-open', 'event-close', 'event-apply']) expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
     const saved = JSON.parse(String(fetcher.mock.calls[2]![1]!.body)).snapshot
     expect(new Headers(fetcher.mock.calls[2]![1]!.headers).get('If-Match')).toBe('"4"')
     saving.resolve(new Response(JSON.stringify({ ...loaded, revision: 5, snapshot: saved })))
@@ -54,17 +107,21 @@ describe('管理端页面', () => {
     await wrapper.get('[data-testid="video-title-en"]').setValue('Next video')
     await wrapper.get('[data-testid="homepage-headline-en"]').setValue('Next homepage')
     await wrapper.get('[data-testid="release-title-en"]').setValue('Next music')
-    for (const id of ['video-apply', 'homepage-apply', 'music-apply']) expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="event-title-en"]').setValue('Next event')
+    for (const id of ['video-apply', 'homepage-apply', 'music-apply', 'event-apply']) expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 
-  it('替换请求取消三个工作台待确认意图，失败后保留全部输入', async () => {
+  it('替换请求取消四个工作台待确认意图，失败后保留全部输入', async () => {
     const wrapper = await mountSuspended(AdminPage)
     vi.useFakeTimers()
     await wrapper.get('.json-editor').setValue(JSON.stringify(fixtureData))
     await vi.advanceTimersByTimeAsync(1000)
     await wrapper.get('[data-testid="video-open"]').trigger('click')
     await wrapper.get('[data-testid="video-title-zh"]').setValue('保留影像')
+    await wrapper.get('[data-testid="event-open"]').trigger('click')
+    await wrapper.get('[data-testid="event-title-zh"]').setValue('保留现场')
+    await wrapper.get('[data-testid="event-close"]').trigger('click')
     await wrapper.get('[data-testid="video-close"]').trigger('click')
     await wrapper.get('[data-testid="homepage-open"]').trigger('click')
     await wrapper.get('[data-testid="homepage-headline-zh"]').setValue('保留首页')
@@ -76,10 +133,10 @@ describe('管理端页面', () => {
     Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['{}'], 'bad.txt')] })
     await input.trigger('change')
     await flushPromises()
-    for (const name of ['video', 'homepage', 'music']) expect(wrapper.find(`[data-testid="${name}-discard-prompt"]`).exists()).toBe(false)
+    for (const name of ['video', 'homepage', 'music', 'event']) expect(wrapper.find(`[data-testid="${name}-discard-prompt"]`).exists()).toBe(false)
     await wrapper.get('[data-testid="snapshot-replace-discard"]').trigger('click')
     await flushPromises()
-    for (const [id, value] of [['video-title-zh', '保留影像'], ['homepage-headline-zh', '保留首页'], ['release-title-zh', '保留音乐']]) expect(wrapper.get(`[data-testid="${id}"]`).element).toHaveProperty('value', value)
+    for (const [id, value] of [['video-title-zh', '保留影像'], ['homepage-headline-zh', '保留首页'], ['release-title-zh', '保留音乐'], ['event-title-zh', '保留现场']]) expect(wrapper.get(`[data-testid="${id}"]`).element).toHaveProperty('value', value)
     wrapper.unmount()
   })
   it('影像输入加入全局门禁，其他工作台应用使影像过期，失败替换不丢输入', async () => {
