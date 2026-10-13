@@ -70,6 +70,17 @@ afterEach(() => {
 })
 
 describe('管理工作区', () => {
+  it('暴露同一防抖文本的只读分析基线，输入变化不伪装成当前分析', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    vi.useFakeTimers()
+    expect(workspace.analyzedText).toBe('{}')
+    workspace.editorText = JSON.stringify(fixture)
+    expect(workspace.analyzedText).toBe('{}')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(workspace.analyzedText).toBe(workspace.editorText)
+    expect(workspace.editorAnalysis.snapshot).not.toBeNull()
+    wrapper.unmount()
+  })
   it('标记未保存文本并在保存冲突后保留本地内容和修订号', async () => {
     const { workspace } = await mountWorkspace()
     vi.stubGlobal('fetch', vi.fn()

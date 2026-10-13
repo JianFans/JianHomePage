@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useHead } from '#imports'
 import { Download, FileUp } from '@lucide/vue'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, toRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, toRef, watch } from 'vue'
+import '../assets/css/main.css'
 import AssetWorkbench from '../components/AssetWorkbench.vue'
 import MusicWorkbench from '../components/MusicWorkbench.vue'
 import HomepageWorkbench from '../components/HomepageWorkbench.vue'
+import HomepagePreview from '../components/HomepagePreview.vue'
 import SnapshotInsights from '../components/SnapshotInsights.vue'
 import { useAdminWorkspace } from '../composables/useAdminWorkspace'
 import { useMusicWorkspace } from '../composables/useMusicWorkspace'
@@ -28,6 +30,8 @@ type Replacement = { kind: 'load'; id: string } | { kind: 'import'; file: Snapsh
 const pendingReplacement = shallowRef<Replacement | null>(null)
 const formDirty = computed(() => music.dirty || homepage.dirty)
 const unsaved = computed(() => workspace.dirty || formDirty.value)
+const textRevision = ref(0)
+watch(() => workspace.editorText, /** 同一渲染周期内编辑再撤销也必须重建预览文档。 */ () => { textRevision.value++ }, { flush: 'sync' })
 
 useHead(/** 同步文档语言供辅助技术读取，不改变管理端路由。 */ () => ({
   htmlAttrs: { lang: locale.value },
@@ -404,6 +408,14 @@ onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草
         @close="music.close"
         @keep="music.keepEditing"
         @discard="music.discardPending"
+      />
+
+      <HomepagePreview
+        :snapshot="workspace.editorAnalysis.snapshot"
+        :text-is-current="workspace.editorText === workspace.analyzedText"
+        :text-revision="textRevision"
+        :form-dirty="formDirty"
+        :locale="locale"
       />
 
       <section class="workspace-grid">

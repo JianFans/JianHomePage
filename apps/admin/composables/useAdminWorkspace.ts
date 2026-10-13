@@ -55,6 +55,8 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   })
 
   const editorAnalysis = computed(() => analyzeSnapshotText(debouncedEditorText.value))
+  /** Expose the existing debounce baseline without performing another snapshot analysis. */
+  const analyzedText = computed(() => debouncedEditorText.value)
   const parsedEditor = computed(() => parseSnapshotJSON(debouncedEditorText.value, locale.value))
   const busy = computed(() => importing.value || ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
   const dirty = computed(() => editorText.value !== savedText.value)
@@ -229,6 +231,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     workflow,
     importing,
     editorAnalysis,
+    analyzedText,
     parsedEditor,
     busy,
     dirty,

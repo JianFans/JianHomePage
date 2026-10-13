@@ -3,7 +3,6 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   telemetry: false,
   ssr: false,
-  css: ['~/assets/css/main.css'],
   nitro: {
     externals: {
       inline: [/[/\\]nuxt[/\\]dist[/\\]/],

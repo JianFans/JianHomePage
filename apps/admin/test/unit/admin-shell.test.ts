@@ -21,6 +21,31 @@ afterEach(() => {
 })
 
 describe('管理端页面', () => {
+  it('从唯一 JSON 源更新真实预览，编辑及改回原文也销毁旧文档', async () => {
+    const wrapper = await mountSuspended(AdminPage)
+    vi.useFakeTimers()
+    const text = JSON.stringify(fixtureData)
+    await wrapper.get('.json-editor').setValue(text)
+    await vi.advanceTimersByTimeAsync(250)
+    await wrapper.get('[data-testid="preview-open"]').trigger('click')
+    const first = wrapper.get('iframe').element
+    await wrapper.get('.json-editor').setValue('{')
+    expect(wrapper.find('iframe').exists()).toBe(false)
+    await wrapper.get('.json-editor').setValue(text)
+    expect(wrapper.get('iframe').element).not.toBe(first)
+    const restored = wrapper.get('iframe').element
+    const changed = structuredClone(fixtureData)
+    changed.site.brand.en = 'New draft'
+    await wrapper.get('.json-editor').setValue(JSON.stringify(changed))
+    expect(wrapper.find('iframe').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(wrapper.get('iframe').element).not.toBe(restored)
+    await wrapper.get('[data-testid="homepage-open"]').trigger('click')
+    await wrapper.get('[data-testid="homepage-headline-zh"]').setValue('未应用')
+    expect(wrapper.find('[data-testid="preview-form-dirty"]').exists()).toBe(true)
+    expect(wrapper.find('iframe').exists()).toBe(true)
+    wrapper.unmount()
+  })
   it('首页应用不会覆盖音乐临时输入，并使音乐基线过期', async () => {
     const wrapper = await mountSuspended(AdminPage)
     vi.useFakeTimers()
