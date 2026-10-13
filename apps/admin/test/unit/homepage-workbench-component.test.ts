@@ -66,6 +66,29 @@ describe('首页工作台界面', () => {
     expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_release')
   })
 
+  it('删除待添加宣传位后清空选择并禁用添加，删除其他记录保留有效选择', async () => {
+    const { wrapper, draft } = mountHomepage()
+    const panel = wrapper.get('[data-testid="homepage-section-section_hero"]')
+    const select = panel.get('[data-testid="homepage-item-add-select"]')
+    const add = panel.get('[data-testid="homepage-item-add"]')
+    await select.setValue('hero_studio')
+    await wrapper.get('[data-testid="homepage-hero-hero_release"]').trigger('click')
+    await wrapper.get('[data-testid="homepage-hero-remove"]').trigger('click')
+    expect(select.element).toHaveProperty('value', 'hero_studio')
+    expect(add.attributes('disabled')).toBeUndefined()
+
+    await wrapper.get('[data-testid="homepage-hero-hero_studio"]').trigger('click')
+    await wrapper.get('[data-testid="homepage-hero-remove"]').trigger('click')
+    expect(select.element).toHaveProperty('value', '')
+    expect(add.attributes('disabled')).toBeDefined()
+    expect(draft.value!.sections[0]!.itemIds).toEqual(['hero_stage'])
+
+    await select.setValue('hero_stage')
+    expect(add.attributes('disabled')).toBeUndefined()
+    await add.trigger('click')
+    expect(draft.value!.sections[0]!.itemIds).toEqual(['hero_stage', 'hero_stage'])
+  })
+
   it('筛选媒体与海报选项，切换媒体类型保留旧引用待完整校验', async () => {
     const { wrapper, draft } = mountHomepage()
     const assetOptions = wrapper.get('[data-testid="homepage-hero-asset"]').findAll('option').map(option => option.attributes('value'))

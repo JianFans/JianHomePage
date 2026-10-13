@@ -23,6 +23,10 @@ watch(() => model.value, /** 按位置复用组件时清除上一板块的选择
   selectedId.value = ''
 })
 
+watch(optionIndex, /** 候选记录删除后清除失效选择，其他候选变化保留有效选择。 */ (index) => {
+  if (selectedId.value && !index.has(selectedId.value)) selectedId.value = ''
+})
+
 /** 每次新增一个引用位置，允许重复内容但不超出宣传位和艺人的结构上限。 */
 function addItem() {
   if (!selectedId.value || !optionIndex.value.has(selectedId.value) || model.value.itemIds.length >= maxItems.value) return
@@ -138,7 +142,7 @@ function toggleLabel(link: PlatformLink, event: Event) {
         type="button"
         class="icon-tool"
         data-testid="homepage-item-add"
-        :disabled="!selectedId || model.itemIds.length >= maxItems"
+        :disabled="!optionIndex.has(selectedId) || model.itemIds.length >= maxItems"
         :aria-label="copy.addItem"
         @click="addItem"
       >
