@@ -109,9 +109,11 @@ function updateReducedMotion(event: MediaQueryListEvent) {
 mediaQuery?.addEventListener('change', updateReducedMotion)
 onBeforeUnmount(() => mediaQuery?.removeEventListener('change', updateReducedMotion))
 
-/** Invalidate pending playback even when selecting the same slide again after a roundtrip. */
+/** Stop the previous media before switching; a fresh video reapplies the next slide's autoplay. */
 function goTo(index: number) {
   playbackRequest++
+  if (index === activeIndex.value) return
+  video.value?.pause()
   activeIndex.value = index
   muted.value = true
   paused.value = !props.autoplayEnabled || !props.slides[index]?.autoplay
@@ -124,6 +126,16 @@ function previous() {
 
 function next() {
   goTo((activeIndex.value + 1) % props.slides.length)
+}
+
+/** Queued native events from detached videos must not update the newly selected slide. */
+function updateVideoPlayback(event: Event) {
+  if (event.target === video.value) paused.value = event.type === 'pause'
+}
+
+/** An old video's delayed failure must not replace a valid current video with its poster. */
+function failVideo(event: Event) {
+  if (event.target === video.value) videoFailed.value = true
 }
 
 /** Keep manual playback retryable and ignore completions after a slide changes or unmounts. */
@@ -189,6 +201,7 @@ async function togglePlayback() {
       </picture>
       <video
         v-else-if="videoEnabled && activeAsset"
+        :key="activeIndex"
         ref="video"
         :src="activeAsset.src"
         :poster="posterAsset?.src"
@@ -197,9 +210,9 @@ async function togglePlayback() {
         playsinline
         loop
         preload="metadata"
-        @play="paused = false"
-        @pause="paused = true"
-        @error="videoFailed = true"
+        @play="updateVideoPlayback"
+        @pause="updateVideoPlayback"
+        @error="failVideo"
       />
     </div>
 

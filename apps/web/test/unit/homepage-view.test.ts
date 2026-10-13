@@ -154,6 +154,42 @@ describe('HomepageView explicit rendering boundary', () => {
     wrapper.unmount()
   })
 
+  it.each([false, true])('stops the previous shared-src video and applies autoplay permission %s to the next one', async (autoplayEnabled) => {
+    const snapshot = videoSnapshot()
+    snapshot.heroSlides.push({ ...snapshot.heroSlides[0]!, id: 'second-video' })
+    snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds.push('second-video')
+    const wrapper = mount(HomepageView, {
+      props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled },
+    })
+    const media = wrapper.get('video').element
+    Object.defineProperty(media, 'paused', { value: false, configurable: true })
+    const pause = vi.spyOn(media, 'pause').mockImplementation(() => {
+      Object.defineProperty(media, 'paused', { value: true, configurable: true })
+    })
+
+    await wrapper.get('[aria-label="Next slide"]').trigger('click')
+
+    expect(pause).toHaveBeenCalledOnce()
+    expect(media.paused).toBe(true)
+    const nextMedia = wrapper.get('video').element
+    expect(nextMedia.src).toBe(media.src)
+    expect(nextMedia.autoplay).toBe(autoplayEnabled)
+    if (autoplayEnabled) {
+      // A fresh element lets the browser apply autoplay even when src is unchanged.
+      expect(nextMedia).not.toBe(media)
+      expect(wrapper.find('[aria-label="Pause video"]').exists()).toBe(true)
+      media.dispatchEvent(new Event('pause'))
+      media.dispatchEvent(new Event('error'))
+      await flushPromises()
+      expect(wrapper.find('[aria-label="Pause video"]').exists()).toBe(true)
+      expect(wrapper.find('video').exists()).toBe(true)
+    } else {
+      expect(nextMedia.paused).toBe(true)
+      expect(wrapper.find('[aria-label="Play video"]').exists()).toBe(true)
+    }
+    wrapper.unmount()
+  })
+
   it.each([
     ['unmount', 'resolve'],
     ['unmount', 'reject'],
@@ -226,19 +262,20 @@ describe('HomepageView explicit rendering boundary', () => {
     const pending = new Promise<void>((resolve, reject) => {
       settle = outcome === 'resolve' ? resolve : () => reject(new Error('superseded playback'))
     })
-    vi.spyOn(media, 'play')
-      .mockReturnValueOnce(pending)
-      .mockImplementationOnce(async () => {
-        Object.defineProperty(media, 'paused', { value: false, configurable: true })
-        media.dispatchEvent(new Event('play'))
-      })
+    vi.spyOn(media, 'play').mockReturnValueOnce(pending)
 
     await wrapper.get('[aria-label="Play video"]').trigger('click')
     if (action === 'roundtrip') {
       await wrapper.get('[aria-label="Next slide"]').trigger('click')
       await wrapper.get('[aria-label="Previous slide"]').trigger('click')
-      expect(wrapper.get('video').element).toBe(media)
     }
+    const latestMedia = wrapper.get('video').element
+    const succeed = async () => {
+      Object.defineProperty(latestMedia, 'paused', { value: false, configurable: true })
+      latestMedia.dispatchEvent(new Event('play'))
+    }
+    if (latestMedia === media) vi.mocked(media.play).mockImplementationOnce(succeed)
+    else vi.spyOn(latestMedia, 'play').mockImplementationOnce(succeed)
     await wrapper.get('[aria-label="Play video"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[aria-label="Pause video"]').exists()).toBe(true)
