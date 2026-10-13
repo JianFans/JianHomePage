@@ -23,6 +23,44 @@ describe('首页快照契约', () => {
     expect(validate(fixture), JSON.stringify(validate.errors)).toBe(true)
   })
 
+  it.each([
+    '2030-02-30T20:00:00Z',
+    '2030-02-29T20:00:00+08:00',
+    '1900-02-29T20:00:00Z',
+    '2030-04-31T20:00:00-05:00',
+    '2030-01-02T24:00:00Z',
+    '2030-01-02T24:00:00+08:00',
+    '2030-01-02T20:60:00Z',
+    '2030-01-02T20:00:00',
+  ])('拒绝日期时间自动进位或缺少时区：%s', (dateTime) => {
+    const invalid = structuredClone(fixture)
+    invalid.events[0].dateTime = dateTime
+    invalid.generatedAt = dateTime
+    invalid.heroSlides[0].startsAt = dateTime
+    for (const path of ['/events/0/dateTime', '/generatedAt', '/heroSlides/0/startsAt']) {
+      expect(diagnoseContentSnapshot(invalid)).toContainEqual({ path, source: 'schema', code: 'format' })
+    }
+  })
+
+  it.each([
+    '2032-02-29T20:00:00+08:00',
+    '2000-02-29T23:59:59.123-05:00',
+    '2030-01-02T12:00:00Z',
+    '0096-02-29T00:00:00Z',
+    '0000-02-29T00:00:00Z',
+  ])('接受真实日历日期并保留合法时区原文：%s', (dateTime) => {
+    const value = structuredClone(fixture)
+    value.events[0].dateTime = dateTime
+    expect(validateContentSnapshot(value)).toEqual([])
+    expect(value.events[0].dateTime).toBe(dateTime)
+  })
+
+  it.each(['0096-02-29', '0000-02-29'])('日期校验不把前 100 年映射到 1900 年代：%s', (date) => {
+    const value = structuredClone(fixture)
+    value.releases[0].releaseDate = date
+    expect(validateContentSnapshot(value)).toEqual([])
+  })
+
   it('生成类型保留本地媒体 URL 形式', () => {
     const generated = readFileSync(new URL('../src/generated.ts', import.meta.url), 'utf8')
     expect(generated).toMatch(/export type MediaUrl = HttpsUrl \| `\/media\/\$\{string\}`;/)

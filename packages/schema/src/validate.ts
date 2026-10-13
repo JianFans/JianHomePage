@@ -392,13 +392,17 @@ function isISODate(value: string): boolean {
   const year = Number(match[1])
   const month = Number(match[2])
   const day = Number(match[3])
-  const parsed = new Date(Date.UTC(year, month - 1, day))
+  const parsed = new Date(0)
+  // Date.UTC 将 0–99 年映射到 1900–1999 年；显式设置完整年份保留合法低年份。
+  parsed.setUTCFullYear(year, month - 1, day)
   return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day
 }
 
-/** 校验包含明确时区且能被解析的 RFC 3339 日期时间。 */
+/** 校验明确时区和真实日历时间，拒绝 Date.parse 的日期与 24 点自动进位。 */
 function isRFC3339DateTime(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && isISODate(value.slice(0, 10))
+    && Number(value.slice(11, 13)) < 24
     && !Number.isNaN(Date.parse(value))
 }
 

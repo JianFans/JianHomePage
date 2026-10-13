@@ -33,6 +33,49 @@ func TestValidatorAcceptsFixtureAndGeneratedType(t *testing.T) {
 	}
 }
 
+// TestValidatorEventCalendarDates keeps the server's date contract aligned with
+// the shared editor validator, including leap years and explicit UTC offsets.
+func TestValidatorEventCalendarDates(t *testing.T) {
+	cases := []struct {
+		value string
+		valid bool
+	}{
+		{"2030-02-30T20:00:00Z", false},
+		{"2030-02-29T20:00:00+08:00", false},
+		{"1900-02-29T20:00:00Z", false},
+		{"2030-04-31T20:00:00-05:00", false},
+		{"2030-01-02T24:00:00Z", false},
+		{"2030-01-02T24:00:00+08:00", false},
+		{"2030-01-02T20:60:00Z", false},
+		{"2030-01-02T20:00:00", false},
+		{"2032-02-29T20:00:00+08:00", true},
+		{"2000-02-29T23:59:59.123-05:00", true},
+		{"2030-01-02T12:00:00Z", true},
+		{"0096-02-29T00:00:00Z", true},
+		{"0000-02-29T00:00:00Z", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.value, func(t *testing.T) {
+			var fixture map[string]any
+			if err := json.Unmarshal(readFixture(t), &fixture); err != nil {
+				t.Fatalf("decode fixture: %v", err)
+			}
+			fixture["events"].([]any)[0].(map[string]any)["dateTime"] = tc.value
+			raw, err := json.Marshal(fixture)
+			if err != nil {
+				t.Fatalf("encode fixture: %v", err)
+			}
+			err = NewValidator().Validate(raw)
+			if tc.valid && err != nil {
+				t.Fatalf("valid date rejected: %v", err)
+			}
+			if !tc.valid && (err == nil || !strings.Contains(err.Error(), "/events/0/dateTime")) {
+				t.Fatalf("expected invalid date pointer, got %v", err)
+			}
+		})
+	}
+}
+
 func TestValidatorReportsJSONPointer(t *testing.T) {
 	raw := bytes.Replace(readFixture(t), []byte(`"schemaVersion": "1.0.0"`), []byte(`"schemaVersion": "2.0.0"`), 1)
 	err := NewValidator().Validate(raw)
