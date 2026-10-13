@@ -10,25 +10,27 @@ import {
   VolumeX,
 } from '@lucide/vue'
 import type { CSSProperties } from 'vue'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
 import FallbackImage from '../ui/FallbackImage.vue'
 import IconButton from '../ui/IconButton.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   slides: HeroSlide[]
   assets: Asset[]
   locale: SupportedLocale
   brand: string
   artistName: string
-}>()
+  autoplayEnabled?: boolean
+}>(), { autoplayEnabled: true })
 
 const activeIndex = ref(0)
 const video = ref<HTMLVideoElement | null>(null)
 const muted = ref(true)
-const paused = ref(false)
+const paused = ref(!props.autoplayEnabled || !props.slides[0]?.autoplay)
 const videoFailed = ref(false)
+let playbackRequest = 0
 const mediaQuery = import.meta.client
   ? window.matchMedia('(prefers-reduced-motion: reduce)')
   : null
@@ -36,6 +38,10 @@ const reducedMotion = ref(mediaQuery?.matches ?? false)
 
 const assetsById = computed(() => new Map(props.assets.map(asset => [asset.id, asset])))
 const activeSlide = computed(() => props.slides[activeIndex.value])
+/** Keep the first manual-play action visible when a host or slide disables autoplay. */
+watch(() => [props.autoplayEnabled, activeSlide.value?.autoplay], () => {
+  paused.value = !props.autoplayEnabled || !activeSlide.value?.autoplay
+})
 const activeAsset = computed(() => {
   const slide = activeSlide.value
   return slide ? assetsById.value.get(slide.assetId) : undefined
@@ -103,10 +109,19 @@ function updateReducedMotion(event: MediaQueryListEvent) {
 mediaQuery?.addEventListener('change', updateReducedMotion)
 onBeforeUnmount(() => mediaQuery?.removeEventListener('change', updateReducedMotion))
 
+/** Release the previous download before switching; a fresh video reapplies the next slide's autoplay. */
 function goTo(index: number) {
+  playbackRequest++
+  if (index === activeIndex.value) return
+  const previousVideo = video.value
+  if (previousVideo) {
+    previousVideo.pause()
+    previousVideo.removeAttribute('src')
+    previousVideo.load()
+  }
   activeIndex.value = index
   muted.value = true
-  paused.value = false
+  paused.value = !props.autoplayEnabled || !props.slides[index]?.autoplay
   videoFailed.value = false
 }
 
@@ -118,16 +133,39 @@ function next() {
   goTo((activeIndex.value + 1) % props.slides.length)
 }
 
+/** Queued native events from detached videos must not update the newly selected slide. */
+function updateVideoPlayback(event: Event) {
+  if (event.target === video.value) paused.value = event.type === 'pause'
+}
+
+/** An old video's delayed failure must not replace a valid current video with its poster. */
+function failVideo(event: Event) {
+  if (event.target === video.value) videoFailed.value = true
+}
+
+/** Keep manual playback retryable and ignore completions after a slide changes or unmounts. */
 async function togglePlayback() {
-  if (!video.value) {
+  const activeVideo = video.value
+  const slide = activeSlide.value
+  if (!activeVideo) {
     return
   }
-  if (video.value.paused) {
-    await video.value.play()
-  } else {
-    video.value.pause()
+  const request = ++playbackRequest
+  /** Request order distinguishes repeated visits and manual actions on the same media and slide. */
+  const isCurrent = () => (
+    request === playbackRequest && video.value === activeVideo && activeSlide.value === slide
+  )
+  try {
+    if (activeVideo.paused) {
+      await activeVideo.play()
+    } else {
+      activeVideo.pause()
+    }
+    if (isCurrent()) paused.value = activeVideo.paused
+  } catch {
+    // Browser policy and teardown may reject play without invalidating the media itself.
+    if (isCurrent()) paused.value = true
   }
-  paused.value = video.value.paused
 }
 </script>
 
@@ -168,17 +206,18 @@ async function togglePlayback() {
       </picture>
       <video
         v-else-if="videoEnabled && activeAsset"
+        :key="activeIndex"
         ref="video"
         :src="activeAsset.src"
         :poster="posterAsset?.src"
-        :autoplay="activeSlide.autoplay"
+        :autoplay="autoplayEnabled && activeSlide.autoplay"
         :muted="muted"
         playsinline
         loop
         preload="metadata"
-        @play="paused = false"
-        @pause="paused = true"
-        @error="videoFailed = true"
+        @play="updateVideoPlayback"
+        @pause="updateVideoPlayback"
+        @error="failVideo"
       />
     </div>
 
