@@ -4,9 +4,11 @@ import { Download, FileUp } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, toRef } from 'vue'
 import AssetWorkbench from '../components/AssetWorkbench.vue'
 import MusicWorkbench from '../components/MusicWorkbench.vue'
+import HomepageWorkbench from '../components/HomepageWorkbench.vue'
 import SnapshotInsights from '../components/SnapshotInsights.vue'
 import { useAdminWorkspace } from '../composables/useAdminWorkspace'
 import { useMusicWorkspace } from '../composables/useMusicWorkspace'
+import { useHomepageWorkspace } from '../composables/useHomepageWorkspace'
 import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
 import type { SnapshotImportFile } from '../utils/snapshot-workbench'
 
@@ -17,10 +19,15 @@ const music = reactive(useMusicWorkspace({
   busy: toRef(workspace, 'busy'),
   snapshot: computed(() => workspace.editorAnalysis.snapshot),
 }))
+const homepage = reactive(useHomepageWorkspace({
+  editorText: toRef(workspace, 'editorText'),
+  busy: toRef(workspace, 'busy'),
+}))
 const snapshotFileInput = ref<HTMLInputElement | null>(null)
 type Replacement = { kind: 'load'; id: string } | { kind: 'import'; file: SnapshotImportFile }
 const pendingReplacement = shallowRef<Replacement | null>(null)
-const unsaved = computed(() => workspace.dirty || music.dirty)
+const formDirty = computed(() => music.dirty || homepage.dirty)
+const unsaved = computed(() => workspace.dirty || formDirty.value)
 
 useHead(/** 同步文档语言供辅助技术读取，不改变管理端路由。 */ () => ({
   htmlAttrs: { lang: locale.value },
@@ -131,6 +138,7 @@ async function requestReplacement(action: Replacement) {
   if (workspace.busy) return
   if (unsaved.value) {
     music.keepEditing()
+    homepage.keepEditing()
     pendingReplacement.value = action
     return
   }
@@ -144,7 +152,10 @@ async function replaceSnapshot(action: Replacement) {
     workspace.versionId = action.id
     await workspace.loadVersion()
   } else await workspace.importSnapshot(action.file, locale.value)
-  if (workspace.workflow.status === 'success') music.reset()
+  if (workspace.workflow.status === 'success') {
+    music.reset()
+    homepage.reset()
+  }
 }
 
 /** 在点击载入时冻结目标版本，确认期间的字段变化不会偷偷更换载入对象。 */
@@ -160,12 +171,16 @@ async function discardForReplacement() {
   await replaceSnapshot(action)
 }
 
-/** 禁止保存未应用表单；成功后重新读取作品，避免格式化造成伪过期基线。 */
+/** 禁止保存未应用表单；成功后刷新已打开的干净草稿，避免格式化造成伪过期基线。 */
 async function saveDraft() {
-  if (workspace.busy || music.dirty) return
+  if (workspace.busy || formDirty.value) return
   const selected = music.draft?.release.id
+  const homepageOpen = Boolean(homepage.draft)
   await workspace.saveDraft()
-  if (workspace.workflow.status === 'success' && selected) music.select(selected)
+  if (workspace.workflow.status === 'success') {
+    if (selected) music.select(selected)
+    if (homepageOpen) homepage.open()
+  }
 }
 
 /** 仅当存在真实未保存内容时请求浏览器标准离开确认，不持久化草稿。 */
@@ -187,6 +202,7 @@ async function handleSnapshotFile(event: Event) {
  * 使用未挂载的临时链接下载当前快照，并在浏览器接管后释放对象 URL。
  */
 function downloadSnapshot() {
+  if (workspace.busy || formDirty.value) return
   const exported = workspace.exportSnapshot()
   if (!exported) return
   const url = URL.createObjectURL(new Blob([exported.contents], { type: exported.mimeType }))
@@ -355,6 +371,23 @@ onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草
         </div>
       </div>
 
+      <HomepageWorkbench
+        v-model:draft="homepage.draft"
+        :snapshot="workspace.editorAnalysis.snapshot"
+        :locale="locale"
+        :busy="workspace.busy"
+        :dirty="homepage.dirty"
+        :stale="homepage.stale"
+        :error="homepage.error"
+        :issues="homepage.issues"
+        :pending="Boolean(homepage.pending)"
+        @open="homepage.open"
+        @apply="homepage.apply"
+        @close="homepage.close"
+        @keep="homepage.keepEditing"
+        @discard="homepage.discardPending"
+      />
+
       <MusicWorkbench
         v-model:draft="music.draft"
         :snapshot="workspace.editorAnalysis.snapshot"
@@ -427,7 +460,7 @@ onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草
                   type="button"
                   :aria-label="copy.exportSnapshot"
                   :title="copy.exportSnapshot"
-                  :disabled="!workspace.editorAnalysis.snapshot || music.dirty"
+                  :disabled="workspace.busy || !workspace.editorAnalysis.snapshot || formDirty"
                   data-testid="snapshot-export"
                   @click="downloadSnapshot"
                 >
@@ -467,7 +500,7 @@ onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草
             <button
               class="button button--primary"
               type="button"
-              :disabled="!workspace.canSave || music.dirty"
+              :disabled="!workspace.canSave || formDirty"
               data-testid="snapshot-save"
               @click="saveDraft"
             >
@@ -476,7 +509,7 @@ onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草
             <button
               class="button"
               type="button"
-              :disabled="!workspace.canSubmitReview || music.dirty"
+              :disabled="!workspace.canSubmitReview || formDirty"
               @click="workspace.submitReview"
             >
               {{ copy.submit }}
@@ -538,7 +571,7 @@ onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草
             <button
               class="button"
               type="button"
-              :disabled="!workspace.canApprove || music.dirty"
+              :disabled="!workspace.canApprove || formDirty"
               @click="workspace.approveReview"
             >
               {{ copy.approve }}
@@ -584,7 +617,7 @@ onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草
             <button
               class="button button--primary"
               type="button"
-              :disabled="!workspace.canPublish || music.dirty"
+              :disabled="!workspace.canPublish || formDirty"
               @click="workspace.publish"
             >
               {{ copy.publishAction }}
