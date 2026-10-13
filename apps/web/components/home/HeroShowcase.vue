@@ -30,6 +30,7 @@ const video = ref<HTMLVideoElement | null>(null)
 const muted = ref(true)
 const paused = ref(!props.autoplayEnabled || !props.slides[0]?.autoplay)
 const videoFailed = ref(false)
+let playbackRequest = 0
 const mediaQuery = import.meta.client
   ? window.matchMedia('(prefers-reduced-motion: reduce)')
   : null
@@ -108,8 +109,9 @@ function updateReducedMotion(event: MediaQueryListEvent) {
 mediaQuery?.addEventListener('change', updateReducedMotion)
 onBeforeUnmount(() => mediaQuery?.removeEventListener('change', updateReducedMotion))
 
-/** A newly selected video starts according to its host permission and slide policy. */
+/** Invalidate pending playback even when selecting the same slide again after a roundtrip. */
 function goTo(index: number) {
+  playbackRequest++
   activeIndex.value = index
   muted.value = true
   paused.value = !props.autoplayEnabled || !props.slides[index]?.autoplay
@@ -131,8 +133,11 @@ async function togglePlayback() {
   if (!activeVideo) {
     return
   }
-  /** A reused video element alone cannot distinguish two consecutive slide requests. */
-  const isCurrent = () => video.value === activeVideo && activeSlide.value === slide
+  const request = ++playbackRequest
+  /** Request order distinguishes repeated visits and manual actions on the same media and slide. */
+  const isCurrent = () => (
+    request === playbackRequest && video.value === activeVideo && activeSlide.value === slide
+  )
   try {
     if (activeVideo.paused) {
       await activeVideo.play()

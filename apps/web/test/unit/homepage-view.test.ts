@@ -208,4 +208,67 @@ describe('HomepageView explicit rendering boundary', () => {
     expect(wrapper.find('video').exists()).toBe(true)
     wrapper.unmount()
   })
+
+  it.each([
+    ['roundtrip', 'resolve'],
+    ['roundtrip', 'reject'],
+    ['repeat', 'resolve'],
+    ['repeat', 'reject'],
+  ])('keeps newer playback after %s when the old request ends with %s', async (action, outcome) => {
+    const snapshot = videoSnapshot()
+    snapshot.heroSlides.push({ ...snapshot.heroSlides[0]!, id: 'second-video' })
+    snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds.push('second-video')
+    const wrapper = mount(HomepageView, {
+      props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled: false },
+    })
+    const media = wrapper.get('video').element
+    let settle!: () => void
+    const pending = new Promise<void>((resolve, reject) => {
+      settle = outcome === 'resolve' ? resolve : () => reject(new Error('superseded playback'))
+    })
+    vi.spyOn(media, 'play')
+      .mockReturnValueOnce(pending)
+      .mockImplementationOnce(async () => {
+        Object.defineProperty(media, 'paused', { value: false, configurable: true })
+        media.dispatchEvent(new Event('play'))
+      })
+
+    await wrapper.get('[aria-label="Play video"]').trigger('click')
+    if (action === 'roundtrip') {
+      await wrapper.get('[aria-label="Next slide"]').trigger('click')
+      await wrapper.get('[aria-label="Previous slide"]').trigger('click')
+      expect(wrapper.get('video').element).toBe(media)
+    }
+    await wrapper.get('[aria-label="Play video"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[aria-label="Pause video"]').exists()).toBe(true)
+
+    settle()
+    await flushPromises()
+
+    expect(wrapper.find('[aria-label="Pause video"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('invalidates pending playback on a roundtrip even without a newer manual request', async () => {
+    const snapshot = videoSnapshot()
+    snapshot.heroSlides.push({ ...snapshot.heroSlides[0]!, id: 'second-video' })
+    snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds.push('second-video')
+    const wrapper = mount(HomepageView, {
+      props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled: false },
+    })
+    const media = wrapper.get('video').element
+    let resolve!: () => void
+    vi.spyOn(media, 'play').mockReturnValue(new Promise<void>((done) => { resolve = done }))
+
+    await wrapper.get('[aria-label="Play video"]').trigger('click')
+    await wrapper.get('[aria-label="Next slide"]').trigger('click')
+    await wrapper.get('[aria-label="Previous slide"]').trigger('click')
+    Object.defineProperty(media, 'paused', { value: false, configurable: true })
+    resolve()
+    await flushPromises()
+
+    expect(wrapper.find('[aria-label="Play video"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
 })
