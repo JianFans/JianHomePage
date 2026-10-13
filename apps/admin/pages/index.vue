@@ -8,6 +8,7 @@ import MusicWorkbench from '../components/MusicWorkbench.vue'
 import HomepageWorkbench from '../components/HomepageWorkbench.vue'
 import VideoWorkbench from '../components/VideoWorkbench.vue'
 import EventWorkbench from '../components/EventWorkbench.vue'
+import MomentWorkbench from '../components/MomentWorkbench.vue'
 import HomepagePreview from '../components/HomepagePreview.vue'
 import SnapshotInsights from '../components/SnapshotInsights.vue'
 import { useAdminWorkspace } from '../composables/useAdminWorkspace'
@@ -15,6 +16,7 @@ import { useMusicWorkspace } from '../composables/useMusicWorkspace'
 import { useHomepageWorkspace } from '../composables/useHomepageWorkspace'
 import { useVideoWorkspace } from '../composables/useVideoWorkspace'
 import { useEventWorkspace } from '../composables/useEventWorkspace'
+import { useMomentWorkspace } from '../composables/useMomentWorkspace'
 import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
 import type { SnapshotImportFile } from '../utils/snapshot-workbench'
 
@@ -37,10 +39,14 @@ const event = reactive(useEventWorkspace({
   editorText: toRef(workspace, 'editorText'),
   busy: toRef(workspace, 'busy'),
 }))
+const moment = reactive(useMomentWorkspace({
+  editorText: toRef(workspace, 'editorText'),
+  busy: toRef(workspace, 'busy'),
+}))
 const snapshotFileInput = ref<HTMLInputElement | null>(null)
 type Replacement = { kind: 'load'; id: string } | { kind: 'import'; file: SnapshotImportFile }
 const pendingReplacement = shallowRef<Replacement | null>(null)
-const formDirty = computed(() => music.dirty || homepage.dirty || video.dirty || event.dirty)
+const formDirty = computed(() => music.dirty || homepage.dirty || video.dirty || event.dirty || moment.dirty)
 const unsaved = computed(() => workspace.dirty || formDirty.value)
 const textRevision = ref(0)
 watch(() => workspace.editorText, /** 同一渲染周期内编辑再撤销也必须重建预览文档。 */ () => { textRevision.value++ }, { flush: 'sync' })
@@ -157,6 +163,7 @@ async function requestReplacement(action: Replacement) {
     homepage.keepEditing()
     video.keepEditing()
     event.keepEditing()
+    moment.keepEditing()
     pendingReplacement.value = action
     return
   }
@@ -175,6 +182,7 @@ async function replaceSnapshot(action: Replacement) {
     homepage.reset()
     video.reset()
     event.reset()
+    moment.reset()
   }
 }
 
@@ -198,12 +206,14 @@ async function saveDraft() {
   const homepageOpen = Boolean(homepage.draft)
   const videoOpen = Boolean(video.draft)
   const eventOpen = Boolean(event.draft)
+  const momentOpen = Boolean(moment.draft)
   await workspace.saveDraft()
   if (workspace.workflow.status === 'success') {
     if (selected) music.select(selected)
     if (homepageOpen) homepage.open()
     if (videoOpen) video.open()
     if (eventOpen) event.open()
+    if (momentOpen) moment.open()
   }
 }
 
@@ -461,6 +471,22 @@ onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草
         @close="event.close"
         @keep="event.keepEditing"
         @discard="event.discardPending"
+      />
+      <MomentWorkbench
+        v-model:draft="moment.draft"
+        :snapshot="workspace.editorAnalysis.snapshot"
+        :locale="locale"
+        :busy="workspace.busy"
+        :dirty="moment.dirty"
+        :stale="moment.stale"
+        :error="moment.error"
+        :issues="moment.issues"
+        :pending="Boolean(moment.pending)"
+        @open="moment.open"
+        @apply="moment.apply"
+        @close="moment.close"
+        @keep="moment.keepEditing"
+        @discard="moment.discardPending"
       />
 
       <HomepagePreview
