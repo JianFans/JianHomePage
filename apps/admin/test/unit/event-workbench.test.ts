@@ -44,6 +44,8 @@ describe('现场应用事务', () => {
   it.each([
     ['dateTime', '2030-01-02T20:00:00', '/events/0/dateTime'],
     ['dateTime', '2030-13-02T20:00:00Z', '/events/0/dateTime'],
+    ['dateTime', '2030-02-30T20:00:00Z', '/events/0/dateTime'],
+    ['dateTime', '2030-01-02T24:00:00Z', '/events/0/dateTime'],
     ['status', 'unknown', '/events/0/status'],
     ['detailUrl', '', '/events/0/detailUrl'],
     ['detailUrl', 'javascript:alert(1)', '/events/0/detailUrl'],

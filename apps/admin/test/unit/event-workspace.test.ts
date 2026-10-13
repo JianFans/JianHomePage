@@ -10,6 +10,16 @@ function workspace() {
   return { editorText, busy, event: useEventWorkspace({ editorText, busy }) }
 }
 describe('现场草稿状态', () => {
+  it('同步使用最新有效原文建立基线，不依赖旧解析结果', () => {
+    const { event, editorText } = workspace()
+    const source = structuredClone(fixture)
+    source.events[0]!.title['zh-CN'] = '最新原文'
+    editorText.value = JSON.stringify(source)
+    expect(event.open()).toBe(true)
+    expect(event.draft.value!.events[0]!.title['zh-CN']).toBe('最新原文')
+    expect(event.stale.value).toBe(false)
+  })
+
   it('仅显式应用更新唯一内容源，成功刷新基线', () => {
     const { event, editorText } = workspace()
     const before = editorText.value
