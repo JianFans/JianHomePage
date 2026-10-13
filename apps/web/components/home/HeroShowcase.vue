@@ -109,11 +109,16 @@ function updateReducedMotion(event: MediaQueryListEvent) {
 mediaQuery?.addEventListener('change', updateReducedMotion)
 onBeforeUnmount(() => mediaQuery?.removeEventListener('change', updateReducedMotion))
 
-/** Stop the previous media before switching; a fresh video reapplies the next slide's autoplay. */
+/** Release the previous download before switching; a fresh video reapplies the next slide's autoplay. */
 function goTo(index: number) {
   playbackRequest++
   if (index === activeIndex.value) return
-  video.value?.pause()
+  const previousVideo = video.value
+  if (previousVideo) {
+    previousVideo.pause()
+    previousVideo.removeAttribute('src')
+    previousVideo.load()
+  }
   activeIndex.value = index
   muted.value = true
   paused.value = !props.autoplayEnabled || !props.slides[index]?.autoplay

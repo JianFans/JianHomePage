@@ -162,6 +162,8 @@ describe('HomepageView explicit rendering boundary', () => {
       props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled },
     })
     const media = wrapper.get('video').element
+    const source = media.src
+    const load = vi.spyOn(media, 'load')
     Object.defineProperty(media, 'paused', { value: false, configurable: true })
     const pause = vi.spyOn(media, 'pause').mockImplementation(() => {
       Object.defineProperty(media, 'paused', { value: true, configurable: true })
@@ -171,8 +173,10 @@ describe('HomepageView explicit rendering boundary', () => {
 
     expect(pause).toHaveBeenCalledOnce()
     expect(media.paused).toBe(true)
+    expect(media.getAttribute('src')).toBeNull()
+    expect(load).toHaveBeenCalledOnce()
     const nextMedia = wrapper.get('video').element
-    expect(nextMedia.src).toBe(media.src)
+    expect(nextMedia.src).toBe(source)
     expect(nextMedia.autoplay).toBe(autoplayEnabled)
     if (autoplayEnabled) {
       // A fresh element lets the browser apply autoplay even when src is unchanged.

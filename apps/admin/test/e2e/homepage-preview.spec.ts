@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { createServer, type ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { expect, test, type Frame, type Page, type Request } from '@playwright/test'
 import type { YujianContentSnapshot } from '@yujian/schema'
 import fixture from '../../../../content/fixtures/homepage.json' with { type: 'json' }
@@ -291,6 +293,75 @@ test('相邻宣传位复用视频素材时，切换后原生视频保持禁自�
   await expect(frame.locator('.hero-headline')).toHaveText(value.heroSlides[1]!.headline.en!)
   await expect(frame.getByRole('button', { name: 'Play video', exact: true })).toBeVisible()
   await expect.poll(() => frame.locator('video').evaluate(element => (element as HTMLVideoElement).paused)).toBe(true)
+})
+
+test('切换宣传视频会取消旧视频尚未完成的下载', async ({ page }) => {
+  // A valid free box keeps the native MP4 response in flight for over 50 seconds.
+  // No media methods are mocked, and the server observes actual connection cancellation.
+  const padding = Buffer.alloc(8 * 1024 * 1024)
+  padding.writeUInt32BE(padding.length, 0)
+  padding.write('free', 4)
+  const active = new Map<ServerResponse, string>()
+  const server = createServer((request, response) => {
+    active.set(response, request.url!)
+    response.writeHead(200, {
+      'content-type': 'video/mp4',
+      'content-length': videoBytes.length + padding.length,
+      'cache-control': 'no-store',
+    })
+    response.write(videoBytes)
+    response.write(padding.subarray(0, 8))
+    let offset = 8
+    const timer = setInterval(() => {
+      const end = Math.min(offset + 16 * 1024, padding.length)
+      response.write(padding.subarray(offset, end))
+      offset = end
+      if (offset === padding.length) {
+        clearInterval(timer)
+        response.end()
+      }
+    }, 100)
+    response.on('close', () => { clearInterval(timer); active.delete(response) })
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  try {
+    const port = (server.address() as AddressInfo).port
+    await page.route('**/media/stream-*.mp4', (route) => {
+      const name = route.request().url().includes('stream-old.mp4') ? 'old' : 'new'
+      // The snapshot retains valid HTTPS URLs; only the test redirects to its local slow server.
+      return route.fulfill({ status: 302, headers: { location: `http://127.0.0.1:${port}/${name}` } })
+    })
+    const value = videoSnapshot()
+    const asset = value.assets.find(item => item.id === 'asset_e2e_video')!
+    Object.assign(asset, {
+      src: '/media/stream-old.mp4',
+      byteSize: videoBytes.length + padding.length,
+      checksum: `sha256:${createHash('sha256').update(videoBytes).update(padding).digest('hex')}`,
+    })
+    value.assets.push({ ...asset, id: 'asset_stream_new', src: '/media/stream-new.mp4' })
+    Object.assign(value.heroSlides[1]!, { mediaKind: 'video', assetId: 'asset_stream_new', autoplay: true })
+    await importSnapshot(page, value)
+    await page.getByTestId('preview-open').click()
+    const frame = await previewFrame(page)
+    await frame.getByRole('button', { name: 'Play video', exact: true }).click()
+    await expect.poll(() => frame.locator('video').evaluate(element => (element as HTMLVideoElement).paused)).toBe(false)
+    expect([...active.values()]).toContain('/old')
+
+    await frame.getByTestId('hero-next').click()
+    await expect(frame.locator('.hero-headline')).toHaveText(value.heroSlides[1]!.headline.en!)
+    await expect.poll(() => [...active.values()].includes('/new')).toBe(true)
+    await expect.poll(() => [...active.values()].includes('/old')).toBe(false)
+    expect(await frame.locator('video').evaluate(element => (element as HTMLVideoElement).paused)).toBe(true)
+    await page.getByTestId('preview-close').click()
+    await expect.poll(() => active.size).toBe(0)
+  } finally {
+    // A failed assertion must not leave sockets or stream timers blocking the next test.
+    server.closeAllConnections()
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+  }
 })
 
 test('未就绪文档超时后可重试并完成真实握手', async ({ page }) => {
