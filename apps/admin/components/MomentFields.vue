@@ -73,7 +73,7 @@ function toggleLabel(link: PlatformLink, event: Event) {
     <label v-if="model.target?.kind === 'internal'"><span>{{ copy.content }}</span><select
       v-model="model.target.contentId"
       data-testid="moment-target-content"
-    ><option value="">{{ copy.choose }}</option><option
+    ><option value="">{{ copy.chooseContent }}</option><option
       v-for="content in contentOptions"
       :key="content.id"
       :value="content.id"

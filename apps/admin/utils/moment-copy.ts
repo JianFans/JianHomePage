@@ -6,7 +6,7 @@ export function momentCopy(locale: AdminLocale) {
     ? {
         title: 'Moments', open: 'Open moment editor', reload: 'Reload moments', add: 'Add moment', close: 'Close moment editor',
         asset: 'Image / GIF', choose: 'Choose an asset', caption: 'Caption', customCaption: 'Add caption',
-        target: 'Target', none: 'None', internal: 'Internal', external: 'External', content: 'Content',
+        target: 'Target', none: 'None', internal: 'Internal', external: 'External', content: 'Content', chooseContent: 'Choose content',
         provider: 'Platform', url: 'HTTPS URL', customLabel: 'Custom label', label: 'Link label',
         apply: 'Apply to snapshot', keep: 'Keep editing', discard: 'Discard and continue',
         discardPrompt: 'Discard unapplied moment changes?', empty: 'Load or import a valid snapshot to edit moments.',
@@ -19,7 +19,7 @@ export function momentCopy(locale: AdminLocale) {
     : {
         title: '片段', open: '打开片段表单', reload: '重载片段', add: '新增片段', close: '关闭片段表单',
         asset: '图片 / GIF', choose: '选择素材', caption: '说明', customCaption: '添加说明',
-        target: '跳转目标', none: '无', internal: '内部', external: '外部', content: '内容',
+        target: '跳转目标', none: '无', internal: '内部', external: '外部', content: '内容', chooseContent: '选择内容',
         provider: '平台', url: 'HTTPS 链接', customLabel: '自定义标签', label: '链接标签',
         apply: '应用到快照', keep: '继续编辑', discard: '放弃并继续',
         discardPrompt: '放弃未应用的片段修改？', empty: '载入或导入有效快照后编辑片段。',

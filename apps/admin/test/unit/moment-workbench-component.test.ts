@@ -25,6 +25,18 @@ function mountMoment() {
 }
 
 describe('片段工作台组件', () => {
+  it.each([
+    ['zh-CN', '选择内容', '选择素材'],
+    ['en', 'Choose content', 'Choose an asset'],
+  ] as const)('内部目标使用 %s 内容提示，素材选择保留素材提示', async (language, contentHint, assetHint) => {
+    const { wrapper, locale } = mountMoment()
+    locale.value = language
+    await wrapper.get('[data-testid="moment-open"]').trigger('click')
+    await wrapper.get('[data-testid="moment-target-kind"]').setValue('internal')
+    expect(wrapper.get('[data-testid="moment-target-content"] option[value=""]').text()).toBe(contentHint)
+    expect(wrapper.get('[data-testid="moment-asset"] option[value=""]').text()).toBe(assetHint)
+  })
+
   it('默认首条与只读 ID，切换新增记录保留全部输入及原生编辑区隔离', async () => {
     const { wrapper, moment } = mountMoment()
     expect(wrapper.find('[data-testid="moment-fields"]').exists()).toBe(false)
