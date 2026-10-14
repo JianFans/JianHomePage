@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -17,45 +18,54 @@ var (
 )
 
 type Config struct {
-	Environment         string
-	Address             string
-	DatabaseURL         string
-	OIDCIssuer          string
-	OIDCAudience        string
-	AllowedAdminOrigins []string
-	S3Endpoint          string
-	S3Region            string
-	S3Bucket            string
-	S3AccessKeyID       string
-	S3SecretAccessKey   string
-	S3SessionToken      string
-	S3UsePathStyle      bool
-	MediaPublicBaseURL  string
-	EdgeOneTriggerURL   string
-	EdgeOneStatusURL    string
-	EdgeOneToken        string
-	AllowDevIdentity    bool
-	ShutdownTimeout     time.Duration
+	Environment           string
+	Address               string
+	DatabaseURL           string
+	OIDCIssuer            string
+	OIDCAudience          string
+	AdminOIDCClientID     string
+	AdminOIDCClientSecret string
+	AdminOIDCRedirectURL  string
+	AdminReturnURL        string
+	AdminSessionKey       []byte
+	AllowedAdminOrigins   []string
+	S3Endpoint            string
+	S3Region              string
+	S3Bucket              string
+	S3AccessKeyID         string
+	S3SecretAccessKey     string
+	S3SessionToken        string
+	S3UsePathStyle        bool
+	MediaPublicBaseURL    string
+	EdgeOneTriggerURL     string
+	EdgeOneStatusURL      string
+	EdgeOneToken          string
+	AllowDevIdentity      bool
+	ShutdownTimeout       time.Duration
 }
 
 func Load(getenv func(string) string) (Config, error) {
 	config := Config{
-		Environment:        valueOrDefault(strings.TrimSpace(getenv("APP_ENV")), "development"),
-		Address:            valueOrDefault(strings.TrimSpace(getenv("HTTP_ADDRESS")), "127.0.0.1:8080"),
-		DatabaseURL:        strings.TrimSpace(getenv("DATABASE_URL")),
-		OIDCIssuer:         strings.TrimSpace(getenv("OIDC_ISSUER")),
-		OIDCAudience:       strings.TrimSpace(getenv("OIDC_AUDIENCE")),
-		S3Endpoint:         strings.TrimSpace(getenv("S3_ENDPOINT")),
-		S3Region:           strings.TrimSpace(getenv("S3_REGION")),
-		S3Bucket:           strings.TrimSpace(getenv("S3_BUCKET")),
-		S3AccessKeyID:      strings.TrimSpace(getenv("S3_ACCESS_KEY_ID")),
-		S3SecretAccessKey:  strings.TrimSpace(getenv("S3_SECRET_ACCESS_KEY")),
-		S3SessionToken:     strings.TrimSpace(getenv("S3_SESSION_TOKEN")),
-		MediaPublicBaseURL: strings.TrimSpace(getenv("MEDIA_PUBLIC_BASE_URL")),
-		EdgeOneTriggerURL:  strings.TrimSpace(getenv("EDGEONE_TRIGGER_URL")),
-		EdgeOneStatusURL:   strings.TrimSpace(getenv("EDGEONE_STATUS_URL")),
-		EdgeOneToken:       strings.TrimSpace(getenv("EDGEONE_TOKEN")),
-		ShutdownTimeout:    10 * time.Second,
+		Environment:           valueOrDefault(strings.TrimSpace(getenv("APP_ENV")), "development"),
+		Address:               valueOrDefault(strings.TrimSpace(getenv("HTTP_ADDRESS")), "127.0.0.1:8080"),
+		DatabaseURL:           strings.TrimSpace(getenv("DATABASE_URL")),
+		OIDCIssuer:            strings.TrimSpace(getenv("OIDC_ISSUER")),
+		OIDCAudience:          strings.TrimSpace(getenv("OIDC_AUDIENCE")),
+		AdminOIDCClientID:     strings.TrimSpace(getenv("ADMIN_OIDC_CLIENT_ID")),
+		AdminOIDCClientSecret: strings.TrimSpace(getenv("ADMIN_OIDC_CLIENT_SECRET")),
+		AdminOIDCRedirectURL:  strings.TrimSpace(getenv("ADMIN_OIDC_REDIRECT_URL")),
+		AdminReturnURL:        strings.TrimSpace(getenv("ADMIN_RETURN_URL")),
+		S3Endpoint:            strings.TrimSpace(getenv("S3_ENDPOINT")),
+		S3Region:              strings.TrimSpace(getenv("S3_REGION")),
+		S3Bucket:              strings.TrimSpace(getenv("S3_BUCKET")),
+		S3AccessKeyID:         strings.TrimSpace(getenv("S3_ACCESS_KEY_ID")),
+		S3SecretAccessKey:     strings.TrimSpace(getenv("S3_SECRET_ACCESS_KEY")),
+		S3SessionToken:        strings.TrimSpace(getenv("S3_SESSION_TOKEN")),
+		MediaPublicBaseURL:    strings.TrimSpace(getenv("MEDIA_PUBLIC_BASE_URL")),
+		EdgeOneTriggerURL:     strings.TrimSpace(getenv("EDGEONE_TRIGGER_URL")),
+		EdgeOneStatusURL:      strings.TrimSpace(getenv("EDGEONE_STATUS_URL")),
+		EdgeOneToken:          strings.TrimSpace(getenv("EDGEONE_TOKEN")),
+		ShutdownTimeout:       10 * time.Second,
 	}
 	if !isEnvironment(config.Environment) {
 		return Config{}, fmt.Errorf("%w: APP_ENV must be development, test, or production", ErrInvalidConfig)
@@ -66,6 +76,9 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	config.AllowedAdminOrigins = origins
+	if err := loadAdminLogin(&config, getenv("ADMIN_SESSION_KEY")); err != nil {
+		return Config{}, err
+	}
 
 	if raw := strings.TrimSpace(getenv("ALLOW_DEV_IDENTITY")); raw != "" {
 		allowed, err := strconv.ParseBool(raw)
@@ -125,6 +138,35 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 
 	return config, nil
+}
+
+// loadAdminLogin permits a fully disabled browser login but rejects partial setup.
+func loadAdminLogin(settings *Config, rawKey string) error {
+	if settings.AdminOIDCClientID == "" && settings.AdminOIDCClientSecret == "" && settings.AdminOIDCRedirectURL == "" && settings.AdminReturnURL == "" && rawKey == "" {
+		return nil
+	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(rawKey))
+	if err != nil || len(key) != 32 || settings.AdminOIDCClientID == "" || settings.OIDCIssuer == "" || settings.AdminOIDCRedirectURL == "" || settings.AdminReturnURL == "" {
+		return fmt.Errorf("%w: incomplete admin login configuration or invalid ADMIN_SESSION_KEY", ErrInvalidConfig)
+	}
+	for _, endpoint := range []string{settings.AdminOIDCRedirectURL, settings.AdminReturnURL} {
+		parsed, err := httpurl.ParseAbsolute(endpoint)
+		if err != nil || parsed.Fragment != "" || (settings.Environment == "production" && parsed.Scheme != "https") {
+			return fmt.Errorf("%w: invalid admin login URL", ErrInvalidConfig)
+		}
+	}
+	returned, _ := httpurl.ParseAbsolute(settings.AdminReturnURL)
+	allowed := false
+	for _, origin := range settings.AllowedAdminOrigins {
+		if origin == returned.Scheme+"://"+returned.Host {
+			allowed = true
+		}
+	}
+	if !allowed {
+		return fmt.Errorf("%w: ADMIN_RETURN_URL origin must be allowed", ErrInvalidConfig)
+	}
+	settings.AdminSessionKey = key
+	return nil
 }
 
 func valueOrDefault(value, fallback string) string {

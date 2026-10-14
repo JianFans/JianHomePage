@@ -24,6 +24,9 @@ const defaultMaxBodyBytes int64 = 2 * 1024 * 1024
 
 // ContentService is the application boundary used by the HTTP adapter.
 type ContentService interface {
+	CreateNamedDraft(context.Context, domain.Principal, string, json.RawMessage) (domain.ContentVersion, error)
+	ListVersions(context.Context, domain.Principal, content.ListOptions) (content.ListPage, error)
+	CloneVersion(context.Context, domain.Principal, string, string) (domain.ContentVersion, error)
 	CreateDraft(context.Context, domain.Principal, json.RawMessage) (domain.ContentVersion, error)
 	GetVersion(context.Context, domain.Principal, string) (domain.ContentVersion, error)
 	UpdateDraft(context.Context, domain.Principal, string, int64, json.RawMessage) (domain.ContentVersion, error)
@@ -57,6 +60,7 @@ type RouterOptions struct {
 	MaxBodyBytes   int64
 	RequestID      func(*http.Request) string
 	LocalUploads   http.Handler
+	Sessions       *auth.Sessions
 }
 
 type Handler struct {
@@ -67,6 +71,11 @@ type Handler struct {
 }
 
 type versionWrite struct {
+	Snapshot json.RawMessage `json:"snapshot"`
+}
+
+type versionCreate struct {
+	Name     string          `json:"name,omitempty"`
 	Snapshot json.RawMessage `json:"snapshot"`
 }
 
@@ -98,14 +107,16 @@ type errorResponse struct {
 }
 
 type versionResponse struct {
-	ID             string               `json:"id"`
-	Status         domain.ContentStatus `json:"status"`
-	Revision       int64                `json:"revision"`
-	Snapshot       json.RawMessage      `json:"snapshot"`
-	Checksum       string               `json:"checksum"`
-	ReviewApproved bool                 `json:"reviewApproved,omitempty"`
-	CreatedAt      time.Time            `json:"createdAt,omitempty"`
-	UpdatedAt      time.Time            `json:"updatedAt,omitempty"`
+	ID              string               `json:"id"`
+	Name            string               `json:"name,omitempty"`
+	SourceVersionID string               `json:"sourceVersionId,omitempty"`
+	Status          domain.ContentStatus `json:"status"`
+	Revision        int64                `json:"revision"`
+	Snapshot        json.RawMessage      `json:"snapshot"`
+	Checksum        string               `json:"checksum"`
+	ReviewApproved  bool                 `json:"reviewApproved,omitempty"`
+	CreatedAt       time.Time            `json:"createdAt,omitempty"`
+	UpdatedAt       time.Time            `json:"updatedAt,omitempty"`
 }
 
 type assetResponse struct {
@@ -162,6 +173,8 @@ func NewRouter(options RouterOptions) http.Handler {
 		api.Handle(pattern, middleware.Require(permission, endpoint))
 	}
 	register("POST /api/v1/versions", auth.PermissionEditDraft, handler.createVersion)
+	register("GET /api/v1/versions", auth.PermissionReadContent, handler.listVersions)
+	register("POST /api/v1/versions/{versionId}/clone", auth.PermissionEditDraft, handler.cloneVersion)
 	api.Handle("GET /api/v1/versions/{versionId}", http.HandlerFunc(handler.getVersion))
 	register("PUT /api/v1/versions/{versionId}", auth.PermissionEditDraft, handler.updateVersion)
 	register("POST /api/v1/versions/{versionId}/review", auth.PermissionSubmitReview, handler.submitReview)
@@ -177,6 +190,11 @@ func NewRouter(options RouterOptions) http.Handler {
 	register("POST /api/v1/rollbacks", auth.PermissionRollback, handler.createRollback)
 
 	root := http.NewServeMux()
+	sessions := options.Sessions
+	if sessions == nil {
+		sessions, _ = auth.NewSessions(auth.SessionOptions{})
+	}
+	root.Handle("/api/v1/auth/", sessions)
 	root.HandleFunc("GET /healthz", healthHandler)
 	if options.LocalUploads != nil {
 		root.Handle("/local-upload/", options.LocalUploads)
@@ -216,7 +234,7 @@ func requestIDMiddleware(next http.Handler, generator func(*http.Request) string
 }
 
 func (handler *Handler) createVersion(writer http.ResponseWriter, request *http.Request) {
-	var input versionWrite
+	var input versionCreate
 	if !decodeJSON(writer, request, &input) {
 		return
 	}
@@ -227,7 +245,7 @@ func (handler *Handler) createVersion(writer http.ResponseWriter, request *http.
 		}
 		return
 	}
-	version, err := handler.content.CreateDraft(request.Context(), actor, input.Snapshot)
+	version, err := handler.content.CreateNamedDraft(request.Context(), actor, input.Name, input.Snapshot)
 	if err != nil {
 		writeDomainError(writer, request, err)
 		return
@@ -600,6 +618,7 @@ func writeVersion(writer http.ResponseWriter, status int, version domain.Content
 	writer.Header().Set("ETag", strconv.Quote(strconv.FormatInt(version.Revision, 10)))
 	writeJSON(writer, status, versionResponse{
 		ID: version.ID, Status: version.Status, Revision: version.Revision, Snapshot: version.Snapshot,
+		Name: version.Name, SourceVersionID: version.SourceVersionID,
 		Checksum: version.Checksum, ReviewApproved: version.ReviewApproved, CreatedAt: version.CreatedAt, UpdatedAt: version.UpdatedAt,
 	})
 }

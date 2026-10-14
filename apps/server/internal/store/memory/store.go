@@ -53,7 +53,17 @@ func (repository *ContentRepository) WithinTransaction(ctx context.Context, run 
 	defer repository.state.mu.Unlock()
 	tx := *repository
 	tx.locked = true
-	return run(&tx)
+	previous := make(map[string]domain.ContentVersion, len(repository.state.versions))
+	for id, version := range repository.state.versions {
+		previous[id] = cloneVersion(version)
+	}
+	auditCount := len(repository.state.audits)
+	if err := run(&tx); err != nil {
+		repository.state.versions = previous
+		repository.state.audits = repository.state.audits[:auditCount]
+		return err
+	}
+	return nil
 }
 
 func (repository *ContentRepository) CreateVersion(_ context.Context, version domain.ContentVersion) error {

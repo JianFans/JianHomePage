@@ -64,16 +64,18 @@ func CanTransition(from, to ContentStatus, reviewApproved bool) bool {
 }
 
 type ContentVersion struct {
-	ID             string
-	Status         ContentStatus
-	Revision       int64
-	Snapshot       json.RawMessage
-	Checksum       string
-	ReviewApproved bool
-	CreatedBy      string
-	UpdatedBy      string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID              string
+	Name            string
+	SourceVersionID string
+	Status          ContentStatus
+	Revision        int64
+	Snapshot        json.RawMessage
+	Checksum        string
+	ReviewApproved  bool
+	CreatedBy       string
+	UpdatedBy       string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type AssetStatus string

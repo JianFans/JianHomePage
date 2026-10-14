@@ -18,6 +18,11 @@ type memoryStore struct {
 	audits   []domain.AuditEntry
 }
 
+// ListVersions satisfies the repository boundary for tests unrelated to paging.
+func (store *memoryStore) ListVersions(context.Context, ListQuery) ([]VersionSummary, error) {
+	return nil, nil
+}
+
 func newMemoryStore() *memoryStore {
 	return &memoryStore{versions: make(map[string]domain.ContentVersion)}
 }

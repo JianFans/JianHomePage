@@ -9,10 +9,11 @@ import (
 type Role = domain.Role
 
 const (
-	RoleEditor    = domain.RoleEditor
-	RoleReviewer  = domain.RoleReviewer
-	RolePublisher = domain.RolePublisher
-	RoleAdmin     = domain.RoleAdmin
+	PermissionReadContent Permission = "read_content"
+	RoleEditor                       = domain.RoleEditor
+	RoleReviewer                     = domain.RoleReviewer
+	RolePublisher                    = domain.RolePublisher
+	RoleAdmin                        = domain.RoleAdmin
 )
 
 type Permission string
@@ -30,16 +31,19 @@ const (
 
 var permissionsByRole = map[Role]map[Permission]struct{}{
 	RoleEditor: permissionSet(
+		PermissionReadContent,
 		PermissionEditDraft,
 		PermissionSubmitReview,
 		PermissionCreateAsset,
 	),
-	RoleReviewer: permissionSet(PermissionReview),
+	RoleReviewer: permissionSet(PermissionReview, PermissionReadContent),
 	RolePublisher: permissionSet(
+		PermissionReadContent,
 		PermissionPublish,
 		PermissionRollback,
 	),
 	RoleAdmin: permissionSet(
+		PermissionReadContent,
 		PermissionEditDraft,
 		PermissionSubmitReview,
 		PermissionReview,

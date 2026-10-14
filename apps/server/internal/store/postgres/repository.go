@@ -70,17 +70,17 @@ func (repository *ContentRepository) WithinTransaction(ctx context.Context, run 
 func (repository *ContentRepository) CreateVersion(ctx context.Context, version domain.ContentVersion) error {
 	_, err := repository.exec.ExecContext(ctx, `
 INSERT INTO content_versions
-  (id, status, revision, snapshot, checksum, review_approved, created_by, updated_by, created_at, updated_at)
-VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10)`,
+  (id, status, revision, snapshot, checksum, review_approved, created_by, updated_by, created_at, updated_at, name, source_version_id)
+VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, NULLIF($12,''))`,
 		version.ID, version.Status, version.Revision, []byte(version.Snapshot), version.Checksum,
-		version.ReviewApproved, version.CreatedBy, version.UpdatedBy, version.CreatedAt, version.UpdatedAt)
+		version.ReviewApproved, version.CreatedBy, version.UpdatedBy, version.CreatedAt, version.UpdatedAt, version.Name, version.SourceVersionID)
 	return err
 }
 
 func (repository *ContentRepository) GetVersion(ctx context.Context, id string) (domain.ContentVersion, error) {
 	return scanVersion(repository.exec.QueryRowContext(ctx, `
 SELECT id, status, revision, snapshot, checksum, review_approved,
-       created_by, updated_by, created_at, updated_at
+       created_by, updated_by, created_at, updated_at, COALESCE(NULLIF(name,''),id), COALESCE(source_version_id,'')
 FROM content_versions WHERE id = $1`, id))
 }
 
@@ -303,7 +303,7 @@ func (repository *PublishRepository) WithinTransaction(ctx context.Context, run 
 func (repository *PublishRepository) GetVersion(ctx context.Context, id string) (domain.ContentVersion, error) {
 	return scanVersion(repository.exec.QueryRowContext(ctx, `
 SELECT id, status, revision, snapshot, checksum, review_approved,
-       created_by, updated_by, created_at, updated_at
+       created_by, updated_by, created_at, updated_at, COALESCE(NULLIF(name,''),id), COALESCE(source_version_id,'')
 FROM content_versions WHERE id = $1`, id))
 }
 
@@ -445,7 +445,7 @@ func compareAndSwapResult(ctx context.Context, exec Executor, result ExecResult,
 	if affected > 0 {
 		return nil
 	}
-	_, err = scanVersion(exec.QueryRowContext(ctx, `SELECT id, status, revision, snapshot, checksum, review_approved, created_by, updated_by, created_at, updated_at FROM content_versions WHERE id = $1`, id))
+	_, err = scanVersion(exec.QueryRowContext(ctx, `SELECT id, status, revision, snapshot, checksum, review_approved, created_by, updated_by, created_at, updated_at, COALESCE(NULLIF(name,''),id), COALESCE(source_version_id,'') FROM content_versions WHERE id = $1`, id))
 	if errors.Is(err, domain.ErrNotFound) {
 		return domain.ErrNotFound
 	}
@@ -460,7 +460,7 @@ func scanVersion(row Row) (domain.ContentVersion, error) {
 	var status string
 	var snapshot []byte
 	err := row.Scan(&version.ID, &status, &version.Revision, &snapshot, &version.Checksum,
-		&version.ReviewApproved, &version.CreatedBy, &version.UpdatedBy, &version.CreatedAt, &version.UpdatedAt)
+		&version.ReviewApproved, &version.CreatedBy, &version.UpdatedBy, &version.CreatedAt, &version.UpdatedAt, &version.Name, &version.SourceVersionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ContentVersion{}, domain.ErrNotFound
 	}

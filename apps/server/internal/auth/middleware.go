@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -14,11 +15,13 @@ type MiddlewareOptions struct {
 	Environment      string
 	AllowDevIdentity bool
 	IdentityProvider ports.IdentityProvider
+	Sessions         *Sessions
 }
 
 type Middleware struct {
 	allowDevIdentity bool
 	identityProvider ports.IdentityProvider
+	sessions         *Sessions
 }
 
 func NewMiddleware(options MiddlewareOptions) (*Middleware, error) {
@@ -28,6 +31,7 @@ func NewMiddleware(options MiddlewareOptions) (*Middleware, error) {
 	return &Middleware{
 		allowDevIdentity: options.AllowDevIdentity,
 		identityProvider: options.IdentityProvider,
+		sessions:         options.Sessions,
 	}, nil
 }
 
@@ -35,6 +39,10 @@ func (middleware *Middleware) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, err := middleware.authenticate(request)
 		if err != nil {
+			if errors.Is(err, errCSRF) {
+				writeAuthError(writer, request, http.StatusForbidden, "forbidden", "Request verification failed.")
+				return
+			}
 			writeAuthError(writer, request, http.StatusUnauthorized, "unauthorized", "Authentication required.")
 			return
 		}
@@ -61,6 +69,11 @@ func (middleware *Middleware) Require(permission Permission, next http.Handler) 
 }
 
 func (middleware *Middleware) authenticate(request *http.Request) (domain.Principal, error) {
+	if middleware.sessions != nil && request.Header.Get("Authorization") == "" {
+		if _, err := request.Cookie(sessionCookieName); err == nil {
+			return middleware.sessions.authenticateCookie(request)
+		}
+	}
 	if middleware.allowDevIdentity {
 		if subject := strings.TrimSpace(request.Header.Get("X-Dev-Subject")); subject != "" {
 			roles, err := parseRoleHeader(request.Header.Get("X-Dev-Roles"))

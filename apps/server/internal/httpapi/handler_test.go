@@ -12,17 +12,45 @@ import (
 
 	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/auth"
+	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/ports"
 )
 
 type contentServiceStub struct {
-	createFn  func(context.Context, domain.Principal, json.RawMessage) (domain.ContentVersion, error)
-	getFn     func(context.Context, domain.Principal, string) (domain.ContentVersion, error)
-	updateFn  func(context.Context, domain.Principal, string, int64, json.RawMessage) (domain.ContentVersion, error)
-	submitFn  func(context.Context, domain.Principal, string, int64) (domain.ContentVersion, error)
-	approveFn func(context.Context, domain.Principal, string, int64) (domain.ContentVersion, error)
-	rejectFn  func(context.Context, domain.Principal, string, int64, string) (domain.ContentVersion, error)
+	listFn        func(context.Context, domain.Principal, content.ListOptions) (content.ListPage, error)
+	cloneFn       func(context.Context, domain.Principal, string, string) (domain.ContentVersion, error)
+	namedCreateFn func(context.Context, domain.Principal, string, json.RawMessage) (domain.ContentVersion, error)
+	createFn      func(context.Context, domain.Principal, json.RawMessage) (domain.ContentVersion, error)
+	getFn         func(context.Context, domain.Principal, string) (domain.ContentVersion, error)
+	updateFn      func(context.Context, domain.Principal, string, int64, json.RawMessage) (domain.ContentVersion, error)
+	submitFn      func(context.Context, domain.Principal, string, int64) (domain.ContentVersion, error)
+	approveFn     func(context.Context, domain.Principal, string, int64) (domain.ContentVersion, error)
+	rejectFn      func(context.Context, domain.Principal, string, int64, string) (domain.ContentVersion, error)
+}
+
+// ListVersions forwards the authenticated library query to the test callback.
+func (stub *contentServiceStub) ListVersions(ctx context.Context, actor domain.Principal, options content.ListOptions) (content.ListPage, error) {
+	if stub.listFn == nil {
+		return content.ListPage{Items: []content.VersionSummary{}}, nil
+	}
+	return stub.listFn(ctx, actor, options)
+}
+
+// CloneVersion forwards source identity and display name without client snapshots.
+func (stub *contentServiceStub) CloneVersion(ctx context.Context, actor domain.Principal, id, name string) (domain.ContentVersion, error) {
+	if stub.cloneFn == nil {
+		return domain.ContentVersion{}, nil
+	}
+	return stub.cloneFn(ctx, actor, id, name)
+}
+
+// CreateNamedDraft retains legacy create callbacks for snapshot-only route tests.
+func (stub *contentServiceStub) CreateNamedDraft(ctx context.Context, actor domain.Principal, name string, snapshot json.RawMessage) (domain.ContentVersion, error) {
+	if stub.namedCreateFn != nil {
+		return stub.namedCreateFn(ctx, actor, name, snapshot)
+	}
+	return stub.CreateDraft(ctx, actor, snapshot)
 }
 
 func (stub *contentServiceStub) CreateDraft(ctx context.Context, actor domain.Principal, snapshot json.RawMessage) (domain.ContentVersion, error) {

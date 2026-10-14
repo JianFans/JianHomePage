@@ -3,12 +3,168 @@
   "info": {
     "title": "遇健我管理 API",
     "version": "1.0.0",
-    "description": "内容草稿、素材、审核、发布与回滚接口。"
+    "description": "内容草稿、素材、审核、发布与回滚接口。管理操作接受 Bearer JWT 或 HttpOnly 会话 Cookie；Cookie 写操作必须携带精确允许的 Origin 和 X-CSRF-Token。"
   },
   "servers": [
     { "url": "https://api.yujian.me" }
   ],
   "paths": {
+    "/api/v1/auth/session": {
+      "get": {
+        "operationId": "getSession",
+        "responses": {
+          "200": {
+            "description": "当前浏览器会话，不缓存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSession"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "get": {
+        "operationId": "startLogin",
+        "description": "生成短期加密 state/nonce/PKCE Cookie，并跳转至 OIDC 托管登录页。",
+        "responses": {
+          "302": {
+            "description": "跳转至配置的身份提供商"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/callback": {
+      "get": {
+        "operationId": "completeLogin",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "校验 ID token 并设置不透明会话 Cookie，跳转至固定管理端 URL"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "撤销服务端会话并清除 Cookie"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/versions/{versionId}/clone": {
+      "post": {
+        "operationId": "cloneVersion",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "description": "editor 或 admin 在事务内复制服务端源版本为独立 draft，revision 为 1，无审批状态。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VersionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloneVersionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/VersionResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "operationId": "getHealth",
@@ -25,25 +181,104 @@
     "/api/v1/versions": {
       "post": {
         "operationId": "createVersion",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/VersionWrite" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCreate"
+              }
+            }
           }
         },
         "responses": {
-          "201": { "$ref": "#/components/responses/VersionResponse" },
-          "400": { "$ref": "#/components/responses/ErrorResponse" },
-          "401": { "$ref": "#/components/responses/ErrorResponse" },
-          "403": { "$ref": "#/components/responses/ErrorResponse" }
+          "201": {
+            "$ref": "#/components/responses/VersionResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listVersions",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
+        "description": "所有管理角色可读。按 createdAt 和 ID 倒序稳定分页，仅返回版本摘要。",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "版本摘要列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
         }
       }
     },
     "/api/v1/versions/{versionId}": {
       "get": {
         "operationId": "getVersion",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{ "$ref": "#/components/parameters/VersionId" }],
         "responses": {
           "200": { "$ref": "#/components/responses/VersionResponse" },
@@ -52,7 +287,14 @@
       },
       "put": {
         "operationId": "updateVersion",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           { "$ref": "#/components/parameters/VersionId" },
           {
@@ -78,7 +320,14 @@
     "/api/v1/versions/{versionId}/review": {
       "post": {
         "operationId": "submitReview",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{ "$ref": "#/components/parameters/VersionId" }],
         "requestBody": { "$ref": "#/components/requestBodies/RevisionRequest" },
         "responses": { "200": { "$ref": "#/components/responses/VersionResponse" } }
@@ -87,7 +336,14 @@
     "/api/v1/versions/{versionId}/approve": {
       "post": {
         "operationId": "approveReview",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{ "$ref": "#/components/parameters/VersionId" }],
         "requestBody": { "$ref": "#/components/requestBodies/RevisionRequest" },
         "responses": { "200": { "$ref": "#/components/responses/VersionResponse" } }
@@ -96,7 +352,14 @@
     "/api/v1/versions/{versionId}/reject": {
       "post": {
         "operationId": "rejectReview",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{ "$ref": "#/components/parameters/VersionId" }],
         "requestBody": {
           "required": true,
@@ -110,7 +373,14 @@
     "/api/v1/assets": {
       "get": {
         "operationId": "listAssets",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "status",
@@ -144,7 +414,14 @@
     "/api/v1/assets/uploads": {
       "post": {
         "operationId": "createAssetUpload",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -164,7 +441,14 @@
     "/api/v1/assets/{assetId}/complete": {
       "post": {
         "operationId": "completeAssetUpload",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{ "$ref": "#/components/parameters/AssetId" }],
         "responses": {
           "200": {
@@ -179,7 +463,14 @@
     "/api/v1/assets/{assetId}": {
       "delete": {
         "operationId": "deleteAsset",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{ "$ref": "#/components/parameters/AssetId" }],
         "responses": { "204": { "description": "素材已删除" } }
       }
@@ -187,7 +478,14 @@
     "/api/v1/publishes": {
       "post": {
         "operationId": "createPublish",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{
           "name": "Idempotency-Key",
           "in": "header",
@@ -213,7 +511,14 @@
     "/api/v1/publishes/{publishId}": {
       "get": {
         "operationId": "getPublish",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{ "$ref": "#/components/parameters/PublishId" }],
         "responses": {
           "200": {
@@ -228,7 +533,14 @@
     "/api/v1/publishes/{publishId}/refresh": {
       "post": {
         "operationId": "refreshPublish",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{ "$ref": "#/components/parameters/PublishId" }],
         "responses": {
           "200": {
@@ -243,7 +555,14 @@
     "/api/v1/rollbacks": {
       "post": {
         "operationId": "createRollback",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ],
         "parameters": [{
           "name": "Idempotency-Key",
           "in": "header",
@@ -269,7 +588,17 @@
   },
   "components": {
     "securitySchemes": {
-      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "yujian_session",
+        "description": "不透明 HttpOnly、SameSite=Lax、生产 Secure Cookie；写操作另需 Origin 和 X-CSRF-Token。"
+      }
     },
     "parameters": {
       "VersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string" } },
@@ -300,6 +629,154 @@
       }
     },
     "schemas": {
+      "AdminPrincipal": {
+        "type": "object",
+        "required": [
+          "subject",
+          "roles"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "editor",
+                "reviewer",
+                "publisher",
+                "admin"
+              ]
+            }
+          }
+        }
+      },
+      "AdminSession": {
+        "type": "object",
+        "required": [
+          "authenticated",
+          "loginAvailable"
+        ],
+        "properties": {
+          "authenticated": {
+            "type": "boolean"
+          },
+          "loginAvailable": {
+            "type": "boolean"
+          },
+          "principal": {
+            "$ref": "#/components/schemas/AdminPrincipal"
+          },
+          "csrfToken": {
+            "type": "string",
+            "description": "仅已认证时返回，Cookie 写操作必须作为 X-CSRF-Token 发送。"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "authenticated": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "principal",
+                "csrfToken",
+                "expiresAt"
+              ]
+            }
+          }
+        ]
+      },
+      "VersionSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "revision",
+          "checksum",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "in_review",
+              "publishing",
+              "published",
+              "archived"
+            ]
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "checksum": {
+            "type": "string"
+          },
+          "reviewApproved": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "可选显示名称；省略或为空时回退版本 ID。"
+          },
+          "sourceVersionId": {
+            "type": "string"
+          }
+        },
+        "description": "只含元数据，不包含 snapshot。"
+      },
+      "VersionList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionSummary"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        }
+      },
+      "CloneVersionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "可选显示名称；省略或为空时回退版本 ID。"
+          }
+        }
+      },
       "Health": {
         "type": "object",
         "required": ["status"],
@@ -309,7 +786,27 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["snapshot"],
-        "properties": { "snapshot": { "type": "object", "additionalProperties": true } }
+        "properties": {
+          "snapshot": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "VersionCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "snapshot"
+        ],
+        "properties": {
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "可选显示名称；省略或为空时回退版本 ID。"
+          }
+        }
       },
       "RevisionRequest": {
         "type": "object",
@@ -328,14 +825,49 @@
       },
       "ContentVersion": {
         "type": "object",
-        "required": ["id", "status", "revision", "snapshot", "checksum"],
+        "required": [
+          "id",
+          "status",
+          "revision",
+          "snapshot",
+          "checksum"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "status": { "enum": ["draft", "in_review", "publishing", "published", "archived"] },
-          "revision": { "type": "integer" },
-          "snapshot": { "type": "object", "additionalProperties": true },
-          "checksum": { "type": "string" },
-          "reviewApproved": { "type": "boolean" }
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "in_review",
+              "publishing",
+              "published",
+              "archived"
+            ]
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "checksum": {
+            "type": "string"
+          },
+          "reviewApproved": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "可选显示名称；省略或为空时回退版本 ID。"
+          },
+          "sourceVersionId": {
+            "type": "string"
+          }
         }
       },
       "LocalizedText": {

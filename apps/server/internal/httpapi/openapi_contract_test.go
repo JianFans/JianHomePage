@@ -19,7 +19,14 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 		Paths   map[string]map[string]struct {
 			OperationID string                `json:"operationId"`
 			Security    []map[string][]string `json:"security"`
-			Parameters  []struct {
+			RequestBody struct {
+				Content map[string]struct {
+					Schema struct {
+						Ref string `json:"$ref"`
+					} `json:"schema"`
+				} `json:"content"`
+			} `json:"requestBody"`
+			Parameters []struct {
 				Name     string `json:"name"`
 				Required bool   `json:"required"`
 			} `json:"parameters"`
@@ -54,6 +61,8 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	expected := map[string]string{
 		"GET /healthz":                               "getHealth",
 		"POST /api/v1/versions":                      "createVersion",
+		"GET /api/v1/versions":                       "listVersions",
+		"POST /api/v1/versions/{versionId}/clone":    "cloneVersion",
 		"GET /api/v1/versions/{versionId}":           "getVersion",
 		"PUT /api/v1/versions/{versionId}":           "updateVersion",
 		"POST /api/v1/versions/{versionId}/review":   "submitReview",
@@ -87,6 +96,38 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	assertRequiredHeader(t, document.Paths["/api/v1/publishes"]["post"].Parameters, "Idempotency-Key")
 	assertRequiredHeader(t, document.Paths["/api/v1/rollbacks"]["post"].Parameters, "Idempotency-Key")
 	assertOptionalParameters(t, document.Paths["/api/v1/assets"]["get"].Parameters, "status", "limit", "cursor")
+	assertOptionalParameters(t, document.Paths["/api/v1/versions"]["get"].Parameters, "limit", "cursor")
+	for path, operationID := range map[string]string{"/api/v1/auth/session": "getSession", "/api/v1/auth/login": "startLogin", "/api/v1/auth/callback": "completeLogin"} {
+		operation := document.Paths[path]["get"]
+		if operation.OperationID != operationID || len(operation.Security) != 0 {
+			t.Fatalf("public auth contract %s %#v", path, operation)
+		}
+	}
+	if document.Paths["/api/v1/auth/logout"]["post"].OperationID != "logout" {
+		t.Fatal("logout contract missing")
+	}
+	if _, exists := document.Components.Schemas["VersionSummary"].Properties["snapshot"]; exists {
+		t.Fatal("summary schema must omit snapshots")
+	}
+	for _, schema := range []string{"VersionSummary", "ContentVersion"} {
+		for _, field := range []string{"createdAt", "updatedAt"} {
+			if document.Components.Schemas[schema].Properties[field].Format != "date-time" {
+				t.Fatalf("%s.%s must define a date-time property", schema, field)
+			}
+		}
+	}
+	if !containsString(document.Components.Schemas["AdminSession"].Required, "loginAvailable") {
+		t.Fatal("session availability contract missing")
+	}
+	if _, exists := document.Components.Schemas["VersionWrite"].Properties["name"]; exists {
+		t.Fatal("update schema must reject display names")
+	}
+	if _, exists := document.Components.Schemas["VersionCreate"].Properties["name"]; !exists {
+		t.Fatal("create schema must accept display names")
+	}
+	if document.Paths["/api/v1/versions"]["post"].RequestBody.Content["application/json"].Schema.Ref != "#/components/schemas/VersionCreate" || document.Paths["/api/v1/versions/{versionId}"]["put"].RequestBody.Content["application/json"].Schema.Ref != "#/components/schemas/VersionWrite" {
+		t.Fatal("create and update must use separate request schemas")
+	}
 	contentTypes := document.Components.Schemas["AssetUploadRequest"].Properties["contentType"].Enum
 	if len(contentTypes) != 5 {
 		t.Fatalf("asset upload MIME enum is not aligned with snapshot schema: %#v", contentTypes)
