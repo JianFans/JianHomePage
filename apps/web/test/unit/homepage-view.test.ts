@@ -37,6 +37,14 @@ function videoSnapshot(autoplay = true) {
   return snapshot
 }
 
+it('retains footer platforms when the artist has no platform entries', () => {
+  const snapshot = snapshotFixture()
+  snapshot.artist.platformLinks = []
+  const wrapper = mount(HomepageView, { props: { snapshot, locale: 'en', player: playerFixture() } })
+  expect(wrapper.find('footer .platform-links').exists()).toBe(true)
+  wrapper.unmount()
+})
+
 beforeEach(() => {
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
     matches: false,
@@ -50,6 +58,22 @@ afterEach(() => {
 })
 
 describe('HomepageView explicit rendering boundary', () => {
+  it('音乐人实际展示时不重复页脚平台，停用或引用缺失时页脚保留一次入口', async () => {
+    const snapshot = snapshotFixture()
+    const wrapper = mount(HomepageView, { props: { snapshot, locale: 'en', player: playerFixture() } })
+    expect(wrapper.find('footer .platform-links').exists()).toBe(false)
+    const section = snapshot.homepage.sections.find(section => section.type === 'artist')!
+    section.enabled = false
+    await wrapper.setProps({ snapshot: structuredClone(snapshot) })
+    expect(wrapper.find('footer .platform-links').exists()).toBe(true)
+    section.enabled = true
+    // @ts-expect-error Deliberately supply a missing reference to verify defensive rendering.
+    section.itemIds = ['missing_artist']
+    await wrapper.setProps({ snapshot: structuredClone(snapshot) })
+    expect(wrapper.find('footer .platform-links').exists()).toBe(true)
+    expect(wrapper.find('footer a[href="#top"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it('renders all six sections and site identity from the supplied snapshot', () => {
     const snapshot = snapshotFixture()
     snapshot.site.brand.en = 'Draft brand'

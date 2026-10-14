@@ -27,6 +27,7 @@ const emit = defineEmits<{
 
 // Use the snapshot clock for deterministic public builds and draft previews alike.
 const sections = computed(() => resolveHomepageSections(props.snapshot, props.locale))
+const artistVisible = computed(() => sections.value.some(section => section.type === 'artist' && Boolean(section.items[0]?.platformLinks.length)))
 const brand = computed(() => resolveLocalized(props.snapshot.site.brand, props.locale))
 const artistName = computed(() => resolveLocalized(props.snapshot.site.artistName, props.locale))
 const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTCFullYear())
@@ -112,6 +113,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
     :brand="brand"
     :canonical-url="snapshot.site.canonicalUrl"
     :social-links="snapshot.site.socialLinks"
+    :show-social-links="!artistVisible"
     :locale="locale"
     :copyright-year="copyrightYear"
   />

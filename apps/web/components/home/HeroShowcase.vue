@@ -237,62 +237,69 @@ async function togglePlayback() {
     </div>
 
     <div class="hero-tools">
-      <IconButton
-        v-if="slides.length > 1"
-        :label="labels.previous"
-        @click="previous"
-      >
-        <ChevronLeft aria-hidden="true" />
-      </IconButton>
-      <IconButton
-        v-if="slides.length > 1"
-        data-testid="hero-next"
-        :label="labels.next"
-        @click="next"
-      >
-        <ChevronRight aria-hidden="true" />
-      </IconButton>
-      <IconButton
+      <div class="hero-navigation">
+        <div class="hero-link-slot">
+          <a
+            v-if="targetHref"
+            class="hero-link"
+            :href="targetHref"
+            :target="activeSlide?.target?.kind === 'external' ? '_blank' : undefined"
+            :rel="activeSlide?.target?.kind === 'external' ? 'noopener noreferrer' : undefined"
+            :aria-label="labels.open"
+            :title="labels.open"
+          ><ArrowUpRight aria-hidden="true" /></a>
+        </div>
+        <div class="hero-pagination">
+          <IconButton
+            v-if="slides.length > 1"
+            :label="labels.previous"
+            @click="previous"
+          >
+            <ChevronLeft aria-hidden="true" />
+          </IconButton>
+          <IconButton
+            v-if="slides.length > 1"
+            data-testid="hero-next"
+            :label="labels.next"
+            @click="next"
+          >
+            <ChevronRight aria-hidden="true" />
+          </IconButton>
+        </div>
+      </div>
+      <div
         v-if="videoEnabled"
-        :label="paused ? labels.play : labels.pause"
-        :pressed="!paused"
-        @click="togglePlayback"
+        class="hero-media-tools"
       >
-        <Play
-          v-if="paused"
-          aria-hidden="true"
-        />
-        <Pause
-          v-else
-          aria-hidden="true"
-        />
-      </IconButton>
-      <IconButton
-        v-if="videoEnabled"
-        :label="muted ? labels.unmute : labels.mute"
-        :pressed="!muted"
-        @click="muted = !muted"
-      >
-        <VolumeX
-          v-if="muted"
-          aria-hidden="true"
-        />
-        <Volume2
-          v-else
-          aria-hidden="true"
-        />
-      </IconButton>
-      <a
-        v-if="targetHref"
-        class="hero-link"
-        :href="targetHref"
-        :target="activeSlide?.target?.kind === 'external' ? '_blank' : undefined"
-        :rel="activeSlide?.target?.kind === 'external' ? 'noopener noreferrer' : undefined"
-        :aria-label="labels.open"
-        :title="labels.open"
-      >
-        <ArrowUpRight aria-hidden="true" />
-      </a>
+        <IconButton
+          :label="paused ? labels.play : labels.pause"
+          :pressed="!paused"
+          @click="togglePlayback"
+        >
+          <Play
+            v-if="paused"
+            aria-hidden="true"
+          />
+          <Pause
+            v-else
+            aria-hidden="true"
+          />
+        </IconButton>
+        <IconButton
+          :label="muted ? labels.unmute : labels.mute"
+          :pressed="!muted"
+          @click="muted = !muted"
+        >
+          <VolumeX
+            v-if="muted"
+            aria-hidden="true"
+          />
+          <Volume2
+            v-else
+            aria-hidden="true"
+          />
+        </IconButton>
+      </div>
     </div>
 
     <div
@@ -406,12 +413,18 @@ async function togglePlayback() {
   right: max(1.25rem, calc((100vw - var(--content-max)) / 2));
   bottom: 2.5rem;
   display: flex;
+  align-items: end;
   gap: 0.5rem;
 }
 
+.hero-navigation { display: grid; gap: .5rem; width: 6rem; }
+.hero-link-slot { height: 2.75rem; }
+.hero-pagination { display: grid; grid-template-columns: repeat(2, 2.75rem); gap: .5rem; }
+.hero-media-tools { display: flex; gap: .5rem; order: -1; }
+
 .hero-link {
   display: grid;
-  width: 2.75rem;
+  width: 100%;
   height: 2.75rem;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);

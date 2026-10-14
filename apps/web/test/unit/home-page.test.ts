@@ -32,13 +32,16 @@ describe('公开首页', () => {
     ))).toEqual(['hero', 'music', 'video', 'event', 'moment', 'artist'])
   })
 
-  it('在页尾保留品牌域名和官方平台入口', async () => {
+  it('在页尾保留品牌域名，平台入口集中在音乐人板块', async () => {
     const wrapper = await mountSuspended(HomePage)
     const footer = wrapper.get('footer')
 
     expect(footer.text()).toContain('yujian.me')
     expect(footer.text()).toContain('© 2026')
     expect(footer.find('[href="https://yujian.me"]').exists()).toBe(true)
-    expect(footer.find('[aria-label="微博"], [aria-label="Weibo"]').exists()).toBe(true)
+    expect(footer.find('.platform-links').exists()).toBe(false)
+    expect(wrapper.findAll('#artist .platform-links')).toHaveLength(1)
+    expect(wrapper.findAll('#artist .platform-links__desktop [aria-label="微博"], #artist .platform-links__desktop [aria-label="Weibo"]')).toHaveLength(1)
+    wrapper.unmount()
   })
 })
