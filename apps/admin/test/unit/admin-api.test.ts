@@ -7,6 +7,45 @@ function response(status: number, body: unknown) {
 }
 
 describe('admin API client', () => {
+  it('uses cookie sessions and CSRF only for management writes', async () => {
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => response(200, { items: [] }))
+    const api = createAdminApi({ baseUrl: 'https://api.yujian.me', csrfToken: 'csrf-memory', fetcher })
+    await api.listVersions({ limit: 20, cursor: 'a/b?' })
+    expect(fetcher).toHaveBeenLastCalledWith('https://api.yujian.me/api/v1/versions?limit=20&cursor=a%2Fb%3F', expect.objectContaining({ credentials: 'include', cache: 'no-store' }))
+    expect(new Headers(fetcher.mock.calls[0]![1]?.headers).has('X-CSRF-Token')).toBe(false)
+    await api.cloneVersion('ver/a', '十月更新')
+    const [url, init] = fetcher.mock.calls[1]!
+    expect(url).toBe('https://api.yujian.me/api/v1/versions/ver%2Fa/clone')
+    expect(new Headers(init?.headers).get('X-CSRF-Token')).toBe('csrf-memory')
+    expect(JSON.parse(String(init?.body))).toEqual({ name: '十月更新' })
+  })
+
+  it('does not send session credentials or CSRF to a signed object URL', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    const api = createAdminApi({ baseUrl: 'https://api.yujian.me', csrfToken: 'csrf-memory', token: 'token-memory', fetcher })
+    await api.uploadAssetBlob({ asset: { id: 'a' } as never, uploadUrl: 'https://api.yujian.me/local-upload/a', expiresAt: '', headers: { 'Content-Type': 'image/webp' } }, new Blob(['image']))
+    const init = fetcher.mock.calls[0]![1]
+    expect(init.credentials).toBe('omit')
+    expect(new Headers(init.headers).has('Authorization')).toBe(false)
+    expect(new Headers(init.headers).has('X-CSRF-Token')).toBe(false)
+  })
+
+  it('notifies the session owner when an authenticated request expires', async () => {
+    const expired = vi.fn()
+    const api = createAdminApi({ baseUrl: 'https://api.yujian.me', onUnauthorized: expired, fetcher: vi.fn().mockResolvedValue(response(401, { code: 'unauthorized' })) })
+    await expect(api.listVersions()).rejects.toMatchObject({ status: 401 })
+    expect(expired).toHaveBeenCalledOnce()
+  })
+
+  it('reads session state and revokes it using the management origin', async () => {
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => response(200, { authenticated: true }))
+    const api = createAdminApi({ baseUrl: 'https://api.yujian.me', csrfToken: 'csrf-memory', fetcher })
+    await api.getSession()
+    expect(fetcher.mock.calls[0]![0]).toBe('https://api.yujian.me/api/v1/auth/session')
+    await api.logout()
+    expect(fetcher.mock.calls[1]![0]).toBe('https://api.yujian.me/api/v1/auth/logout')
+    expect(fetcher.mock.calls[1]![1]?.method).toBe('POST')
+  })
   it('normalizes an API base URL without changing the path contract', () => {
     expect(normalizeBaseUrl('  https://api.yujian.me/// ')).toBe('https://api.yujian.me')
   })

@@ -30,6 +30,8 @@ export interface AssetWorkspaceApi {
 export interface AssetWorkspaceOptions {
   apiBaseUrl: Readonly<Ref<string>>
   token: Readonly<Ref<string>>
+  csrfToken?: Readonly<Ref<string>>
+  onUnauthorized?: () => void
   apiFactory?: (options: AdminApiOptions) => AssetWorkspaceApi
   digest?: (file: Blob) => Promise<string>
 }
@@ -60,6 +62,8 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
   let uploadSequence = 0
   let listSequence = 0
   let disposed = false
+  let credentialEpoch = 0
+  watch(() => [options.token.value, options.csrfToken?.value], () => { credentialEpoch++ }, { flush: 'sync' })
   let uploadsDuringList = new Map<string, AdminAsset>()
   /** 用规范化地址识别连接归属，末尾斜杠变化不会丢弃同服务的确认重试。 */
   const connectionBaseUrl = computed(() => normalizeBaseUrl(options.apiBaseUrl.value))
@@ -105,7 +109,12 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
 
   /** 使用当前连接配置创建仅供本次操作使用的 API 客户端。 */
   function api(): AssetWorkspaceApi {
-    return apiFactory({ baseUrl: options.apiBaseUrl.value, token: options.token.value })
+    const currentEpoch = credentialEpoch
+    const currentBaseUrl = connectionBaseUrl.value
+    return apiFactory({ baseUrl: options.apiBaseUrl.value, token: options.token.value, csrfToken: options.csrfToken?.value,
+      onUnauthorized: () => {
+        if (!disposed && currentEpoch === credentialEpoch && currentBaseUrl === connectionBaseUrl.value) options.onUnauthorized?.()
+      } })
   }
 
   /** 执行完整的文件预检、摘要、签名直传和完成确认流程。 */

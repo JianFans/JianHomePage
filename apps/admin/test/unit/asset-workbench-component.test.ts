@@ -189,6 +189,7 @@ describe('素材工作台组件', () => {
 
     await wrapper.get('form.asset-upload').trigger('submit')
     await flushPromises()
+    expect(wrapper.find('.asset-error').exists() ? wrapper.get('.asset-error').text() : '').toBe('')
     expect(wrapper.get('[data-testid="asset-stage"]').text()).toMatch(/创建|creating/i)
     wrapper.findAll('form.asset-upload input').forEach((field) => {
       expect(field.attributes('disabled')).toBeDefined()
@@ -207,6 +208,9 @@ describe('素材工作台组件', () => {
     wrapper.findAll('form.asset-upload input').forEach((field) => {
       expect(field.attributes('disabled')).toBeUndefined()
     })
+    expect(wrapper.emitted('dirty')?.at(-1)).toEqual([false])
+    await wrapper.get('[data-testid="asset-source-zh"]').setValue('Next asset source')
+    expect(wrapper.emitted('dirty')?.at(-1)).toEqual([true])
     wrapper.unmount()
   })
 

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ArrowDown, ArrowUp, Music2, Plus, X } from '@lucide/vue'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
 import type { AdminLocale } from '../utils/admin-locale'
 import type { SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { createMusicTrack, musicAssets, type MusicDraft, type MusicErrorCode } from '../utils/music-workbench'
 import { musicCopy } from '../utils/music-copy'
+import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
 import PlatformLinkFields from './PlatformLinkFields.vue'
 import MusicTrackFields from './MusicTrackFields.vue'
@@ -16,11 +17,13 @@ const props = defineProps<{
   apiBaseUrl?: string
   locale: AdminLocale
   busy: boolean
+  readOnly?: boolean
   dirty: boolean
   stale: boolean
   error: MusicErrorCode | null
   issues: readonly SnapshotEditorIssue[]
   pending: boolean
+  studio?: boolean
 }>()
 const emit = defineEmits<{ select: [id: string | null]; apply: []; close: []; keep: []; discard: [] }>()
 const copy = computed(() => musicCopy(props.locale))
@@ -29,6 +32,11 @@ const audioAssets = computed(() => props.snapshot ? musicAssets(props.snapshot, 
 const coverIndex = computed(() => new Map(covers.value.map(asset => [asset.id, asset])))
 const brokenCovers = ref<Record<string, boolean>>({})
 const sections = computed(() => props.snapshot?.homepage.sections.filter(section => section.type === 'music') ?? [])
+const issueId = useId()
+const releaseIndex = computed(() => props.snapshot?.releases.findIndex(item => item.id === draft.value?.release.id) ?? -1)
+const coverPath = computed(() => `/releases/${Math.max(0, releaseIndex.value)}/coverAssetId`)
+const coverIssue = computed(() => props.issues.find(issue => issue.path === coverPath.value))
+const coverIssueAttrs = computed(() => issueFieldAttributes(coverIssue.value, coverPath.value, issueId, props.locale))
 
 watch(() => props.apiBaseUrl, /** 新连接允许重新加载同 ID 封面，不沿用旧连接的失败状态。 */ () => {
   brokenCovers.value = {}
@@ -116,7 +124,7 @@ function visible(section: MusicDraft['sections'][number]): boolean {
         data-testid="music-new"
         :aria-label="copy.newRelease"
         :title="copy.newRelease"
-        :disabled="busy || !snapshot"
+        :disabled="busy || readOnly || !snapshot"
         @click="emit('select', null)"
       >
         <Plus
@@ -161,7 +169,7 @@ function visible(section: MusicDraft['sections'][number]): boolean {
       {{ copy.stale }}
     </p>
     <div
-      v-if="error"
+      v-if="error && !studio"
       class="music-error"
       role="alert"
       data-testid="music-error"
@@ -199,6 +207,8 @@ function visible(section: MusicDraft['sections'][number]): boolean {
           :aria-pressed="draft?.originalId === release.id"
           :disabled="busy"
           :data-testid="`music-release-${release.id}`"
+          data-snapshot-record-kind="releases"
+          :data-snapshot-record-index="snapshot?.releases.findIndex(item => item.id === release.id)"
           @click="emit('select', release.id)"
         >
           <img
@@ -244,7 +254,7 @@ function visible(section: MusicDraft['sections'][number]): boolean {
           </button>
         </div>
         <fieldset
-          :disabled="busy"
+          :disabled="busy || readOnly"
           class="music-fields"
           data-testid="music-fields"
         >
@@ -278,6 +288,9 @@ function visible(section: MusicDraft['sections'][number]): boolean {
             <select
               v-model="draft.release.coverAssetId"
               data-testid="music-cover"
+              :data-snapshot-path="coverIssueAttrs['data-snapshot-path']"
+              :aria-invalid="coverIssueAttrs['aria-invalid']"
+              :aria-describedby="coverIssueAttrs['aria-describedby']"
             >
               <option value="">{{ copy.choose }}</option>
               <option
@@ -286,6 +299,11 @@ function visible(section: MusicDraft['sections'][number]): boolean {
                 :value="asset.id"
               >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option>
             </select>
+            <small
+              v-if="coverIssue"
+              :id="issueId"
+              class="field-issue-hint"
+            >{{ coverIssueAttrs.description }}</small>
           </label>
           <PlatformLinkFields
             v-model="draft.release.platformLinks"
@@ -373,7 +391,7 @@ function visible(section: MusicDraft['sections'][number]): boolean {
             type="button"
             class="button button--primary"
             data-testid="music-apply"
-            :disabled="busy || !dirty || stale"
+            :disabled="busy || readOnly || !dirty || stale"
             @click="emit('apply')"
           >
             {{ copy.apply }}

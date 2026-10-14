@@ -19,6 +19,7 @@ const props = defineProps<{
   error: HomepageErrorCode | null
   issues: readonly SnapshotEditorIssue[]
   pending: boolean
+  studio?: boolean
 }>()
 const emit = defineEmits<{ open: []; apply: []; close: []; keep: []; discard: [] }>()
 const copy = computed(() => homepageCopy(props.locale))
@@ -122,7 +123,7 @@ function moveSection(index: number, direction: -1 | 1) {
       {{ copy.stale }}
     </p>
     <div
-      v-if="error"
+      v-if="error && !studio"
       class="music-error"
       data-testid="homepage-error"
       role="alert"
@@ -194,6 +195,8 @@ function moveSection(index: number, direction: -1 | 1) {
             <button
               v-for="(hero, index) in draft.heroSlides"
               :key="index"
+              data-snapshot-record-kind="heroSlides"
+              :data-snapshot-record-index="editSnapshot.heroSlides.findIndex(item => item.id === hero.id)"
               type="button"
               class="music-release"
               :class="{ 'music-release--active': hero.id === selectedId }"
@@ -231,6 +234,7 @@ function moveSection(index: number, direction: -1 | 1) {
               :snapshot="editSnapshot"
               :draft="draft"
               :locale="locale"
+              :issues="issues"
             />
           </div>
           <p

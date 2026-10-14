@@ -2,6 +2,7 @@
 import { CircleCheck, CircleX } from '@lucide/vue'
 import { computed } from 'vue'
 import type { SnapshotAnalysis } from '../utils/snapshot-workbench'
+import { diagnosticLabel } from '../utils/issue-accessibility'
 
 const props = defineProps<{
   analysis: SnapshotAnalysis
@@ -54,61 +55,7 @@ const remainingIssues = computed(() => Math.max(0, props.analysis.issues.length 
 
 /** 将稳定诊断代码转换为当前界面语言，并为未知代码提供安全回退。 */
 function issueLabel(code: string): string {
-  const labels = props.locale === 'en'
-    ? {
-        'invalid-json': 'Invalid JSON',
-        'object-root': 'Root must be an object',
-        required: 'Required field missing',
-        additionalProperties: 'Field is not allowed',
-        type: 'Incorrect field type',
-        format: 'Incorrect value format',
-        pattern: 'Incorrect value format',
-        minimum: 'Value below minimum',
-        exclusiveMinimum: 'Value must be above minimum',
-        maximum: 'Value above maximum',
-        minLength: 'Text is too short',
-        maxLength: 'Text is too long',
-        minItems: 'Too few items',
-        maxItems: 'Too many items',
-        uniqueItems: 'Duplicate items',
-        enum: 'Unsupported value',
-        const: 'Unexpected value',
-        oneOf: 'Value does not match a supported form',
-        discriminator: 'Unsupported content type',
-        'duplicate-id': 'Duplicate identifier',
-        'missing-reference': 'Reference not found',
-        'reference-mismatch': 'Reference belongs elsewhere',
-        'asset-kind': 'Asset type mismatch',
-        'hidden-target': 'Target is not visible',
-      }
-    : {
-        'invalid-json': 'JSON 格式无效',
-        'object-root': '根节点必须为对象',
-        required: '缺少必填字段',
-        additionalProperties: '存在不允许的字段',
-        type: '字段类型错误',
-        format: '字段格式错误',
-        pattern: '字段格式错误',
-        minimum: '数值过小',
-        exclusiveMinimum: '数值必须大于下限',
-        maximum: '数值过大',
-        minLength: '文本过短',
-        maxLength: '文本过长',
-        minItems: '项目过少',
-        maxItems: '项目过多',
-        uniqueItems: '项目重复',
-        enum: '不支持的值',
-        const: '值与内容类型不匹配',
-        oneOf: '值不符合支持的结构',
-        discriminator: '不支持的内容类型',
-        'duplicate-id': '标识重复',
-        'missing-reference': '引用不存在',
-        'reference-mismatch': '引用归属不一致',
-        'asset-kind': '素材类型不匹配',
-        'hidden-target': '目标未在首页展示',
-      }
-  return labels[code as keyof typeof labels]
-    ?? (props.locale === 'en' ? 'Content contract mismatch' : '内容契约不匹配')
+  return diagnosticLabel(code, props.locale)
 }
 
 /** 为编辑器、Schema 和语义诊断生成本地化来源标签。 */

@@ -14,26 +14,36 @@ import {
   Upload,
   Video,
 } from '@lucide/vue'
-import { computed, reactive, ref, toRef, watch } from 'vue'
+import { computed, onMounted, reactive, ref, toRef, watch } from 'vue'
 import { useAssetWorkspace } from '../composables/useAssetWorkspace'
 import type { AdminAsset } from '../utils/admin-api'
 import { insertSnapshotAsset, toSnapshotAsset, type LocalizedDraft } from '../utils/asset-workbench'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   locale: 'zh-CN' | 'en'
   editorText: string
   apiBaseUrl: string
   token: string
+  csrfToken?: string
+  authenticated?: boolean
+  canUpload?: boolean
+  studio?: boolean
   snapshotLocked?: boolean
-}>()
+}>(), { canUpload: true, csrfToken: '' })
 
 const emit = defineEmits<{
   'update:editorText': [value: string]
+  unauthorized: []
+  notify: [message: string, tone: 'success' | 'error']
+  busy: [value: boolean]
+  dirty: [value: boolean]
 }>()
 
 const workspace = reactive(useAssetWorkspace({
   apiBaseUrl: toRef(props, 'apiBaseUrl'),
   token: toRef(props, 'token'),
+  csrfToken: computed(() => props.csrfToken || ''),
+  onUnauthorized: () => emit('unauthorized'),
 }))
 const fileInput = ref<HTMLInputElement | null>(null)
 const assetAlts = reactive<Record<string, LocalizedDraft>>({})
@@ -154,7 +164,16 @@ const copy = computed(() => props.locale === 'en'
     })
 
 /** 摘要至完成确认期间锁定上传输入，终态重新允许用户编辑和重试。 */
-const activeUpload = computed(() => ['hashing', 'creating', 'uploading', 'completing'].includes(workspace.stage))
+const uploadBusy = computed(() => ['hashing', 'creating', 'uploading', 'completing'].includes(workspace.stage))
+const activeUpload = computed(() => props.canUpload === false || uploadBusy.value)
+watch(uploadBusy, busy => emit('busy', busy), { immediate: true })
+watch(() => Boolean(workspace.file || workspace.sourceZhCN || workspace.sourceEn || workspace.credit || workspace.license || workspace.altZhCN || workspace.altEn), dirty => emit('dirty', dirty), { immediate: true })
+const connected = computed(() => props.authenticated === true || Boolean(props.token.trim()))
+watch(() => workspace.errorCode, (code) => { if (props.studio && code) emit('notify', copy.value.errors[code], 'error') })
+watch(() => workspace.listError, (error) => { if (props.studio && error) emit('notify', copy.value.errors['list-failed'], 'error') })
+watch(insertError, (message) => { if (props.studio && message) emit('notify', message, 'error') })
+watch(() => workspace.stage, (stage) => { if (props.studio && stage === 'succeeded') emit('notify', copy.value.stages.succeeded, 'success') })
+onMounted(() => { if (props.studio && connected.value) void workspace.loadAssets() })
 /** 从当前文本提取重复 ID 以禁用按钮；完整契约校验仍由插入函数执行。 */
 const existingAssetIds = computed(() => {
   try {
@@ -291,7 +310,7 @@ function formatBytes(value: unknown): string {
         data-testid="asset-stage"
       >
         <LoaderCircle
-          v-if="activeUpload"
+          v-if="uploadBusy"
           class="asset-spinner"
           :size="15"
           aria-hidden="true"
@@ -425,6 +444,7 @@ function formatBytes(value: unknown): string {
             v-if="workspace.canRetryComplete"
             class="button"
             type="button"
+            :disabled="activeUpload"
             @click="retryComplete"
           >
             <RotateCcw
@@ -435,7 +455,7 @@ function formatBytes(value: unknown): string {
           </button>
         </div>
         <p
-          v-if="workspace.errorCode"
+          v-if="workspace.errorCode && !studio"
           class="asset-error"
           role="alert"
         >
@@ -457,7 +477,7 @@ function formatBytes(value: unknown): string {
             type="button"
             :aria-label="copy.refresh"
             :title="copy.refresh"
-            :disabled="workspace.loading || !token.trim()"
+            :disabled="workspace.loading || !connected"
             data-testid="asset-refresh"
             @click="workspace.loadAssets()"
           >
@@ -521,13 +541,13 @@ function formatBytes(value: unknown): string {
         </div>
 
         <p
-          v-if="!token.trim()"
+          v-if="!connected"
           class="asset-empty"
         >
           {{ copy.connection }}
         </p>
         <p
-          v-else-if="workspace.listError"
+          v-else-if="workspace.listError && !studio"
           class="asset-error"
           role="alert"
           data-testid="asset-list-error"
@@ -616,7 +636,7 @@ function formatBytes(value: unknown): string {
           {{ copy.loadMore }}
         </button>
         <p
-          v-if="insertError"
+          v-if="insertError && !studio"
           class="asset-error"
           role="alert"
         >

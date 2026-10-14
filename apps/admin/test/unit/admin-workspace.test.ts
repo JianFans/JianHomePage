@@ -28,11 +28,11 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 /** 在 Nuxt 测试作用域中挂载组合式函数并返回可解包状态。 */
-async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN')) {
+async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN'), session: Parameters<typeof useAdminWorkspace>[1] = {}) {
   const host = defineComponent({
     /** 向测试宿主暴露由 Vue 自动解包的工作区状态。 */
     setup() {
-      return { workspace: reactive(useAdminWorkspace(locale)) }
+      return { workspace: reactive(useAdminWorkspace(locale, session)) }
     },
     template: '<div />',
   })
@@ -64,12 +64,124 @@ function publishJob(overrides: Partial<AdminPublishJob> = {}): AdminPublishJob {
   }
 }
 
+it('keeps the write lock if a concurrent summary request fails', async () => {
+  const { wrapper, workspace } = await mountWorkspace()
+  const list = deferred<Response>()
+  const write = deferred<Response>()
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(jsonResponse(version()))
+    .mockReturnValueOnce(list.promise)
+    .mockReturnValueOnce(write.promise))
+  workspace.versionId = 'ver_1'
+  await workspace.loadVersion()
+  const listing = workspace.listVersions()
+  const saving = workspace.saveDraft()
+  list.reject(new Error('Unavailable'))
+  await listing
+  expect(workspace.listError).toBe(true)
+  expect(workspace.busy).toBe(true)
+  write.resolve(jsonResponse(version({ revision: 2 })))
+  await saving
+  expect(workspace.version?.revision).toBe(2)
+  wrapper.unmount()
+})
+
+it('ignores unauthorized responses from the previous session after recovery', async () => {
+  const active = ref(true)
+  const csrfToken = ref('old-csrf')
+  const unauthorized = vi.fn()
+  const old = deferred<Response>()
+  vi.stubGlobal('fetch', vi.fn().mockReturnValueOnce(old.promise)
+    .mockResolvedValueOnce(jsonResponse({ code: 'unauthorized', message: 'Unauthorized' }, 401)))
+  const { wrapper, workspace } = await mountWorkspace(ref('en'), { active, csrfToken, onUnauthorized: unauthorized })
+  try {
+    const listing = workspace.listVersions()
+    active.value = false
+    csrfToken.value = ''
+    await nextTick()
+    csrfToken.value = 'new-csrf'
+    active.value = true
+    old.resolve(jsonResponse({ code: 'unauthorized', message: 'Unauthorized' }, 401))
+    await listing
+    expect(unauthorized).not.toHaveBeenCalled()
+    await workspace.listVersions()
+    expect(unauthorized).toHaveBeenCalledOnce()
+  } finally { wrapper.unmount() }
+})
+
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
 describe('管理工作区', () => {
+  it('保存后的新修订不会被迟到的旧摘要页覆盖', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    const late = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse(version()))
+      .mockReturnValueOnce(late.promise)
+      .mockResolvedValueOnce(jsonResponse(version({ revision: 2 }))))
+    workspace.versionId = 'ver_1'
+    await workspace.loadVersion()
+    const listing = workspace.listVersions()
+    workspace.editorText += '\n'
+    await workspace.saveDraft()
+    late.resolve(jsonResponse({ items: [version({ revision: 1 })] }))
+    await listing
+    expect(workspace.versions.find(item => item.id === 'ver_1')?.revision).toBe(2)
+    expect(workspace.listing).toBe(false)
+    wrapper.unmount()
+  })
+  it('历史只读不能保存，复制调用服务端并切入独立草稿', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(version({ status: 'published' })))
+      .mockResolvedValueOnce(jsonResponse(version({ id: 'ver_copy', name: '新编排', sourceVersionId: 'ver_1' })))
+    vi.stubGlobal('fetch', fetcher)
+    workspace.versionId = 'ver_1'
+    await workspace.loadVersion()
+    expect(workspace.editable).toBe(false)
+    await workspace.saveDraft()
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await workspace.cloneVersion('ver_1', '新编排')
+    expect(workspace.version?.id).toBe('ver_copy')
+    expect(workspace.editable).toBe(true)
+    expect(workspace.dirty).toBe(false)
+    expect(fetcher.mock.calls[1]?.[0]).toContain('/ver_1/clone')
+    expect(JSON.parse(fetcher.mock.calls[1]?.[1].body)).toEqual({ name: '新编排' })
+    wrapper.unmount()
+  })
+
+  it('刷新版本列表时拒绝迟到页，按 ID 去重并保留服务端顺序', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    const late = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockReturnValueOnce(late.promise)
+      .mockResolvedValueOnce(jsonResponse({ items: [version({ id: 'ver_new' })], nextCursor: 'page2' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [version({ id: 'ver_new' }), version({ id: 'ver_old' })] })))
+    const first = workspace.listVersions()
+    await workspace.listVersions()
+    late.resolve(jsonResponse({ items: [version({ id: 'ver_stale' })] }))
+    await first
+    expect(workspace.versions.map(item => item.id)).toEqual(['ver_new'])
+    await workspace.listVersions(true)
+    expect(workspace.versions.map(item => item.id)).toEqual(['ver_new', 'ver_old'])
+    expect(workspace.nextCursor).toBe('')
+    wrapper.unmount()
+  })
+
+  it('销毁后保存响应不会改变本地内容或版本', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    const late = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn().mockReturnValueOnce(late.promise))
+    workspace.editorText = JSON.stringify(fixture)
+    const saving = workspace.saveDraft()
+    wrapper.unmount()
+    late.resolve(jsonResponse(version()))
+    await saving
+    expect(workspace.version).toBeNull()
+  })
   it('暴露同一防抖文本的只读分析基线，输入变化不伪装成当前分析', async () => {
     const { wrapper, workspace } = await mountWorkspace()
     vi.useFakeTimers()

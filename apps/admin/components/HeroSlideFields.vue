@@ -2,15 +2,24 @@
 import { computed, useId } from 'vue'
 import type { HeroSlide, PlatformLink, YujianContentSnapshot } from '@yujian/schema'
 import type { AdminLocale } from '../utils/admin-locale'
+import type { SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { homepageCopy } from '../utils/homepage-copy'
+import { issueFieldAttributes } from '../utils/issue-accessibility'
 import { musicProviders } from '../utils/music-copy'
 import { homepageItemVisibility, type HomepageDraft } from '../utils/homepage-workbench'
 import LocalizedTextFields from './LocalizedTextFields.vue'
 
 const model = defineModel<HeroSlide>({ required: true })
-const props = defineProps<{ snapshot: YujianContentSnapshot; draft: HomepageDraft; locale: AdminLocale }>()
+const props = defineProps<{ snapshot: YujianContentSnapshot; draft: HomepageDraft; locale: AdminLocale; issues?: readonly SnapshotEditorIssue[] }>()
 const copy = computed(() => homepageCopy(props.locale))
 const id = useId()
+const heroIndex = computed(() => props.draft.heroSlides.findIndex(hero => hero.id === model.value.id))
+const targetPath = computed(() => `/heroSlides/${Math.max(0, heroIndex.value)}/target/contentId`)
+const targetIssue = computed(() => props.issues?.find(issue => issue.path === targetPath.value))
+const targetIssueAttrs = computed(() => issueFieldAttributes(targetIssue.value, targetPath.value, `${id}-target-error`, props.locale))
+const assetPath = computed(() => `/heroSlides/${Math.max(0, heroIndex.value)}/assetId`)
+const assetIssue = computed(() => props.issues?.find(issue => issue.path === assetPath.value))
+const assetIssueAttrs = computed(() => issueFieldAttributes(assetIssue.value, assetPath.value, `${id}-asset-error`, props.locale))
 const mediaAssets = computed(() => props.snapshot.assets.filter(asset => asset.kind === model.value.mediaKind))
 const posterAssets = computed(() => props.snapshot.assets.filter(asset => asset.kind === 'image' || asset.kind === 'gif'))
 const contentOptions = computed(() => [
@@ -75,11 +84,19 @@ function toggleLabel(link: PlatformLink, event: Event) {
       <label><span>{{ copy.asset }}</span><select
         v-model="model.assetId"
         data-testid="homepage-hero-asset"
+        :data-snapshot-path="assetIssueAttrs['data-snapshot-path']"
+        :aria-invalid="assetIssueAttrs['aria-invalid']"
+        :aria-describedby="assetIssueAttrs['aria-describedby']"
       ><option value="">{{ copy.choose }}</option><option
         v-for="asset in mediaAssets"
         :key="asset.id"
         :value="asset.id"
-      >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select></label>
+      >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select>
+        <small
+          v-if="assetIssue"
+          :id="`${id}-asset-error`"
+          class="field-issue-hint"
+        >{{ assetIssueAttrs.description }}</small></label>
       <label><span>{{ copy.mobileAsset }}</span><select
         :value="model.mobileAssetId || ''"
         data-testid="homepage-mobile-asset"
@@ -136,11 +153,19 @@ function toggleLabel(link: PlatformLink, event: Event) {
       <label><span>{{ copy.content }}</span><select
         v-model="model.target.contentId"
         data-testid="homepage-target-content"
+        :data-snapshot-path="targetIssueAttrs['data-snapshot-path']"
+        :aria-invalid="targetIssueAttrs['aria-invalid']"
+        :aria-describedby="targetIssueAttrs['aria-describedby']"
       ><option value="">{{ copy.choose }}</option><option
         v-for="content in contentOptions"
         :key="content.id"
         :value="content.id"
       >{{ content.title[locale] || content.title['zh-CN'] || content.id }} · {{ content.id }}</option></select></label>
+      <small
+        v-if="targetIssue"
+        :id="`${id}-target-error`"
+        class="field-issue-hint"
+      >{{ targetIssueAttrs.description }}</small>
       <p
         class="music-muted"
         data-testid="homepage-target-visibility"

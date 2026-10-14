@@ -14,11 +14,13 @@ const props = defineProps<{
   snapshot: YujianContentSnapshot | null
   locale: AdminLocale
   busy: boolean
+  readOnly?: boolean
   dirty: boolean
   stale: boolean
   error: VideoErrorCode | null
   issues: readonly SnapshotEditorIssue[]
   pending: boolean
+  studio?: boolean
 }>()
 const emit = defineEmits<{ open: []; apply: []; close: []; keep: []; discard: [] }>()
 const copy = computed(() => videoCopy(props.locale))
@@ -38,13 +40,13 @@ watch(() => draft.value?.videos.length, /** 防御外部替换数组后选择越
 
 /** 新记录仅进入草稿，不自动添加首页引用。 */
 function addVideo() {
-  if (!draft.value || props.busy) return
+  if (!draft.value || props.busy || props.readOnly) return
   draft.value.videos.push(createVideo())
   selectedIndex.value = draft.value.videos.length - 1
 }
 /** 清空选填素材必须移除属性，避免留下空引用。 */
 function setVideoAsset(event: Event) {
-  if (!selected.value || props.busy) return
+  if (!selected.value || props.busy || props.readOnly) return
   const id = (event.target as HTMLSelectElement).value
   if (id) selected.value.videoAssetId = id
   else delete selected.value.videoAssetId
@@ -114,7 +116,7 @@ function setVideoAsset(event: Event) {
       {{ copy.stale }}
     </p>
     <div
-      v-if="error"
+      v-if="error && !studio"
       class="music-error"
       role="alert"
       data-testid="video-error"
@@ -147,7 +149,7 @@ function setVideoAsset(event: Event) {
             data-testid="video-add"
             :aria-label="copy.add"
             :title="copy.add"
-            :disabled="busy"
+            :disabled="busy || readOnly"
             @click="addVideo"
           >
             <Plus
@@ -203,7 +205,7 @@ function setVideoAsset(event: Event) {
           <fieldset
             class="music-fields"
             data-testid="video-fields"
-            :disabled="busy"
+            :disabled="busy || readOnly"
           >
             <LocalizedTextFields
               v-model="selected.title"
@@ -254,7 +256,7 @@ function setVideoAsset(event: Event) {
           type="button"
           class="button button--primary"
           data-testid="video-apply"
-          :disabled="busy || stale || !dirty"
+          :disabled="busy || readOnly || stale || !dirty"
           @click="emit('apply')"
         >
           {{ copy.apply }}
