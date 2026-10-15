@@ -64,6 +64,7 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 | `apps/web` | Nuxt 公开静态站、i18n、SEO、试听与 E2E |
 | `apps/admin` | Nuxt/Vue 内容管理端 |
 | `apps/server` | Go 内容、素材、鉴权、审计和发布服务 |
+| `apps/publisher` | Node 静态构建、Pages Direct Upload 与持久化任务恢复 |
 | `packages/schema` | canonical 内容 Schema、生成类型和语义校验 |
 | `content/fixtures` | 仅供开发和测试的内容快照 |
 | `scripts` | fixture、EdgeOne 和静态产物工具 |
@@ -75,6 +76,7 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 - `apps/web/EDGEONE.md`
 - `apps/admin/README.md`
 - `apps/server/README.md`
+- `apps/publisher/README.md`
 
 ## 架构与契约
 
@@ -179,6 +181,7 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 - 管理端：`pnpm --filter @yujian/admin test`、`pnpm --filter @yujian/admin typecheck`。
 - 管理端表单、快照交接或交互：另运行 `pnpm --filter @yujian/admin test:e2e`；保存场景使用拦截 API，只验证契约，不替代真实服务端联调。
 - Go 服务：在 `apps/server` 运行目标包测试，再运行 `pnpm verify:go`。
+- 发布进程：`pnpm --filter @yujian/publisher test` 与 `test:coverage`；持久化或网关交接另配置 `YUJIAN_TEST_POSTGRES_URL` 运行 `pnpm --filter @yujian/publisher test:integration`。构建与 Pages 上传必须保持固定代码身份和单 worker 数据库锁；不得自动重试结果不明的云端创建。
 - 覆盖率策略或测试范围：`pnpm test:coverage` 和 `pnpm test:coverage:go`。
 - Docker 或 GitHub 配置：`pnpm test:automation`，并在 Docker 可用时构建镜像和检查 `/healthz`。
 - EdgeOne 配置或构建快照：使用非 fixture 的 `CONTENT_SNAPSHOT_PATH` 运行 `pnpm verify:edgeone`。

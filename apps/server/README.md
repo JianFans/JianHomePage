@@ -206,6 +206,10 @@ Authorization: Bearer <session-token>
 
 ## EdgeOne 适配器
 
+仓库已提供实现该契约的 [Pages 自动发布进程](../publisher/README.md)。它独立构建 Nuxt，并通过腾讯云官方 SDK 上传 Direct Upload 项目。`EDGEONE_TRIGGER_URL` 与 `EDGEONE_STATUS_URL` 均指向该进程经反向代理提供的 HTTPS `/builds`；`EDGEONE_TOKEN` 是内部共享网关密钥，与其 `PUBLISHER_TOKEN` 一致，**不是**腾讯云 Pages API Token。
+
+先部署 Go API 执行 `0008_publisher_builds` 增量迁移，再启动发布进程；两个服务连接同一数据库与 schema。发布进程的任务在 PostgreSQL 持久化，上传结果不明时保持活动并要求核对，不会盲目重试云端创建。具体变量、容器和恢复流程见上述专项文档。
+
 `internal/providers/edgeone` 不依赖腾讯云 SDK。它向配置的触发端点发送：
 
 ```json

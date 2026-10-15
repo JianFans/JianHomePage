@@ -17,7 +17,7 @@
 仓库根目录的 `edgeone.json` 固化以下构建参数：
 
 - 安装：`pnpm install --frozen-lockfile`
-- 构建：`pnpm --filter @yujian/web generate`
+- 构建：`pnpm verify:edgeone`
 - 输出：`apps/web/.output/public`
 - Node.js：`22`
 
@@ -33,6 +33,8 @@
 端点返回的状态必须是 `pending`、`building`、`succeeded` 或 `failed`。HTTP 非 2xx、无构建 ID、超大响应和无效 JSON 都视为失败；错误不透传供应商响应正文。
 
 ## 接入步骤
+
+以下保留 Git 集成基线。自动内容发布现采用 [2026-10-15 Direct Upload 设计](../specs/2026-10-15-edgeone-publisher-design.md) 与 [发布进程运维说明](../../../apps/publisher/README.md)，应按新说明创建 Direct Upload 项目，不能同时开启两条生产发布入口。
 
 1. 在 EdgeOne Pages 创建生产项目，连接站点仓库。
 2. 设置构建参数并关闭 SPA fallback，确保 `robots.txt` 和 `sitemap.xml` 是真实静态文件。

@@ -1,8 +1,10 @@
 # EdgeOne Pages 部署基线
 
-公开首页使用 Nuxt 静态生成，不依赖运行时内容 API。EdgeOne Pages 只负责构建和分发版本化产物；后续 Go 服务通过独立源站接入 EdgeOne，不与首页静态托管耦合。
+公开首页使用 Nuxt 静态生成，不依赖运行时内容 API。生产自动发布使用 [独立发布进程](../publisher/README.md)：读取 COS 审核快照、生成产物，再通过腾讯云官方 SDK 上传 EdgeOne Pages Direct Upload 项目。Go 服务通过独立源站接入 EdgeOne，不与首页静态托管耦合。
 
-## 控制台配置
+## Git 构建基线与 Direct Upload
+
+下表与根 `edgeone.json` 是 Git 集成构建的基线。采用自动发布进程时，应创建 Direct Upload 项目；构建在自己的服务器完成，Pages 只接收 `apps/web/.output/public`，不执行下表命令，也不上传根构建配置。
 
 | 配置项 | 值 |
 | --- | --- |
