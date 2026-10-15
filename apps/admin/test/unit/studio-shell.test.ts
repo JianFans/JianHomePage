@@ -54,6 +54,34 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
 
+it.each([
+  { status: 'archived', roles: ['admin'] },
+  { status: 'published', roles: ['admin'] },
+  { status: 'in_review', roles: ['admin'] },
+  { status: 'draft', roles: ['reviewer'] },
+  { status: 'draft', roles: ['publisher'] },
+])('allows browsing read-only homepage heroes for $status with $roles', async (options) => {
+  const { wrapper, fetcher } = await mountStudio(options)
+  try {
+    await wrapper.get('[data-testid="nav-homepage"]').trigger('click')
+    const next = wrapper.get('[data-testid="homepage-hero-hero_stage"]')
+    expect(next.element.matches(':disabled')).toBe(false)
+    expect(next.element.closest('fieldset[disabled]')).toBeNull()
+    await next.trigger('click')
+    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_stage')
+    expect(wrapper.get('[data-testid="homepage-headline-zh"]').element).toHaveProperty('value', fixture.heroSlides[1]!.headline['zh-CN'])
+    for (const control of wrapper.findAll('[data-testid="homepage-workbench"] input, [data-testid="homepage-workbench"] select, [data-testid="homepage-workbench"] textarea')) {
+      expect(control.element.closest('fieldset[disabled]'), control.element.outerHTML).not.toBeNull()
+    }
+    expect(wrapper.get('[data-testid="homepage-hero-add"]').element.matches(':disabled')).toBe(true)
+    expect(wrapper.get('[data-testid="homepage-hero-remove"]').element.matches(':disabled')).toBe(true)
+    expect(wrapper.get('[data-testid="snapshot-save"]').element.matches(':disabled')).toBe(true)
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it.each(['video', 'event', 'moment'] as const)('allows browsing every read-only %s record', async (module) => {
   const { wrapper } = await mountStudio({ status: 'archived' })
   await wrapper.get(`[data-testid="nav-${module}"]`).trigger('click')

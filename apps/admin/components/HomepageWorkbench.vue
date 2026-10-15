@@ -14,6 +14,7 @@ const props = defineProps<{
   snapshot: YujianContentSnapshot | null
   locale: AdminLocale
   busy: boolean
+  readOnly?: boolean
   dirty: boolean
   stale: boolean
   error: HomepageErrorCode | null
@@ -37,7 +38,7 @@ watch(() => draft.value, /** 重载时选择首条，避免旧选择指向已移
 
 /** 新记录只进入临时草稿，用户明确加入宣传位板块后才参与首页展示。 */
 function addHero() {
-  if (!draft.value || props.busy) return
+  if (!draft.value || props.busy || props.readOnly) return
   const hero = createHeroSlide()
   draft.value.heroSlides.push(hero)
   selectedId.value = hero.id
@@ -45,7 +46,7 @@ function addHero() {
 
 /** 删除后优先选择同一位置的下一条，末尾删除则选择上一条。 */
 function removeHero() {
-  if (!draft.value || props.busy || selectedIndex.value < 0) return
+  if (!draft.value || props.busy || props.readOnly || selectedIndex.value < 0) return
   const index = selectedIndex.value
   removeHomepageHero(draft.value, selectedId.value!)
   selectedId.value = draft.value.heroSlides[Math.min(index, draft.value.heroSlides.length - 1)]?.id ?? null
@@ -53,7 +54,7 @@ function removeHero() {
 
 /** 板块按数组位置移动，重复 ID 不会导致排序或身份误判。 */
 function moveSection(index: number, direction: -1 | 1) {
-  if (!draft.value || props.busy) return
+  if (!draft.value || props.busy || props.readOnly) return
   const next = index + direction
   if (next < 0 || next >= draft.value.sections.length) return
   ;[draft.value.sections[index], draft.value.sections[next]] = [draft.value.sections[next]!, draft.value.sections[index]!]
@@ -176,7 +177,7 @@ function moveSection(index: number, direction: -1 | 1) {
             type="button"
             class="icon-tool"
             data-testid="homepage-hero-add"
-            :disabled="busy"
+            :disabled="busy || readOnly"
             :aria-label="copy.addHero"
             :title="copy.addHero"
             @click="addHero"
@@ -218,7 +219,7 @@ function moveSection(index: number, direction: -1 | 1) {
                 type="button"
                 class="icon-tool"
                 data-testid="homepage-hero-remove"
-                :disabled="busy"
+                :disabled="busy || readOnly"
                 :aria-label="copy.removeHero"
                 :title="copy.removeHero"
                 @click="removeHero"
@@ -229,13 +230,19 @@ function moveSection(index: number, direction: -1 | 1) {
                 />
               </button>
             </div>
-            <HeroSlideFields
-              v-model="draft.heroSlides[selectedIndex]!"
-              :snapshot="editSnapshot"
-              :draft="draft"
-              :locale="locale"
-              :issues="issues"
-            />
+            <fieldset
+              class="music-fields"
+              :disabled="busy || readOnly"
+              :aria-label="copy.headline"
+            >
+              <HeroSlideFields
+                v-model="draft.heroSlides[selectedIndex]!"
+                :snapshot="editSnapshot"
+                :draft="draft"
+                :locale="locale"
+                :issues="issues"
+              />
+            </fieldset>
           </div>
           <p
             v-else
@@ -261,7 +268,7 @@ function moveSection(index: number, direction: -1 | 1) {
                 type="button"
                 class="icon-tool"
                 data-testid="homepage-section-up"
-                :disabled="busy || index === 0"
+                :disabled="busy || readOnly || index === 0"
                 :aria-label="`${copy.up} ${copy.types[section.type]}`"
                 @click="moveSection(index, -1)"
               >
@@ -274,7 +281,7 @@ function moveSection(index: number, direction: -1 | 1) {
                 type="button"
                 class="icon-tool"
                 data-testid="homepage-section-down"
-                :disabled="busy || index === draft.sections.length - 1"
+                :disabled="busy || readOnly || index === draft.sections.length - 1"
                 :aria-label="`${copy.down} ${copy.types[section.type]}`"
                 @click="moveSection(index, 1)"
               >
@@ -285,12 +292,18 @@ function moveSection(index: number, direction: -1 | 1) {
               </button>
             </div>
           </div>
-          <HomepageSectionFields
-            v-model="draft.sections[index]!"
-            :snapshot="editSnapshot"
-            :draft="draft"
-            :locale="locale"
-          />
+          <fieldset
+            class="music-fields"
+            :disabled="busy || readOnly"
+            :aria-label="copy.types[section.type]"
+          >
+            <HomepageSectionFields
+              v-model="draft.sections[index]!"
+              :snapshot="editSnapshot"
+              :draft="draft"
+              :locale="locale"
+            />
+          </fieldset>
         </div>
       </fieldset>
       <footer class="music-apply-row">
@@ -298,7 +311,7 @@ function moveSection(index: number, direction: -1 | 1) {
           type="button"
           class="button button--primary"
           data-testid="homepage-apply"
-          :disabled="busy || !dirty || stale"
+          :disabled="busy || readOnly || !dirty || stale"
           @click="emit('apply')"
         >
           {{ copy.apply }}

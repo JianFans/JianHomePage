@@ -50,6 +50,13 @@ test('历史内容只读，预览与复制只使用保存源且不触发发布',
   const api = await startStudio(page)
   await selectVersion(page, 'ver_history')
   await expect(page.getByTestId('studio-version-name')).toHaveText('Previous version')
+  await navigate(page, 'homepage')
+  await page.getByTestId('homepage-hero-hero_stage').click()
+  await expect(page.getByTestId('homepage-hero-id')).toHaveText('hero_stage')
+  await expect(page.getByTestId('homepage-headline-zh')).toHaveValue(fixtureSnapshot().heroSlides[1]!.headline['zh-CN'])
+  for (const id of ['homepage-headline-zh', 'homepage-hero-add', 'homepage-hero-remove', 'homepage-apply']) await expect(page.getByTestId(id)).toBeDisabled()
+  await expect(page.getByTestId('homepage-section-enabled').first()).toBeDisabled()
+  await expect(page.getByTestId('homepage-section-down').first()).toBeDisabled()
   await navigate(page, 'video')
   for (const id of ['snapshot-save', 'video-title-zh', 'video-add']) await expect(page.getByTestId(id)).toBeDisabled()
   await page.getByTestId('video-record-video_02').click()
@@ -85,6 +92,25 @@ test('历史内容只读，预览与复制只使用保存源且不触发发布',
   await expect(page.locator('.studio-meta')).toContainText('Saved')
   expect(api.records.get('ver_history')!.snapshot.videos[0]!.title.en).not.toBe('Copy only')
   expect(api.writes.map(request => new URL(request.url()).pathname)).toEqual(['/api/v1/versions/ver_history/clone', '/api/v1/versions/ver_copy'])
+})
+
+test('只读角色可以切换首页宣传位，不能修改或保存草稿', async ({ page }) => {
+  const api = await startStudio(page)
+  await page.route('**/api/v1/auth/session', route => route.fulfill({ json: {
+    authenticated: true, loginAvailable: true,
+    principal: { subject: 'reviewer-browser', roles: ['reviewer'] }, csrfToken,
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+  } }))
+  await page.reload()
+  await expect(page.getByTestId('studio-version-name')).toHaveText('Working draft')
+  await navigate(page, 'homepage')
+  await page.getByTestId('homepage-hero-hero_release').click()
+  await expect(page.getByTestId('homepage-hero-id')).toHaveText('hero_release')
+  await expect(page.getByTestId('homepage-headline-zh')).toHaveValue(fixtureSnapshot().heroSlides[2]!.headline['zh-CN'])
+  for (const id of ['snapshot-save', 'homepage-headline-zh', 'homepage-hero-add', 'homepage-hero-remove', 'homepage-apply']) await expect(page.getByTestId(id)).toBeDisabled()
+  await expect(page.getByTestId('homepage-section-enabled').first()).toBeDisabled()
+  await expect(page.getByTestId('homepage-section-down').first()).toBeDisabled()
+  expect(api.writes).toHaveLength(0)
 })
 
 test('素材切换模块保留文件、上传权利和替代文本输入', async ({ page }) => {

@@ -104,7 +104,8 @@ function navigate(module: StudioModule) { emit('navigate', module) }
         studio
         :snapshot="workspace.editorAnalysis.snapshot"
         :locale="locale"
-        :busy="studio.locked"
+        :busy="workspace.busy"
+        :read-only="!workspace.editable || !studio.canEdit"
         :dirty="homepage.dirty"
         :stale="homepage.stale"
         :error="homepage.error"

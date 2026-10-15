@@ -12,6 +12,7 @@ function mountHomepage(open = true, snapshotData = fixtureData) {
   const snapshot = analyzeSnapshotText(JSON.stringify(snapshotData)).snapshot!
   const draft = ref<HomepageDraft | null>(open ? createHomepageDraft(snapshot) : null)
   const busy = ref(false)
+  const readOnly = ref(false)
   const locale = ref<'zh-CN' | 'en'>('zh-CN')
   const dirty = ref(true)
   const stale = ref(false)
@@ -20,15 +21,35 @@ function mountHomepage(open = true, snapshotData = fixtureData) {
   const issues = ref<SnapshotEditorIssue[]>([])
   const host = defineComponent({
     components: { HomepageWorkbench },
-    setup: () => ({ draft, snapshot, busy, locale, dirty, stale, pending, error, issues }),
+    setup: () => ({ draft, snapshot, busy, readOnly, locale, dirty, stale, pending, error, issues }),
     template: `<HomepageWorkbench v-model:draft="draft" :snapshot="snapshot" :locale="locale"
-      :busy="busy" :dirty="dirty" :stale="stale" :pending="pending" :error="error" :issues="issues" />`,
+      :busy="busy" :read-only="readOnly" :dirty="dirty" :stale="stale" :pending="pending" :error="error" :issues="issues" />`,
   })
   const wrapper = mount(host)
-  return { wrapper, draft, busy, locale, dirty, stale, pending, error, issues }
+  return { wrapper, draft, busy, readOnly, locale, dirty, stale, pending, error, issues }
 }
 
 describe('首页工作台界面', () => {
+  it('只读时可以切换宣传位，字段、增删、编排和应用保持禁用', async () => {
+    const { wrapper, readOnly, busy } = mountHomepage()
+    readOnly.value = true
+    await wrapper.vm.$nextTick()
+    const next = wrapper.get('[data-testid="homepage-hero-hero_stage"]')
+    expect(next.element.matches(':disabled')).toBe(false)
+    expect(next.element.closest('fieldset[disabled]')).toBeNull()
+    await next.trigger('click')
+    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_stage')
+    for (const element of wrapper.findAll('input, select, textarea, [data-testid="homepage-hero-add"], [data-testid="homepage-hero-remove"], [data-testid="homepage-section-up"], [data-testid="homepage-section-down"], [data-testid="homepage-apply"]')) {
+      // Happy DOM does not implement inherited fieldset state in :disabled.
+      expect(element.element.hasAttribute('disabled') || element.element.closest('fieldset[disabled]') !== null, element.element.outerHTML).toBe(true)
+    }
+    expect(wrapper.get('[data-testid="homepage-open"]').element.matches(':disabled')).toBe(false)
+    expect(wrapper.get('[data-testid="homepage-close"]').element.matches(':disabled')).toBe(false)
+    busy.value = true
+    await wrapper.vm.$nextTick()
+    expect(next.element.matches(':disabled')).toBe(true)
+  })
+
   it('关闭状态提供打开入口，打开后提供重载及关闭事件', async () => {
     const { wrapper, draft } = mountHomepage(false)
     const workbench = wrapper.getComponent(HomepageWorkbench)
