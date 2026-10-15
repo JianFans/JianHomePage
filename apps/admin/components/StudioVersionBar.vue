@@ -13,6 +13,14 @@ const visible = computed(() => {
   if (props.version && !recent.some(item => item.id === props.version!.id)) recent[3] = props.version
   return recent
 })
+
+/** 选择只发出切换意图；取消确认或载入失败时仍显示已加载版本。 */
+function selectVersion(event: Event) {
+  const select = event.target as HTMLSelectElement
+  const requested = select.value
+  select.value = props.version?.id || ''
+  emit('select', requested)
+}
 </script>
 
 <template>
@@ -46,7 +54,7 @@ const visible = computed(() => {
       :aria-label="copy.versions"
       :value="version?.id || ''"
       :disabled="busy || !versions.length"
-      @change="emit('select', ($event.target as HTMLSelectElement).value)"
+      @change="selectVersion"
     >
       <option
         v-if="!versions.length"
