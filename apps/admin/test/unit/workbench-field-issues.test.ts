@@ -5,9 +5,13 @@ import fixture from '../../../../content/fixtures/homepage.json'
 import EventWorkbench from '../../components/EventWorkbench.vue'
 import MusicWorkbench from '../../components/MusicWorkbench.vue'
 import HomepageWorkbench from '../../components/HomepageWorkbench.vue'
+import VideoWorkbench from '../../components/VideoWorkbench.vue'
+import MomentWorkbench from '../../components/MomentWorkbench.vue'
 import { useEventWorkspace } from '../../composables/useEventWorkspace'
 import { useMusicWorkspace } from '../../composables/useMusicWorkspace'
 import { useHomepageWorkspace } from '../../composables/useHomepageWorkspace'
+import { useVideoWorkspace } from '../../composables/useVideoWorkspace'
+import { useMomentWorkspace } from '../../composables/useMomentWorkspace'
 import { analyzeSnapshotText } from '../../utils/snapshot-workbench'
 import { diagnosticLabel, focusSnapshotIssue } from '../../utils/issue-accessibility'
 
@@ -15,15 +19,17 @@ const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount() })
 
 /** Exercise canonical validation and focus in an attached real workbench. */
-function mountWorkbench(kind: 'event' | 'music' | 'homepage') {
+function mountWorkbench(kind: 'event' | 'music' | 'homepage' | 'video' | 'moment') {
   const editorText = ref(JSON.stringify(fixture))
   const busy = ref(false)
   const snapshot = computed(() => analyzeSnapshotText(editorText.value).snapshot)
   const form = reactive(kind === 'event' ? useEventWorkspace({ editorText, busy })
     : kind === 'homepage' ? useHomepageWorkspace({ editorText, busy })
-      : useMusicWorkspace({ editorText, busy, snapshot }))
+      : kind === 'video' ? useVideoWorkspace({ editorText, busy })
+        : kind === 'moment' ? useMomentWorkspace({ editorText, busy })
+          : useMusicWorkspace({ editorText, busy, snapshot }))
   const host = defineComponent({
-    components: { Workbench: { event: EventWorkbench, music: MusicWorkbench, homepage: HomepageWorkbench }[kind] },
+    components: { Workbench: { event: EventWorkbench, music: MusicWorkbench, homepage: HomepageWorkbench, video: VideoWorkbench, moment: MomentWorkbench }[kind] },
     setup: () => ({ form, snapshot, busy }),
     template: `<Workbench v-model:draft="form.draft" :snapshot="snapshot" locale="zh-CN" :busy="busy"
       :dirty="form.dirty" :stale="form.stale" :error="form.error" :issues="form.issues" :pending="false" studio
@@ -40,6 +46,27 @@ function description(element: Element) {
 }
 
 describe('canonical field issue navigation', () => {
+  it.each([
+    { kind: 'video', field: 'video-title-zh', path: '/videos/0/title/zh-CN', second: fixture.videos[1]!.id },
+    { kind: 'video', field: 'video-poster', path: '/videos/0/posterAssetId', second: fixture.videos[1]!.id },
+    { kind: 'moment', field: 'moment-asset', path: '/moments/0/assetId', second: fixture.moments[1]!.id },
+    { kind: 'moment', field: 'moment-caption-zh', path: '/moments/0/caption/zh-CN', second: fixture.moments[1]!.id },
+  ] as const)('reveals a non-current $kind record and describes $field', async ({ kind, field, path, second }) => {
+    const { wrapper, form } = mountWorkbench(kind)
+    await wrapper.get(`[data-testid="${kind}-open"]`).trigger('click')
+    const original = wrapper.get(`[data-testid="${kind}-id"]`).text()
+    await wrapper.get(`[data-testid="${field}"]`).setValue('')
+    await wrapper.get(`[data-testid="${kind}-record-${second}"]`).trigger('click')
+    expect(form.apply()).toBe(false)
+    expect(form.issues[0]?.path).toBe(path)
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    await flushPromises()
+    expect(wrapper.get(`[data-testid="${kind}-id"]`).text()).toBe(original)
+    const control = wrapper.get(`[data-testid="${field}"]`)
+    expect(document.activeElement).toBe(control.element)
+    expect(control.attributes('aria-invalid')).toBe('true')
+    expect(description(control.element)).toContain(path)
+  })
   it('keeps the existing bilingual schema diagnostic labels', () => {
     expect(diagnosticLabel('additionalProperties', 'zh-CN')).toBe('存在不允许的字段')
     expect(diagnosticLabel('minItems', 'en')).toBe('Too few items')

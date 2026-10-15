@@ -180,6 +180,8 @@ function addMoment() {
             :aria-pressed="selectedIndex === index"
             :disabled="busy"
             :data-testid="`moment-record-${moment.id}`"
+            data-snapshot-record-kind="moments"
+            :data-snapshot-record-index="index"
             @click="selectedIndex = index"
           >
             <Images
@@ -207,6 +209,8 @@ function addMoment() {
               :snapshot="editSnapshot"
               :draft="draft"
               :locale="locale"
+              :path="`/moments/${selectedIndex}`"
+              :issues="issues"
             />
           </fieldset>
         </div>
