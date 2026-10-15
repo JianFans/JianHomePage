@@ -61,6 +61,19 @@ afterEach(() => {
 })
 
 describe('HeroShowcase', () => {
+  it('跳转独占翻页上方的稳定槽位，无目标时仍保留翻页结构', async () => {
+    stubReducedMotion(false)
+    const slides = structuredClone(imageSlides)
+    slides[0]!.target = { kind: 'external', link: { provider: 'other', url: 'https://yujian.me' } }
+    const wrapper = mount(HeroShowcase, { props: { slides, assets: imageAssets, locale: 'en', brand: 'Meet Jian', artistName: 'Wang Zijian' } })
+    expect(wrapper.get('.hero-navigation > .hero-link-slot > a').attributes('href')).toBe('https://yujian.me')
+    expect(wrapper.findAll('.hero-pagination button')).toHaveLength(2)
+    await wrapper.get('[data-testid="hero-next"]').trigger('click')
+    expect(wrapper.find('.hero-link-slot').exists()).toBe(true)
+    expect(wrapper.find('.hero-link-slot a').exists()).toBe(false)
+    expect(wrapper.findAll('.hero-pagination button')).toHaveLength(2)
+    wrapper.unmount()
+  })
   it('渲染图片、焦点坐标和稳定页进度', async () => {
     stubReducedMotion(false)
     const wrapper = mount(HeroShowcase, {

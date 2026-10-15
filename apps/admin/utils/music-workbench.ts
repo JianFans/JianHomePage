@@ -55,6 +55,18 @@ export function musicAssets(snapshot: YujianContentSnapshot, purpose: 'cover' | 
   return snapshot.assets.filter(asset => purpose === 'cover' ? ['image', 'gif'].includes(asset.kind) : asset.kind === 'audio')
 }
 
+/** 共用事务的曲目合并顺序，避免重排、重复引用和删除使字段路径偏移。 */
+export function musicDraftTracks(snapshot: YujianContentSnapshot, draft: MusicDraft): Track[] {
+  const previousIds = new Set(snapshot.releases.find(release => release.id === draft.originalId)?.trackIds ?? [])
+  const updated = new Map(draft.tracks.map(track => [track.id, track]))
+  const existingIds = new Set(snapshot.tracks.map(track => track.id))
+  return [
+    ...snapshot.tracks.filter(track => !previousIds.has(track.id) || updated.has(track.id))
+      .map(track => updated.get(track.id) ?? track),
+    ...[...updated.values()].filter(track => !existingIds.has(track.id)),
+  ]
+}
+
 /**
  * 在最新文本上原子应用作品、曲目与音乐条目；任何错误都返回未经修改的原文。
  * 基线比较防止表单覆盖其他入口的编辑，完整诊断保护素材引用和首页内部目标。
@@ -94,11 +106,7 @@ export function applyMusicDraft(text: string, baseline: string, draft: MusicDraf
     releases: original
       ? snapshot.releases.map(item => item.id === original.id ? release : item)
       : [...snapshot.releases, release],
-    tracks: [
-      ...snapshot.tracks.filter(track => !previousIds.has(track.id) || updatedTracks.has(track.id))
-        .map(track => updatedTracks.get(track.id) ?? track),
-      ...[...updatedTracks.values()].filter(track => !existingTracks.has(track.id)),
-    ],
+    tracks: musicDraftTracks(snapshot, draft),
     homepage: {
       ...snapshot.homepage,
       sections: snapshot.homepage.sections.map(section => section.type === 'music'

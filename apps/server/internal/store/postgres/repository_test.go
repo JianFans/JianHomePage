@@ -27,6 +27,10 @@ func (row recordingRow) Scan(dest ...any) error {
 	if row.err != nil {
 		return row.err
 	}
+	// Legacy version fixtures predate optional metadata; mirror SQL's ID fallback.
+	if len(dest) == 12 && len(row.values) == 10 {
+		row.values = append(append([]any(nil), row.values...), row.values[0], "")
+	}
 	for index := range dest {
 		if index >= len(row.values) {
 			return errors.New("not enough row values")

@@ -2,7 +2,7 @@
 import { useRuntimeConfig } from '#imports'
 import { Eye, Languages, Monitor, RotateCcw, Smartphone, X } from '@lucide/vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AdminLocale } from '../utils/admin-locale'
 import { createLocaleMessage, createSnapshotMessage, readPreviewMessage } from '../utils/homepage-preview'
 
@@ -12,6 +12,7 @@ const props = defineProps<{
   textRevision: number
   formDirty: boolean
   locale: AdminLocale
+  autoOpen?: boolean
 }>()
 
 const runtime = useRuntimeConfig()
@@ -138,6 +139,7 @@ function observeStage(element: HTMLElement | null) {
 watch([() => props.textIsCurrent, () => props.snapshot, () => props.textRevision], startSession, { flush: 'sync' })
 watch([stage, generation], () => observeStage(stage.value), { flush: 'post' })
 onBeforeUnmount(stopSession)
+onMounted(() => { if (props.autoOpen) open() })
 </script>
 
 <template>

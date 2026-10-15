@@ -108,6 +108,7 @@ type ServiceDependencies struct {
 	PublishReconciler publishReconciler
 	LocalUploads      http.Handler
 	Close             func() error
+	Sessions          auth.SessionStore
 }
 
 type productionDatabase interface {
@@ -182,6 +183,7 @@ func buildProductionDependencies(
 		BuildTrigger: trigger, Validator: validator,
 	})
 	dependencies := ServiceDependencies{
+		Sessions: postgres.NewSessionStore(database),
 		Content: content.NewService(content.ServiceOptions{
 			Store: postgres.NewContentRepository(database), Validator: validator,
 		}),
@@ -216,10 +218,19 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 		}
 		identityProvider = provider
 	}
+	sessions, err := auth.NewSessions(auth.SessionOptions{
+		Issuer: settings.OIDCIssuer, ClientID: settings.AdminOIDCClientID, ClientSecret: settings.AdminOIDCClientSecret,
+		RedirectURL: settings.AdminOIDCRedirectURL, ReturnURL: settings.AdminReturnURL, Key: settings.AdminSessionKey,
+		Store: dependencies.Sessions, AllowedOrigins: settings.AllowedAdminOrigins, Secure: settings.Environment == "production",
+	})
+	if err != nil {
+		return nil, err
+	}
 	middleware, err := auth.NewMiddleware(auth.MiddlewareOptions{
 		Environment:      settings.Environment,
 		AllowDevIdentity: settings.AllowDevIdentity,
 		IdentityProvider: identityProvider,
+		Sessions:         sessions,
 	})
 	if err != nil {
 		return nil, err
@@ -231,6 +242,7 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 		Middleware:     middleware,
 		AllowedOrigins: settings.AllowedAdminOrigins,
 		LocalUploads:   dependencies.LocalUploads,
+		Sessions:       sessions,
 	}), nil
 }
 
@@ -248,6 +260,7 @@ func developmentDependencies() ServiceDependencies {
 		Validator:    validator,
 	})
 	return ServiceDependencies{
+		Sessions: memory.NewSessionStore(),
 		Content: content.NewService(content.ServiceOptions{
 			Store:     memory.NewContentRepository(state),
 			Validator: validator,

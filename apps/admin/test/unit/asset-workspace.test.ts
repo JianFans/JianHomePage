@@ -1,9 +1,26 @@
 import { effectScope, ref, watch } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import { useAssetWorkspace, type AssetWorkspaceApi } from '../../composables/useAssetWorkspace'
-import type { AdminAsset, AdminAssetUpload } from '../../utils/admin-api'
+import type { AdminApiOptions, AdminAsset, AdminAssetUpload } from '../../utils/admin-api'
 
 describe('asset workspace state machine', () => {
+  it('uses current session CSRF and forwards unauthorized responses without requiring a token', async () => {
+    const api = createApi()
+    const csrfToken = ref('csrf-first')
+    const unauthorized = vi.fn()
+    const factory = vi.fn<(options: AdminApiOptions) => AssetWorkspaceApi>(() => api)
+    const workspace = useAssetWorkspace({ apiBaseUrl: ref(''), token: ref(''), csrfToken, onUnauthorized: unauthorized, apiFactory: factory })
+    await workspace.loadAssets()
+    expect(factory).toHaveBeenLastCalledWith(expect.objectContaining({ csrfToken: 'csrf-first', onUnauthorized: expect.any(Function) }))
+    const oldUnauthorized = factory.mock.calls[0]![0].onUnauthorized!
+    csrfToken.value = 'csrf-next'
+    await workspace.loadAssets()
+    expect(factory).toHaveBeenLastCalledWith(expect.objectContaining({ csrfToken: 'csrf-next' }))
+    oldUnauthorized()
+    expect(unauthorized).not.toHaveBeenCalled()
+    factory.mock.calls[1]![0].onUnauthorized!()
+    expect(unauthorized).toHaveBeenCalledOnce()
+  })
   it('invalidates completion retries and library state when the API connection changes', /** 切换服务端后旧确认目标和分页失效，但未提交的表单仍可用于新上传。 */ async () => {
     const firstApi = createApi()
     firstApi.listAssets.mockResolvedValueOnce({ items: [readyAsset('asset_a')], nextCursor: 'cursor-a' })

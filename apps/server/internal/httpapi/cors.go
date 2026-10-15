@@ -8,7 +8,7 @@ import (
 
 const (
 	allowedCORSMethods = "GET, POST, PUT, DELETE, OPTIONS"
-	allowedCORSHeaders = "Authorization, Content-Type, If-Match, Idempotency-Key, X-Request-ID, X-Yujian-Checksum"
+	allowedCORSHeaders = "Authorization, Content-Type, If-Match, Idempotency-Key, X-Request-ID, X-Yujian-Checksum, X-CSRF-Token"
 )
 
 func corsMiddleware(next http.Handler, allowedOrigins []string) http.Handler {
@@ -28,6 +28,7 @@ func corsMiddleware(next http.Handler, allowedOrigins []string) http.Handler {
 
 		writer.Header().Add("Vary", "Origin")
 		writer.Header().Set("Access-Control-Allow-Origin", origin)
+		writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		if request.Method == http.MethodOptions && request.Header.Get("Access-Control-Request-Method") != "" {
 			writer.Header().Add("Vary", "Access-Control-Request-Method")
 			writer.Header().Add("Vary", "Access-Control-Request-Headers")

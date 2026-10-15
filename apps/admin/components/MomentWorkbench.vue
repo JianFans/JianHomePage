@@ -13,11 +13,13 @@ const props = defineProps<{
   snapshot: YujianContentSnapshot | null
   locale: AdminLocale
   busy: boolean
+  readOnly?: boolean
   dirty: boolean
   stale: boolean
   error: MomentErrorCode | null
   issues: readonly SnapshotEditorIssue[]
   pending: boolean
+  studio?: boolean
 }>()
 const emit = defineEmits<{ open: []; apply: []; close: []; keep: []; discard: [] }>()
 const copy = computed(() => momentCopy(props.locale))
@@ -35,7 +37,7 @@ watch(() => draft.value?.moments.length, /** 防御外部替换数组后选择�
 
 /** 新记录仅进入草稿，不自动添加首页引用。 */
 function addMoment() {
-  if (!draft.value || props.busy) return
+  if (!draft.value || props.busy || props.readOnly) return
   draft.value.moments.push(createMoment())
   selectedIndex.value = draft.value.moments.length - 1
 }
@@ -104,7 +106,7 @@ function addMoment() {
       {{ copy.stale }}
     </p>
     <div
-      v-if="error"
+      v-if="error && !studio"
       class="music-error"
       role="alert"
       data-testid="moment-error"
@@ -140,7 +142,7 @@ function addMoment() {
             data-testid="moment-add"
             :aria-label="copy.add"
             :title="copy.add"
-            :disabled="busy"
+            :disabled="busy || readOnly"
             @click="addMoment"
           >
             <Plus
@@ -178,6 +180,8 @@ function addMoment() {
             :aria-pressed="selectedIndex === index"
             :disabled="busy"
             :data-testid="`moment-record-${moment.id}`"
+            data-snapshot-record-kind="moments"
+            :data-snapshot-record-index="index"
             @click="selectedIndex = index"
           >
             <Images
@@ -197,7 +201,7 @@ function addMoment() {
           <fieldset
             class="music-fields"
             data-testid="moment-fields"
-            :disabled="busy"
+            :disabled="busy || readOnly"
           >
             <MomentFields
               v-if="editSnapshot"
@@ -205,6 +209,8 @@ function addMoment() {
               :snapshot="editSnapshot"
               :draft="draft"
               :locale="locale"
+              :path="`/moments/${selectedIndex}`"
+              :issues="issues"
             />
           </fieldset>
         </div>
@@ -214,7 +220,7 @@ function addMoment() {
           type="button"
           class="button button--primary"
           data-testid="moment-apply"
-          :disabled="busy || stale || !dirty"
+          :disabled="busy || readOnly || stale || !dirty"
           @click="emit('apply')"
         >
           {{ copy.apply }}

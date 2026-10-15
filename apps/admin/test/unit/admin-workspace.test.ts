@@ -28,11 +28,11 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 /** 在 Nuxt 测试作用域中挂载组合式函数并返回可解包状态。 */
-async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN')) {
+async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN'), session: Parameters<typeof useAdminWorkspace>[1] = {}) {
   const host = defineComponent({
     /** 向测试宿主暴露由 Vue 自动解包的工作区状态。 */
     setup() {
-      return { workspace: reactive(useAdminWorkspace(locale)) }
+      return { workspace: reactive(useAdminWorkspace(locale, session)) }
     },
     template: '<div />',
   })
@@ -64,12 +64,124 @@ function publishJob(overrides: Partial<AdminPublishJob> = {}): AdminPublishJob {
   }
 }
 
+it('keeps the write lock if a concurrent summary request fails', async () => {
+  const { wrapper, workspace } = await mountWorkspace()
+  const list = deferred<Response>()
+  const write = deferred<Response>()
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(jsonResponse(version()))
+    .mockReturnValueOnce(list.promise)
+    .mockReturnValueOnce(write.promise))
+  workspace.versionId = 'ver_1'
+  await workspace.loadVersion()
+  const listing = workspace.listVersions()
+  const saving = workspace.saveDraft()
+  list.reject(new Error('Unavailable'))
+  await listing
+  expect(workspace.listError).toBe(true)
+  expect(workspace.busy).toBe(true)
+  write.resolve(jsonResponse(version({ revision: 2 })))
+  await saving
+  expect(workspace.version?.revision).toBe(2)
+  wrapper.unmount()
+})
+
+it('ignores unauthorized responses from the previous session after recovery', async () => {
+  const active = ref(true)
+  const csrfToken = ref('old-csrf')
+  const unauthorized = vi.fn()
+  const old = deferred<Response>()
+  vi.stubGlobal('fetch', vi.fn().mockReturnValueOnce(old.promise)
+    .mockResolvedValueOnce(jsonResponse({ code: 'unauthorized', message: 'Unauthorized' }, 401)))
+  const { wrapper, workspace } = await mountWorkspace(ref('en'), { active, csrfToken, onUnauthorized: unauthorized })
+  try {
+    const listing = workspace.listVersions()
+    active.value = false
+    csrfToken.value = ''
+    await nextTick()
+    csrfToken.value = 'new-csrf'
+    active.value = true
+    old.resolve(jsonResponse({ code: 'unauthorized', message: 'Unauthorized' }, 401))
+    await listing
+    expect(unauthorized).not.toHaveBeenCalled()
+    await workspace.listVersions()
+    expect(unauthorized).toHaveBeenCalledOnce()
+  } finally { wrapper.unmount() }
+})
+
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
 describe('管理工作区', () => {
+  it('保存后的新修订不会被迟到的旧摘要页覆盖', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    const late = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse(version()))
+      .mockReturnValueOnce(late.promise)
+      .mockResolvedValueOnce(jsonResponse(version({ revision: 2 }))))
+    workspace.versionId = 'ver_1'
+    await workspace.loadVersion()
+    const listing = workspace.listVersions()
+    workspace.editorText += '\n'
+    await workspace.saveDraft()
+    late.resolve(jsonResponse({ items: [version({ revision: 1 })] }))
+    await listing
+    expect(workspace.versions.find(item => item.id === 'ver_1')?.revision).toBe(2)
+    expect(workspace.listing).toBe(false)
+    wrapper.unmount()
+  })
+  it('历史只读不能保存，复制调用服务端并切入独立草稿', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(version({ status: 'published' })))
+      .mockResolvedValueOnce(jsonResponse(version({ id: 'ver_copy', name: '新编排', sourceVersionId: 'ver_1' })))
+    vi.stubGlobal('fetch', fetcher)
+    workspace.versionId = 'ver_1'
+    await workspace.loadVersion()
+    expect(workspace.editable).toBe(false)
+    await workspace.saveDraft()
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await workspace.cloneVersion('ver_1', '新编排')
+    expect(workspace.version?.id).toBe('ver_copy')
+    expect(workspace.editable).toBe(true)
+    expect(workspace.dirty).toBe(false)
+    expect(fetcher.mock.calls[1]?.[0]).toContain('/ver_1/clone')
+    expect(JSON.parse(fetcher.mock.calls[1]?.[1].body)).toEqual({ name: '新编排' })
+    wrapper.unmount()
+  })
+
+  it('刷新版本列表时拒绝迟到页，按 ID 去重并保留服务端顺序', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    const late = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockReturnValueOnce(late.promise)
+      .mockResolvedValueOnce(jsonResponse({ items: [version({ id: 'ver_new' })], nextCursor: 'page2' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [version({ id: 'ver_new' }), version({ id: 'ver_old' })] })))
+    const first = workspace.listVersions()
+    await workspace.listVersions()
+    late.resolve(jsonResponse({ items: [version({ id: 'ver_stale' })] }))
+    await first
+    expect(workspace.versions.map(item => item.id)).toEqual(['ver_new'])
+    await workspace.listVersions(true)
+    expect(workspace.versions.map(item => item.id)).toEqual(['ver_new', 'ver_old'])
+    expect(workspace.nextCursor).toBe('')
+    wrapper.unmount()
+  })
+
+  it('销毁后保存响应不会改变本地内容或版本', async () => {
+    const { wrapper, workspace } = await mountWorkspace()
+    const late = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn().mockReturnValueOnce(late.promise))
+    workspace.editorText = JSON.stringify(fixture)
+    const saving = workspace.saveDraft()
+    wrapper.unmount()
+    late.resolve(jsonResponse(version()))
+    await saving
+    expect(workspace.version).toBeNull()
+  })
   it('暴露同一防抖文本的只读分析基线，输入变化不伪装成当前分析', async () => {
     const { wrapper, workspace } = await mountWorkspace()
     vi.useFakeTimers()
@@ -295,12 +407,15 @@ describe('管理工作区', () => {
       }
       if (url.endsWith('/api/v1/publishes')) {
         publishKeys.push(new Headers(init?.headers).get('Idempotency-Key') || '')
+        currentVersion = version({ status: 'publishing', revision: 5, reviewApproved: true })
         return jsonResponse(currentJob, 202)
       }
       if (url.endsWith('/refresh')) {
         currentJob = publishJob({ status: 'succeeded', buildId: 'build_1' })
+        currentVersion = version({ status: 'published', revision: 6, reviewApproved: true })
         return jsonResponse(currentJob)
       }
+      if (url.endsWith('/api/v1/versions/ver_1') && method === 'GET') return jsonResponse(currentVersion)
       throw new Error(`unexpected request: ${method} ${url}`)
     })
     vi.stubGlobal('fetch', fetcher)
@@ -320,10 +435,15 @@ describe('管理工作区', () => {
     expect(workspace.canPublish).toBe(true)
 
     await workspace.publish()
+    expect(workspace.version).toMatchObject({ status: 'publishing', revision: 5 })
+    expect(workspace.canPublish).toBe(false)
     await workspace.publish()
     expect(publishKeys[1]).toBe(publishKeys[0])
     await workspace.refreshPublish()
     expect(workspace.publishJob).toMatchObject({ status: 'succeeded', buildId: 'build_1' })
+    expect(workspace.version).toMatchObject({ status: 'published', revision: 6 })
+    expect(workspace.versions[0]).toMatchObject({ status: 'published', revision: 6 })
+    expect(workspace.canRollback).toBe(true)
 
     await workspace.publish()
     expect(publishKeys[2]).not.toBe(publishKeys[0])
@@ -366,4 +486,125 @@ describe('管理工作区', () => {
     await workspace.loadVersion()
     expect(workspace.workflow).toEqual({ status: 'error', message: '服务不可用', requestId: 'req_1' })
   })
+})
+
+it('retains an accepted task and its key when the version synchronization fails', async () => {
+  let reads = 0
+  const keys: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+    if (String(input).endsWith('/publishes')) {
+      keys.push(new Headers(init?.headers).get('Idempotency-Key')!)
+      return jsonResponse(publishJob())
+    }
+    return ++reads === 1 ? jsonResponse({ code: 'unavailable', message: 'Unavailable' }, 503)
+      : jsonResponse(version({ status: 'publishing', revision: 3 }))
+  }))
+  const { wrapper, workspace } = await mountWorkspace()
+  try {
+    workspace.version = version({ status: 'in_review', reviewApproved: true })
+    await workspace.publish()
+    expect(workspace.publishJob?.id).toBe('pub_1')
+    expect(workspace.workflow.status).toBe('error')
+    await workspace.publish()
+    expect(keys[1]).toBe(keys[0])
+    expect(workspace.version?.status).toBe('publishing')
+  } finally { wrapper.unmount() }
+})
+
+it('refreshes an old task summary without replacing the selected version or unsaved text', async () => {
+  vi.stubGlobal('fetch', vi.fn(async input => String(input).endsWith('/refresh')
+    ? jsonResponse(publishJob({ status: 'succeeded' }))
+    : jsonResponse(version({ status: 'published', revision: 3 }))))
+  const { wrapper, workspace } = await mountWorkspace()
+  try {
+    workspace.version = version({ id: 'ver_other' })
+    workspace.editorText = 'unsaved text'
+    workspace.publishJob = publishJob()
+    await workspace.refreshPublish()
+    expect(workspace.version?.id).toBe('ver_other')
+    expect(workspace.editorText).toBe('unsaved text')
+    expect(workspace.versions.find(item => item.id === 'ver_1')).toMatchObject({ status: 'published', revision: 3 })
+  } finally { wrapper.unmount() }
+})
+
+it.each([false, true])('synchronizes the previous live version after success, selected=%s', async (selectedPrevious) => {
+  const previous = version({ id: 'ver_previous', status: 'published', revision: 8 })
+  const target = version({ status: 'publishing', revision: 5 })
+  vi.stubGlobal('fetch', vi.fn(async input => String(input).endsWith('/refresh')
+    ? jsonResponse(publishJob({ status: 'succeeded' }))
+    : String(input).endsWith('/ver_previous')
+      ? jsonResponse({ ...previous, status: 'archived', revision: 9 })
+      : jsonResponse({ ...target, status: 'published', revision: 6 })))
+  const { wrapper, workspace } = await mountWorkspace()
+  try {
+    workspace.versions = [target, previous]
+    workspace.version = selectedPrevious ? previous : target
+    workspace.editorText = 'retain selected input'
+    workspace.publishJob = publishJob()
+    await workspace.refreshPublish()
+    expect(workspace.versions.find(item => item.id === previous.id)).toMatchObject({ status: 'archived', revision: 9 })
+    expect(workspace.version).toMatchObject(selectedPrevious ? { id: previous.id, status: 'archived', revision: 9 } : { id: target.id, status: 'published', revision: 6 })
+    expect(workspace.editorText).toBe('retain selected input')
+  } finally { wrapper.unmount() }
+})
+
+it('keeps a current dirty snapshot while refreshing its version status', async () => {
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(jsonResponse(version({ status: 'publishing', revision: 4 })))
+    .mockResolvedValueOnce(jsonResponse(publishJob({ status: 'failed' })))
+    .mockResolvedValueOnce(jsonResponse(version({ status: 'in_review', revision: 5, reviewApproved: true }))))
+  const { wrapper, workspace } = await mountWorkspace()
+  try {
+    workspace.versionId = 'ver_1'
+    await workspace.loadVersion()
+    const changed = JSON.stringify({ ...fixture, releaseId: 'rel_unsaved' })
+    workspace.editorText = changed
+    workspace.publishJob = publishJob()
+    await workspace.refreshPublish()
+    expect(workspace.editorText).toBe(changed)
+    expect(workspace.dirty).toBe(true)
+    expect(workspace.version).toMatchObject({ status: 'in_review', revision: 5 })
+    expect(workspace.canPublish).toBe(false)
+  } finally { wrapper.unmount() }
+})
+
+it.each(['succeeded', 'failed'] as const)('synchronizes rollback acceptance and its %s terminal version', async (status) => {
+  const finalStatus = status === 'succeeded' ? 'published' : 'archived'
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(jsonResponse(version({ status: 'archived', revision: 4 })))
+    .mockResolvedValueOnce(jsonResponse(publishJob({ status: 'pending' }), 202))
+    .mockResolvedValueOnce(jsonResponse(version({ status: 'publishing', revision: 5 })))
+    .mockResolvedValueOnce(jsonResponse(publishJob({ status })))
+    .mockResolvedValueOnce(jsonResponse(version({ status: finalStatus, revision: 6 }))))
+  const { wrapper, workspace } = await mountWorkspace()
+  try {
+    workspace.versionId = 'ver_1'
+    await workspace.loadVersion()
+    await workspace.rollback()
+    expect(workspace.version).toMatchObject({ status: 'publishing', revision: 5 })
+    expect(workspace.canRollback).toBe(false)
+    await workspace.refreshPublish()
+    expect(workspace.version).toMatchObject({ status: finalStatus, revision: 6 })
+    expect(workspace.versions[0]).toMatchObject({ status: finalStatus, revision: 6 })
+    expect(workspace.canRollback).toBe(true)
+  } finally { wrapper.unmount() }
+})
+
+it('holds the write lock during version synchronization and ignores responses after session expiry', async () => {
+  const active = ref(true)
+  const read = deferred<Response>()
+  vi.stubGlobal('fetch', vi.fn(async input => String(input).endsWith('/publishes')
+    ? jsonResponse(publishJob()) : read.promise))
+  const { wrapper, workspace } = await mountWorkspace(ref('en'), { active })
+  try {
+    workspace.version = version({ status: 'in_review', reviewApproved: true })
+    const operation = workspace.publish()
+    await vi.waitFor(() => expect(workspace.publishJob?.id).toBe('pub_1'))
+    expect(workspace.busy).toBe(true)
+    active.value = false
+    read.resolve(jsonResponse(version({ status: 'published', revision: 3 })))
+    await operation
+    expect(workspace.version?.status).toBe('in_review')
+    expect(workspace.workflow.status).toBe('idle')
+  } finally { wrapper.unmount() }
 })

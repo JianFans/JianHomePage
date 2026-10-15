@@ -4,6 +4,8 @@ import type { Asset } from '@yujian/schema'
 
 export interface AdminVersion {
   id: string
+  name?: string
+  sourceVersionId?: string
   status: 'draft' | 'in_review' | 'publishing' | 'published' | 'archived'
   revision: number
   snapshot: Record<string, unknown>
@@ -11,6 +13,17 @@ export interface AdminVersion {
   reviewApproved?: boolean
   createdAt?: string
   updatedAt?: string
+}
+
+export type AdminVersionSummary = Omit<AdminVersion, 'snapshot'>
+export interface AdminVersionPage { items: AdminVersionSummary[]; nextCursor?: string }
+export interface AdminPrincipal { subject: string; name?: string; email?: string; roles: string[] }
+export interface AdminSession {
+  authenticated: boolean
+  loginAvailable: boolean
+  principal?: AdminPrincipal
+  csrfToken?: string
+  expiresAt?: string
 }
 
 export interface AdminPublishJob {
@@ -98,6 +111,8 @@ export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promis
 export interface AdminApiOptions {
   baseUrl: string
   token?: string
+  csrfToken?: string
+  onUnauthorized?: () => void
   fetcher?: FetchLike
 }
 
@@ -163,8 +178,12 @@ export function createAdminApi(options: AdminApiOptions) {
     if (options.token?.trim()) {
       headers.set('Authorization', `Bearer ${options.token.trim()}`)
     }
-    const response = await fetcher(`${baseUrl}${path}`, { ...init, headers })
+    if (!['GET', 'HEAD', 'OPTIONS'].includes((init.method || 'GET').toUpperCase()) && options.csrfToken) {
+      headers.set('X-CSRF-Token', options.csrfToken)
+    }
+    const response = await fetcher(`${baseUrl}${path}`, { ...init, credentials: 'include', cache: 'no-store', headers })
     if (!response.ok) {
+      if (response.status === 401) options.onUnauthorized?.()
       let body: Partial<AdminApiErrorShape> = {}
       try {
         body = await response.json() as Partial<AdminApiErrorShape>
@@ -187,9 +206,28 @@ export function createAdminApi(options: AdminApiOptions) {
 
   return {
     request,
+    /** 恢复 HttpOnly 会话，仅把身份和 CSRF 令牌交给当前内存状态。 */
+    getSession() {
+      return request<AdminSession>('/api/v1/auth/session')
+    },
+    /** 服务端撤销会话，清除 Cookie；失败由调用方保留登录状态以便重试。 */
+    logout() {
+      return request<void>('/api/v1/auth/logout', json({}))
+    },
+    /** 分页读取不包含快照的版本摘要，避免为导航下载所有历史内容。 */
+    listVersions(options: { limit?: number; cursor?: string } = {}) {
+      const query = new URLSearchParams()
+      if (options.limit !== undefined) query.set('limit', String(options.limit))
+      if (options.cursor) query.set('cursor', options.cursor)
+      return request<AdminVersionPage>(`/api/v1/versions${query.size ? `?${query}` : ''}`)
+    },
+    /** 复制服务端保存的源快照，不把浏览器未保存内容当作历史版本。 */
+    cloneVersion(versionId: string, name: string) {
+      return request<AdminVersion>(`/api/v1/versions/${encodeURIComponent(versionId)}/clone`, json({ name }))
+    },
     /** 创建一个新的内容草稿版本。 */
-    createVersion(snapshot: Record<string, unknown>) {
-      return request<AdminVersion>('/api/v1/versions', json({ snapshot }))
+    createVersion(snapshot: Record<string, unknown>, name?: string) {
+      return request<AdminVersion>('/api/v1/versions', json({ snapshot, ...(name ? { name } : {}) }))
     },
     /** 按稳定版本 ID 读取内容版本。 */
     getVersion(versionId: string) {
@@ -232,6 +270,7 @@ export function createAdminApi(options: AdminApiOptions) {
     async uploadAssetBlob(upload: AdminAssetUpload, file: Blob) {
       const response = await fetcher(upload.uploadUrl, {
         method: 'PUT',
+        credentials: 'omit',
         headers: new Headers(upload.headers),
         body: file,
       })

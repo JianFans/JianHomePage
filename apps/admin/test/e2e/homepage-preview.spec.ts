@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net'
 import { expect, test, type Frame, type Page, type Request } from '@playwright/test'
 import type { YujianContentSnapshot } from '@yujian/schema'
 import fixture from '../../../../content/fixtures/homepage.json' with { type: 'json' }
+import { fixtureSnapshot, importSnapshot, navigate, openTools, snapshot, startStudio } from './studio'
 
 const channel = 'yujian-homepage-preview-v1'
 
@@ -16,12 +17,6 @@ declare global {
 }
 // Two black H.264 frames generated locally with FFmpeg; no external video service is needed.
 const videoBytes = Buffer.from('AAAAJGZ0eXBpc29tAAACAGlzb21pc282aXNvMmF2YzFtcDQxAAAC7G1vb3YAAABsbXZoZAAAAAAAAAAAAAAAAAAAA+gAAAAAAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAHvdHJhawAAAFx0a2hkAAAAAwAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAQAAAAEAAAAAABi21kaWEAAAAgbWRoZAAAAAAAAAAAAAAAAAAAQAAAAAAAVcQAAAAAAC1oZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAATZtaW5mAAAAFHZtaGQAAAABAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAD2c3RibAAAAKpzdHNkAAAAAAAAAAEAAACaYXZjMQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAQABAASAAAAEgAAAAAAAAAARVMYXZjNjIuMTUuMTAwIGxpYngyNjQAAAAAAAAAAAAAABj//wAAADRhdmNDAWQACv/hABdnZAAKrNlewEQAAAMABAAAAwAIPEiWWAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAEHN0dHMAAAAAAAAAAAAAABBzdHNjAAAAAAAAAAAAAAAUc3RzegAAAAAAAAAAAAAAAAAAABBzdGNvAAAAAAAAAAAAAAAobXZleAAAACB0cmV4AAAAAAAAAAEAAAABAAAAAAAAAAAAAAAAAAAAYXVkdGEAAABZbWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAsaWxzdAAAACSpdG9vAAAAHGRhdGEAAAABAAAAAExhdmY2Mi41LjEwMAAAAHhtb29mAAAAEG1maGQAAAAAAAAAAQAAAGB0cmFmAAAAJHRmaGQAAAA5AAAAAQAAAAAAAAMQAABAAAAAAsUBAQAAAAAAFHRmZHQBAAAAAAAAAAAAAAAAAAAgdHJ1bgAAAgUAAAACAAAAgAIAAAAAAALFAAAADAAAAtltZGF0AAACrQYF//+p3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NSByMzIyMiBiMzU2MDVhIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyNSAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiB0aHJlYWRzPTEgbG9va2FoZWFkX3RocmVhZHM9MSBzbGljZWRfdGhyZWFkcz0wIG5yPTAgZGVjaW1hdGU9MSBpbnRlcmxhY2VkPTAgYmx1cmF5X2NvbXBhdD0wIGNvbnN0cmFpbmVkX2ludHJhPTAgYmZyYW1lcz0zIGJfcHlyYW1pZD0yIGJfYWRhcHQ9MSBiX2JpYXM9MCBkaXJlY3Q9MSB3ZWlnaHRiPTEgb3Blbl9nb3A9MCB3ZWlnaHRwPTIga2V5aW50PTI1MCBrZXlpbnRfbWluPTEgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAAQZYiEABb//vfTP8yy7JolgQAAAAhBmiFsQV/+8AAAAENtZnJhAAAAK3RmcmEBAAAAAAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAADEAEBAQAAABBtZnJvAAAAAAAAAEM=', 'base64')
-
-/** Import through the real file input and await canonical validation before opening the preview. */
-async function importSnapshot(page: Page, value: unknown = fixture) {
-  await page.getByTestId('snapshot-file-input').setInputFiles({ name: 'preview.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) })
-  await expect(page.getByTestId('snapshot-validation')).toHaveText('Valid')
-}
 
 /** Await all six shared sections so a mounted but uninitialized iframe cannot satisfy the test. */
 async function previewFrame(page: Page): Promise<Frame> {
@@ -83,28 +78,59 @@ async function expectReleasedMedia(page: Page) {
 
 /** Build a canonical video variant with bytes and checksum matching the locally served asset. */
 function videoSnapshot() {
-  const value = structuredClone(fixture) as unknown as YujianContentSnapshot
+  const value: YujianContentSnapshot = fixtureSnapshot()
   value.assets.push({ ...value.assets[0]!, id: 'asset_e2e_video', kind: 'video', src: '/media/e2e-video.mp4', mimeType: 'video/mp4', width: 16, height: 16, byteSize: videoBytes.length, checksum: `sha256:${createHash('sha256').update(videoBytes).digest('hex')}` })
   Object.assign(value.heroSlides[0]!, { mediaKind: 'video', assetId: 'asset_e2e_video', autoplay: true })
   return value
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(/** Only the editor locale is seeded; preview preferences must stay in memory. */ () => localStorage.setItem('yujian:admin-locale', 'en'))
-  await page.route('**/media/**', route => route.abort())
-  await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Content workspace')
+  await startStudio(page)
+})
+
+test('预览弹窗的键盘导航可以进入首页并返回工具栏', async ({ page }) => {
+  await page.getByTestId('studio-preview').click()
+  const frame = await previewFrame(page)
+  const dismiss = page.getByRole('button', { name: 'Dismiss message' })
+  while (await dismiss.count()) {
+    const count = await dismiss.count()
+    await dismiss.first().click()
+    await expect(dismiss).toHaveCount(count - 1)
+  }
+  const toolbarClose = page.getByTestId('preview-close')
+  await toolbarClose.focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByTestId('preview-frame')).toBeFocused()
+  const first = frame.locator('a[href], button, input, select, textarea, [tabindex="0"]').filter({ visible: true }).first()
+  await expect(first).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(toolbarClose).toBeFocused()
+  await page.getByTestId('dialog-close').focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(page.getByTestId('preview-frame')).toBeFocused()
+  const last = frame.locator('a[href], button, input, select, textarea, [tabindex="0"]').filter({ visible: true }).last()
+  await last.focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByTestId('dialog-close')).toBeFocused()
+  await first.focus()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByTestId('studio-preview')).toBeFocused()
+  await page.getByTestId('studio-preview').click()
+  const reopened = await previewFrame(page)
+  await reopened.locator('a[href], button').filter({ visible: true }).first().focus()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
 test('真实握手、样式隔离、缩放视口和双向语言切换，关闭后重建文档', async ({ page }) => {
-  await expect(page.getByTestId('preview-open')).toBeVisible()
+  await expect(page.getByTestId('studio-preview')).toBeVisible()
   await expect(page.getByTestId('preview-frame')).toHaveCount(0)
   await importSnapshot(page)
   await expect(page.getByTestId('preview-frame')).toHaveCount(0)
-  const editor = page.getByRole('textbox', { name: 'JSON snapshot editor' })
-  const original = await editor.inputValue()
+  const original = await snapshot(page)
   const url = page.url()
-  await page.getByTestId('preview-open').click()
+  await page.getByTestId('studio-preview').click()
   const frame = await previewFrame(page)
   expect(await frame.locator('[data-home-section]').evaluateAll(elements => elements.map(element => element.getAttribute('data-home-section')))).toEqual(['hero', 'music', 'video', 'event', 'moment', 'artist'])
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--color-bg').trim())).toBe('')
@@ -123,44 +149,55 @@ test('真实握手、样式隔离、缩放视口和双向语言切换，关闭�
   await frame.getByRole('button', { name: 'Switch to English', exact: true }).click()
   await expect(frame.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByTestId('preview-language')).toHaveText('EN')
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Content workspace')
-  await expect(editor).toHaveValue(original)
+  await expect(page.getByTestId('studio-version-name')).toHaveText('Working draft')
   expect(page.url()).toBe(url)
   expect(frame.url()).toBe(`${url}preview`)
   expect(await page.evaluate(() => ({ ...localStorage }))).toEqual({ 'yujian:admin-locale': 'en' })
   await page.getByTestId('preview-close').click()
   await expect(page.getByTestId('preview-frame')).toHaveCount(0)
-  expect(frame.isDetached()).toBe(true)
+  await expect.poll(() => frame.isDetached()).toBe(true)
+  await page.getByTestId('dialog-close').click()
+  expect(await snapshot(page)).toEqual(original)
   await page.locator('.rail-locale').click()
-  await page.getByTestId('preview-open').click()
+  await page.getByTestId('studio-preview').click()
   const reopened = await previewFrame(page)
   expect(reopened).not.toBe(frame)
   await expect(reopened.locator('html')).toHaveAttribute('lang', 'zh-CN')
-  await expect(page.getByRole('textbox', { name: 'JSON 快照编辑器' })).toHaveValue(original)
+  await page.getByTestId('dialog-close').click()
+  await page.getByTestId('studio-tools').click()
+  expect(JSON.parse(await page.getByRole('textbox', { name: 'JSON 快照编辑器' }).inputValue())).toEqual(original)
 })
 
-test('只预览已应用表单，非法 JSON 立即撤下旧内容并在恢复后重建', async ({ page }) => {
+test('预览自动应用当前表单，非法 JSON 不展示旧内容且恢复后重建', async ({ page }) => {
   const writes: string[] = []
   page.on('request', request => { if (request.method() !== 'GET' && request.method() !== 'HEAD') writes.push(request.url()) })
   await importSnapshot(page)
-  await page.getByTestId('preview-open').click()
+  await page.getByTestId('studio-preview').click()
   const frame = await previewFrame(page)
-  await page.getByTestId('homepage-open').click()
+  await page.getByTestId('dialog-close').click()
+  await expect.poll(() => frame.isDetached()).toBe(true)
+  await navigate(page, 'homepage')
   await page.getByTestId('homepage-headline-en').fill('Applied browser headline')
-  await expect(page.getByTestId('preview-form-dirty')).toBeVisible()
-  await expect(frame.locator('.hero-headline')).toHaveText(fixture.heroSlides[0]!.headline.en)
-  await page.getByTestId('homepage-apply').click()
+  await page.getByTestId('studio-preview').click()
   const applied = await previewFrame(page)
   await expect(applied.locator('.hero-headline')).toHaveText('Applied browser headline')
   expect(applied).not.toBe(frame)
   await expect(page.getByTestId('preview-form-dirty')).toHaveCount(0)
+  await page.getByTestId('dialog-close').click()
+  await expect.poll(() => applied.isDetached()).toBe(true)
+  await openTools(page)
   const editor = page.getByRole('textbox', { name: 'JSON snapshot editor' })
   const valid = await editor.inputValue()
   await editor.fill('{')
   await expect(page.getByTestId('preview-frame')).toHaveCount(0)
-  await expect(page.getByTestId('preview-invalid')).toBeVisible()
-  expect(applied.isDetached()).toBe(true)
+  await expect(page.getByTestId('snapshot-validation')).toContainText('Invalid')
+  await page.getByTestId('dialog-close').click()
+  await expect(page.getByTestId('studio-preview')).toBeDisabled()
+  await openTools(page)
   await editor.fill(valid)
+  await expect(page.getByTestId('snapshot-validation')).toHaveText('Valid')
+  await page.getByTestId('dialog-close').click()
+  await page.getByTestId('studio-preview').click()
   const restored = await previewFrame(page)
   expect(restored).not.toBe(applied)
   await expect(restored.locator('.hero-headline')).toHaveText('Applied browser headline')
@@ -169,7 +206,7 @@ test('只预览已应用表单，非法 JSON 立即撤下旧内容并在恢复�
 
 test('拒绝错误来源、语言和 canonical 消息，阻止外链而保留内部锚点', async ({ page, context }) => {
   await importSnapshot(page)
-  await page.getByTestId('preview-open').click()
+  await page.getByTestId('studio-preview').click()
   const frame = await previewFrame(page)
   await frame.evaluate((messageChannel) => window.postMessage({ channel: messageChannel, type: 'locale', locale: 'zh-CN' }, location.origin), channel)
   await page.evaluate((messageChannel) => window.postMessage({ channel: messageChannel, type: 'locale', locale: 'zh-CN' }, location.origin), channel)
@@ -249,9 +286,8 @@ test('视频禁止自动播放；原生音视频在快照更新和关闭时暂�
     // Preserve every native Audio behavior; retain references only for post-teardown assertions.
     window.Audio = new Proxy(window.Audio, { construct(target, args) { const audio = Reflect.construct(target, args) as HTMLAudioElement; captured.push(audio); return audio } })
   })
-  await page.getByLabel('Session token').fill('preview-must-not-receive-this-token')
   await importSnapshot(page, videoSnapshot())
-  await page.getByTestId('preview-open').click()
+  await page.getByTestId('studio-preview').click()
   const frame = await previewFrame(page)
   const video = frame.locator('video')
   expect(await video.evaluate(element => (element as HTMLVideoElement).autoplay)).toBe(false)
@@ -262,11 +298,15 @@ test('视频禁止自动播放；原生音视频在快照更新和关闭时暂�
   await expect(frame.getByRole('button', { name: 'Pause preview', exact: true })).toBeVisible()
   expect(await frame.evaluate(() => window.__previewAudio![0]!.paused)).toBe(false)
   await retainMedia(page)
-  const editor = page.getByRole('textbox', { name: 'JSON snapshot editor' })
-  await editor.fill(`${await editor.inputValue()}\n`)
-  await previewFrame(page)
+  await page.getByTestId('dialog-close').click()
   await expectReleasedMedia(page)
   await expect.poll(() => pendingMedia.size).toBe(0)
+  await openTools(page)
+  const editor = page.getByRole('textbox', { name: 'JSON snapshot editor' })
+  await editor.fill(`${await editor.inputValue()}\n`)
+  await expect(page.getByTestId('snapshot-validation')).toHaveText('Valid')
+  await page.getByTestId('dialog-close').click()
+  await page.getByTestId('studio-preview').click()
   const updated = await previewFrame(page)
   await updated.getByTestId('preview-trigger').first().click()
   await expect(updated.getByRole('button', { name: 'Pause preview', exact: true })).toBeVisible()
@@ -285,7 +325,7 @@ test('相邻宣传位复用视频素材时，切换后原生视频保持禁自�
   const value = videoSnapshot()
   Object.assign(value.heroSlides[1]!, { mediaKind: 'video', assetId: 'asset_e2e_video', autoplay: true })
   await importSnapshot(page, value)
-  await page.getByTestId('preview-open').click()
+  await page.getByTestId('studio-preview').click()
   const frame = await previewFrame(page)
   await frame.getByRole('button', { name: 'Play video', exact: true }).click()
   await expect.poll(() => frame.locator('video').evaluate(element => (element as HTMLVideoElement).paused)).toBe(false)
@@ -344,7 +384,7 @@ test('切换宣传视频会取消旧视频尚未完成的下载', async ({ page 
     value.assets.push({ ...asset, id: 'asset_stream_new', src: '/media/stream-new.mp4' })
     Object.assign(value.heroSlides[1]!, { mediaKind: 'video', assetId: 'asset_stream_new', autoplay: true })
     await importSnapshot(page, value)
-    await page.getByTestId('preview-open').click()
+    await page.getByTestId('studio-preview').click()
     const frame = await previewFrame(page)
     await frame.getByRole('button', { name: 'Play video', exact: true }).click()
     await expect.poll(() => frame.locator('video').evaluate(element => (element as HTMLVideoElement).paused)).toBe(false)
@@ -368,7 +408,7 @@ test('未就绪文档超时后可重试并完成真实握手', async ({ page }) 
   test.setTimeout(45_000)
   await page.route('**/preview', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Unresponsive preview</title>' }))
   await importSnapshot(page)
-  await page.getByTestId('preview-open').click()
+  await page.getByTestId('studio-preview').click()
   await expect(page.getByTestId('preview-waiting')).toBeVisible()
   await expect(page.getByTestId('preview-error')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('preview-frame')).toHaveCount(0)

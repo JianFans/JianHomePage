@@ -1,242 +1,67 @@
 <script setup lang="ts">
 import { useHead } from '#imports'
-import { Download, FileUp } from '@lucide/vue'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, toRef, watch } from 'vue'
+import { ArrowRight, Check, Download, ExternalLink, Eye, FileUp, Languages, LoaderCircle, LockKeyhole, Menu, MoreHorizontal, Save } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import '../assets/css/main.css'
-import AssetWorkbench from '../components/AssetWorkbench.vue'
-import MusicWorkbench from '../components/MusicWorkbench.vue'
-import HomepageWorkbench from '../components/HomepageWorkbench.vue'
-import VideoWorkbench from '../components/VideoWorkbench.vue'
-import EventWorkbench from '../components/EventWorkbench.vue'
-import MomentWorkbench from '../components/MomentWorkbench.vue'
+import '../assets/css/studio.css'
+import StudioContent from '../components/StudioContent.vue'
 import HomepagePreview from '../components/HomepagePreview.vue'
 import SnapshotInsights from '../components/SnapshotInsights.vue'
-import { useAdminWorkspace } from '../composables/useAdminWorkspace'
-import { useMusicWorkspace } from '../composables/useMusicWorkspace'
-import { useHomepageWorkspace } from '../composables/useHomepageWorkspace'
-import { useVideoWorkspace } from '../composables/useVideoWorkspace'
-import { useEventWorkspace } from '../composables/useEventWorkspace'
-import { useMomentWorkspace } from '../composables/useMomentWorkspace'
-import { persistAdminLocale, resolveAdminLocale } from '../utils/admin-locale'
-import type { SnapshotImportFile } from '../utils/snapshot-workbench'
+import StudioNavigation from '../components/StudioNavigation.vue'
+import StudioVersionBar from '../components/StudioVersionBar.vue'
+import StudioDialog from '../components/StudioDialog.vue'
+import ToastViewport from '../components/ToastViewport.vue'
+import { useStudioWorkspace } from '../composables/useStudioWorkspace'
+import { persistAdminLocale, resolveAdminLocale, type AdminLocale } from '../utils/admin-locale'
+import type { StudioModule } from '../utils/studio-copy'
 
-const locale = ref<'zh-CN' | 'en'>('zh-CN')
-const workspace = reactive(useAdminWorkspace(locale))
-const music = reactive(useMusicWorkspace({
-  editorText: toRef(workspace, 'editorText'),
-  busy: toRef(workspace, 'busy'),
-  snapshot: computed(() => workspace.editorAnalysis.snapshot),
-}))
-const homepage = reactive(useHomepageWorkspace({
-  editorText: toRef(workspace, 'editorText'),
-  busy: toRef(workspace, 'busy'),
-}))
-const video = reactive(useVideoWorkspace({
-  editorText: toRef(workspace, 'editorText'),
-  busy: toRef(workspace, 'busy'),
-}))
-const event = reactive(useEventWorkspace({
-  editorText: toRef(workspace, 'editorText'),
-  busy: toRef(workspace, 'busy'),
-}))
-const moment = reactive(useMomentWorkspace({
-  editorText: toRef(workspace, 'editorText'),
-  busy: toRef(workspace, 'busy'),
-}))
+const locale = ref<AdminLocale>('zh-CN')
+const studio = reactive(useStudioWorkspace(locale))
+const { workspace, session, toasts } = studio
+const copy = computed(() => studio.copy)
+const collapsed = ref(false)
+const uiMode = ref<'' | 'tools' | 'preview' | 'review' | 'publish' | 'rollback' | 'navigation'>('')
+const cloneName = ref('')
 const snapshotFileInput = ref<HTMLInputElement | null>(null)
-type Replacement = { kind: 'load'; id: string } | { kind: 'import'; file: SnapshotImportFile }
-const pendingReplacement = shallowRef<Replacement | null>(null)
-const formDirty = computed(() => music.dirty || homepage.dirty || video.dirty || event.dirty || moment.dirty)
-const unsaved = computed(() => workspace.dirty || formDirty.value)
-const textRevision = ref(0)
-watch(() => workspace.editorText, /** 同一渲染周期内编辑再撤销也必须重建预览文档。 */ () => { textRevision.value++ }, { flush: 'sync' })
+const modal = computed(() => studio.pending ? 'leave' : studio.cloneRequested ? 'clone' : uiMode.value)
+const modalTitle = computed(() => ({ leave: copy.value.leaveTitle, clone: copy.value.clone, tools: copy.value.tools, preview: copy.value.preview,
+  review: copy.value.versions, publish: copy.value.publish, rollback: copy.value.rollback, navigation: copy.value.studio, '': '' })[modal.value])
+const versionName = computed(() => workspace.version?.name || workspace.version?.id || copy.value.noVersion)
+const textCurrent = computed(() => workspace.editorText === workspace.analyzedText)
+const validationLabel = computed(() => workspace.editorAnalysis.issues.length ? `${workspace.editorAnalysis.issues.length} · ${copy.value.invalid}` : copy.value.valid)
+watch(() => studio.cloneRequested, (requested) => { if (requested) cloneName.value = `${versionName.value} · ${copy.value.newName}` })
+watch(() => session.authenticated, (active) => {
+  if (!active) { uiMode.value = ''; studio.pending = null; studio.cloneRequested = false }
+})
 
-useHead(/** 同步文档语言供辅助技术读取，不改变管理端路由。 */ () => ({
-  htmlAttrs: { lang: locale.value },
-}))
+useHead(() => ({ htmlAttrs: { lang: locale.value } }))
 
-/** 按会话语言生成工作台标签，诊断数量格式随同一语言切换。 */
-const copy = computed(() => locale.value === 'en'
-  ? {
-      brand: 'Meet Jian',
-      title: 'Content workspace',
-      overview: 'Overview',
-      content: 'Content',
-      publish: 'Publish',
-      connection: 'Connection',
-      api: 'API base URL',
-      token: 'Session token',
-      versionId: 'Version ID',
-      load: 'Load',
-      editor: 'Snapshot editor',
-      editorLabel: 'JSON snapshot editor',
-      preview: 'Preview',
-      save: 'Save draft',
-      submit: 'Submit review',
-      approve: 'Approve',
-      reject: 'Return',
-      rejectReason: 'Reason',
-      publishAction: 'Publish',
-      refresh: 'Refresh',
-      rollback: 'Rollback',
-      revision: 'Revision',
-      status: 'Status',
-      noJob: 'No publish job',
-      tokenHint: 'Kept in this tab only',
-      importSnapshot: 'Import JSON',
-      exportSnapshot: 'Export snapshot',
-      validSnapshot: 'Valid',
-      unsaved: 'Unsaved snapshot',
-      replacePrompt: 'Replace the snapshot and discard local changes?',
-      keep: 'Keep editing',
-      discard: 'Discard and continue',
-      /** 使用当前分析结果格式化英文错误数量，保持状态播报一致。 */
-      issueCount: (count: number) => `${count} issues`,
-    }
-  : {
-      brand: '遇健我',
-      title: '内容工作台',
-      overview: '概览',
-      content: '内容',
-      publish: '发布',
-      connection: '连接',
-      api: 'API 地址',
-      token: '会话令牌',
-      versionId: '版本 ID',
-      load: '载入',
-      editor: '快照编辑',
-      editorLabel: 'JSON 快照编辑器',
-      preview: '预览',
-      save: '保存草稿',
-      submit: '提交审核',
-      approve: '通过审核',
-      reject: '退回',
-      rejectReason: '退回原因',
-      publishAction: '发布',
-      refresh: '刷新状态',
-      rollback: '回滚',
-      revision: '修订号',
-      status: '状态',
-      noJob: '暂无发布任务',
-      tokenHint: '仅保存在当前标签页',
-      importSnapshot: '导入 JSON',
-      exportSnapshot: '导出快照',
-      validSnapshot: '有效',
-      unsaved: '快照未保存',
-      replacePrompt: '替换快照并放弃本地修改？',
-      keep: '继续编辑',
-      discard: '放弃并继续',
-      /** 使用当前分析结果格式化中文错误数量，保持状态播报一致。 */
-      issueCount: (count: number) => `${count} 项错误`,
-    })
-
-/** 未载入版本时保持占位，避免界面显示不存在的草稿状态。 */
-const statusLabel = computed(() => workspace.version?.status || '—')
-/** 没有发布任务时显示本地化空态，而不是假设已经发布。 */
-const publishStatusLabel = computed(() => workspace.publishJob?.status || copy.value.noJob)
-/** 使用防抖后的解析结果展示格式化 JSON，解析失败时保留具体提示。 */
-const previewText = computed(() => workspace.parsedEditor.snapshot
-  ? JSON.stringify(workspace.parsedEditor.snapshot, null, 2)
-  : workspace.parsedEditor.error || '')
-/** 使用同一防抖分析生成数量标签，避免输入期间重复状态播报。 */
-const validationLabel = computed(() => workspace.editorAnalysis.issues.length
-  ? copy.value.issueCount(workspace.editorAnalysis.issues.length)
-  : copy.value.validSnapshot)
-
-/** 切换当前标签页的管理界面语言，并尽力持久化用户偏好。 */
+/** 切换语言只改变管理端偏好，不改变路由或内容语言。 */
 function toggleLocale() {
-  locale.value = locale.value === 'zh-CN' ? 'en' : 'zh-CN'
-  if (import.meta.client) persistAdminLocale(locale.value)
+  locale.value = locale.value === 'en' ? 'zh-CN' : 'en'
+  persistAdminLocale(locale.value)
 }
-
-/** 通过可访问工具按钮打开隐藏的 JSON 文件选择器。 */
-function openSnapshotImport() {
+/** 手机导航关闭后再请求模块切换，未保存保护使用同一条路径。 */
+async function navigate(module: StudioModule) { uiMode.value = ''; await studio.request({ kind: 'module', module }) }
+/** 忙碌时不关闭确认，以免隐藏仍在执行的写操作。 */
+function closeModal() {
   if (workspace.busy) return
-  snapshotFileInput.value?.click()
+  studio.pending = null
+  studio.cloneRequested = false
+  uiMode.value = ''
 }
-
-/** 保留被替换内容，只有明确确认或工作区干净时才执行载入或导入。 */
-async function requestReplacement(action: Replacement) {
-  if (workspace.busy) return
-  if (unsaved.value) {
-    music.keepEditing()
-    homepage.keepEditing()
-    video.keepEditing()
-    event.keepEditing()
-    moment.keepEditing()
-    pendingReplacement.value = action
-    return
-  }
-  await replaceSnapshot(action)
-}
-
-/** 执行已确认的替换；失败时保留原表单，避免网络错误导致内容丢失。 */
-async function replaceSnapshot(action: Replacement) {
-  if (workspace.busy) return
-  if (action.kind === 'load') {
-    workspace.versionId = action.id
-    await workspace.loadVersion()
-  } else await workspace.importSnapshot(action.file, locale.value)
-  if (workspace.workflow.status === 'success') {
-    music.reset()
-    homepage.reset()
-    video.reset()
-    event.reset()
-    moment.reset()
-  }
-}
-
-/** 在点击载入时冻结目标版本，确认期间的字段变化不会偷偷更换载入对象。 */
-function requestLoadVersion() {
-  return requestReplacement({ kind: 'load', id: workspace.versionId.trim() })
-}
-
-/** 放弃按钮只执行此前明确选择的文件或版本，并保留失败时的当前内容。 */
-async function discardForReplacement() {
-  if (workspace.busy || !pendingReplacement.value) return
-  const action = pendingReplacement.value
-  pendingReplacement.value = null
-  await replaceSnapshot(action)
-}
-
-/** 禁止保存未应用表单；成功后刷新已打开的干净草稿，避免格式化造成伪过期基线。 */
-async function saveDraft() {
-  if (workspace.busy || formDirty.value) return
-  const selected = music.draft?.release.id
-  const homepageOpen = Boolean(homepage.draft)
-  const videoOpen = Boolean(video.draft)
-  const eventOpen = Boolean(event.draft)
-  const momentOpen = Boolean(moment.draft)
-  await workspace.saveDraft()
-  if (workspace.workflow.status === 'success') {
-    if (selected) music.select(selected)
-    if (homepageOpen) homepage.open()
-    if (videoOpen) video.open()
-    if (eventOpen) event.open()
-    if (momentOpen) moment.open()
-  }
-}
-
-/** 仅当存在真实未保存内容时请求浏览器标准离开确认，不持久化草稿。 */
-function handleBeforeUnload(event: BeforeUnloadEvent) {
-  if (!unsaved.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
-/** 导入用户选择的首个文件，并重置输入以允许再次选择同名文件。 */
+/** 文件交接必须等待异步读取，清空原输入以支持重选同名文件。 */
 async function handleSnapshotFile(event: Event) {
   const input = event.currentTarget as HTMLInputElement
   const file = input.files?.[0]
-  if (file) await requestReplacement({ kind: 'import', file })
+  if (file && !studio.locked) await studio.request({ kind: 'import', file })
   input.value = ''
 }
-
-/**
- * 使用未挂载的临时链接下载当前快照，并在浏览器接管后释放对象 URL。
- */
+/** 先应用当前表单供预览使用；预览只收到快照，不带任何认证信息。 */
+function preview() { if (studio.applyForPreview()) uiMode.value = 'preview' }
+/** 脱离文档的下载链接交给浏览器后，再释放临时对象地址。 */
 function downloadSnapshot() {
-  if (workspace.busy || formDirty.value) return
+  if (workspace.busy || !studio.applyForPreview()) return
   const exported = workspace.exportSnapshot()
   if (!exported) return
   const url = URL.createObjectURL(new Blob([exported.contents], { type: exported.mimeType }))
@@ -245,565 +70,453 @@ function downloadSnapshot() {
     anchor.href = url
     anchor.download = exported.filename
     anchor.click()
-  } finally {
-    setTimeout(/** 等浏览器接管下载后释放临时 URL，链接始终保持未挂载。 */ () => URL.revokeObjectURL(url), 0)
-  }
+  } finally { setTimeout(() => URL.revokeObjectURL(url), 0) }
 }
-
-onMounted(/** 在挂载后读取已存偏好或浏览器语言，避免构建时访问 navigator。 */ () => {
+/** 发布和回滚必须通过明确确认；普通版本选择不会调用这些操作。 */
+async function confirmRelease() {
+  if (uiMode.value === 'publish' && studio.canPublish && !studio.unsaved) await workspace.publish()
+  else if (uiMode.value === 'rollback' && studio.canPublish && !studio.unsaved) await workspace.rollback()
+  if (workspace.workflow.status === 'success') uiMode.value = ''
+}
+/** 标准离开保护覆盖尚未应用的表单与已经应用但未保存的快照。 */
+function beforeUnload(event: BeforeUnloadEvent) { if (studio.unsaved || studio.assetDirty || studio.assetBusy) { event.preventDefault(); event.returnValue = '' } }
+onMounted(() => {
   locale.value = resolveAdminLocale(undefined, navigator.language)
-  window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('beforeunload', beforeUnload)
+  void studio.initialize()
 })
-onBeforeUnmount(/** 移除页面持有的离开监听，避免跨页面残留草稿提示。 */ () => {
-  window.removeEventListener('beforeunload', handleBeforeUnload)
-})
+onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
 </script>
 
 <template>
-  <div class="admin-shell">
-    <aside
-      class="rail"
-      aria-label="管理端导航"
-    >
+  <div
+    class="studio-root"
+    :class="{ 'studio-root--collapsed': collapsed }"
+  >
+    <div :inert="Boolean(modal)">
       <div
-        class="mark"
-        aria-label="遇健我"
-      >
-        遇
-      </div>
-      <nav class="rail-nav">
-        <span
-          class="rail-item rail-item--active"
-          :title="copy.overview"
-          aria-current="page"
-        >⌘</span>
-        <span
-          class="rail-item"
-          :title="copy.content"
-        >◫</span>
-        <span
-          class="rail-item"
-          :title="copy.publish"
-        >↗</span>
-      </nav>
-      <button
-        class="rail-locale"
-        type="button"
-        :aria-label="locale === 'zh-CN' ? '切换英文' : '切换中文'"
-        @click="toggleLocale"
-      >
-        {{ locale === 'zh-CN' ? '中' : 'EN' }}
-      </button>
-    </aside>
-
-    <main
-      class="workspace"
-      data-testid="admin-workspace"
-    >
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">
-            {{ copy.brand }}
-          </p>
-          <h1>{{ copy.title }}</h1>
-        </div>
-        <a
-          class="site-link"
-          href="https://yujian.me"
-          target="_blank"
-          rel="noopener noreferrer"
-        >yujian.me ↗</a>
-      </header>
-
-      <section
-        class="connection panel"
-        aria-labelledby="connection-title"
-      >
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">
-              01
-            </p>
-            <h2 id="connection-title">
-              {{ copy.connection }}
-            </h2>
-          </div>
-          <span
-            class="status-dot"
-            :class="{ 'status-dot--active': Boolean(workspace.token) }"
-            aria-hidden="true"
-          />
-        </div>
-        <div class="connection-grid">
-          <label>
-            <span>{{ copy.api }}</span>
-            <input
-              v-model="workspace.apiBaseUrl"
-              type="url"
-              autocomplete="url"
-              spellcheck="false"
-              :disabled="workspace.busy"
-            >
-          </label>
-          <label>
-            <span>{{ copy.token }} <small>{{ copy.tokenHint }}</small></span>
-            <input
-              v-model="workspace.token"
-              type="password"
-              autocomplete="off"
-              :disabled="workspace.busy"
-            >
-          </label>
-          <label>
-            <span>{{ copy.versionId }}</span>
-            <div class="inline-control">
-              <input
-                v-model="workspace.versionId"
-                type="text"
-                autocomplete="off"
-                spellcheck="false"
-                :disabled="workspace.busy"
-              >
-              <button
-                class="button button--quiet"
-                type="button"
-                :disabled="workspace.busy"
-                data-testid="version-load"
-                @click="requestLoadVersion"
-              >{{ copy.load }}</button>
-            </div>
-          </label>
-        </div>
-      </section>
-
-      <div
-        v-if="pendingReplacement"
-        class="music-notice"
-        role="alert"
-        data-testid="snapshot-replace-prompt"
-      >
-        <p>{{ copy.replacePrompt }}</p>
-        <div class="music-tools">
-          <button
-            type="button"
-            class="button"
-            data-testid="snapshot-replace-keep"
-            :disabled="workspace.busy"
-            @click="pendingReplacement = null"
-          >
-            {{ copy.keep }}
-          </button>
-          <button
-            type="button"
-            class="button button--danger"
-            data-testid="snapshot-replace-discard"
-            :disabled="workspace.busy"
-            @click="discardForReplacement"
-          >
-            {{ copy.discard }}
-          </button>
-        </div>
-      </div>
-
-      <HomepageWorkbench
-        v-model:draft="homepage.draft"
-        :snapshot="workspace.editorAnalysis.snapshot"
-        :locale="locale"
-        :busy="workspace.busy"
-        :dirty="homepage.dirty"
-        :stale="homepage.stale"
-        :error="homepage.error"
-        :issues="homepage.issues"
-        :pending="Boolean(homepage.pending)"
-        @open="homepage.open"
-        @apply="homepage.apply"
-        @close="homepage.close"
-        @keep="homepage.keepEditing"
-        @discard="homepage.discardPending"
-      />
-
-      <MusicWorkbench
-        v-model:draft="music.draft"
-        :snapshot="workspace.editorAnalysis.snapshot"
-        :api-base-url="workspace.apiBaseUrl"
-        :locale="locale"
-        :busy="workspace.busy"
-        :dirty="music.dirty"
-        :stale="music.stale"
-        :error="music.error"
-        :issues="music.issues"
-        :pending="Boolean(music.pending)"
-        @select="music.select"
-        @apply="music.apply"
-        @close="music.close"
-        @keep="music.keepEditing"
-        @discard="music.discardPending"
-      />
-
-      <VideoWorkbench
-        v-model:draft="video.draft"
-        :snapshot="workspace.editorAnalysis.snapshot"
-        :locale="locale"
-        :busy="workspace.busy"
-        :dirty="video.dirty"
-        :stale="video.stale"
-        :error="video.error"
-        :issues="video.issues"
-        :pending="Boolean(video.pending)"
-        @open="video.open"
-        @apply="video.apply"
-        @close="video.close"
-        @keep="video.keepEditing"
-        @discard="video.discardPending"
-      />
-      <EventWorkbench
-        v-model:draft="event.draft"
-        :snapshot="workspace.editorAnalysis.snapshot"
-        :locale="locale"
-        :busy="workspace.busy"
-        :dirty="event.dirty"
-        :stale="event.stale"
-        :error="event.error"
-        :issues="event.issues"
-        :pending="Boolean(event.pending)"
-        @open="event.open"
-        @apply="event.apply"
-        @close="event.close"
-        @keep="event.keepEditing"
-        @discard="event.discardPending"
-      />
-      <MomentWorkbench
-        v-model:draft="moment.draft"
-        :snapshot="workspace.editorAnalysis.snapshot"
-        :locale="locale"
-        :busy="workspace.busy"
-        :dirty="moment.dirty"
-        :stale="moment.stale"
-        :error="moment.error"
-        :issues="moment.issues"
-        :pending="Boolean(moment.pending)"
-        @open="moment.open"
-        @apply="moment.apply"
-        @close="moment.close"
-        @keep="moment.keepEditing"
-        @discard="moment.discardPending"
-      />
-
-      <HomepagePreview
-        :snapshot="workspace.editorAnalysis.snapshot"
-        :text-is-current="workspace.editorText === workspace.analyzedText"
-        :text-revision="textRevision"
-        :form-dirty="formDirty"
-        :locale="locale"
-      />
-
-      <section class="workspace-grid">
-        <article
-          class="panel editor-panel"
-          aria-labelledby="editor-title"
-        >
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">
-                02 · {{ copy.content }}
-              </p>
-              <h2 id="editor-title">
-                {{ copy.editor }}
-              </h2>
-            </div>
-            <div class="editor-heading-actions">
-              <div
-                v-if="workspace.version"
-                class="meta-stack"
-              >
-                <span>{{ copy.revision }} {{ workspace.version.revision }}</span>
-                <span>{{ statusLabel }}</span>
-              </div>
-              <div class="editor-tools">
-                <span
-                  v-if="workspace.dirty"
-                  class="status-pill"
-                  data-testid="snapshot-unsaved"
-                  role="status"
-                >{{ copy.unsaved }}</span>
-                <span
-                  class="status-pill"
-                  :class="{ 'status-pill--valid': !workspace.editorAnalysis.issues.length }"
-                  data-testid="snapshot-validation"
-                  aria-live="polite"
-                >{{ validationLabel }}</span>
-                <button
-                  class="icon-tool"
-                  type="button"
-                  :aria-label="copy.importSnapshot"
-                  :title="copy.importSnapshot"
-                  :disabled="workspace.busy"
-                  data-testid="snapshot-import"
-                  @click="openSnapshotImport"
-                >
-                  <FileUp
-                    :size="17"
-                    aria-hidden="true"
-                  />
-                </button>
-                <button
-                  class="icon-tool"
-                  type="button"
-                  :aria-label="copy.exportSnapshot"
-                  :title="copy.exportSnapshot"
-                  :disabled="workspace.busy || !workspace.editorAnalysis.snapshot || formDirty"
-                  data-testid="snapshot-export"
-                  @click="downloadSnapshot"
-                >
-                  <Download
-                    :size="17"
-                    aria-hidden="true"
-                  />
-                </button>
-                <input
-                  ref="snapshotFileInput"
-                  class="sr-only"
-                  type="file"
-                  accept="application/json,.json"
-                  :aria-label="copy.importSnapshot"
-                  tabindex="-1"
-                  data-testid="snapshot-file-input"
-                  @change="handleSnapshotFile"
-                >
-              </div>
-            </div>
-          </div>
-          <textarea
-            v-model="workspace.editorText"
-            class="json-editor"
-            :aria-label="copy.editorLabel"
-            :disabled="workspace.busy"
-            spellcheck="false"
-          />
-          <p
-            v-if="workspace.parsedEditor.error"
-            class="field-error"
-            role="alert"
-          >
-            {{ workspace.parsedEditor.error }}
-          </p>
-          <div class="action-row">
-            <button
-              class="button button--primary"
-              type="button"
-              :disabled="!workspace.canSave || formDirty"
-              data-testid="snapshot-save"
-              @click="saveDraft"
-            >
-              {{ copy.save }}
-            </button>
-            <button
-              class="button"
-              type="button"
-              :disabled="!workspace.canSubmitReview || formDirty"
-              @click="workspace.submitReview"
-            >
-              {{ copy.submit }}
-            </button>
-          </div>
-        </article>
-
-        <article
-          class="panel preview-panel"
-          aria-labelledby="preview-title"
-        >
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">
-                03
-              </p>
-              <h2 id="preview-title">
-                {{ copy.preview }}
-              </h2>
-            </div>
-            <span class="preview-badge">JSON</span>
-          </div>
-          <SnapshotInsights
-            :analysis="workspace.editorAnalysis"
-            :locale="locale"
-          />
-          <pre
-            class="json-preview"
-            data-testid="snapshot-preview"
-          >{{ previewText }}</pre>
-        </article>
-      </section>
-
-      <AssetWorkbench
-        v-model:editor-text="workspace.editorText"
-        :locale="locale"
-        :api-base-url="workspace.apiBaseUrl"
-        :token="workspace.token"
-        :snapshot-locked="workspace.busy"
-      />
-
-      <section class="workflow-grid">
-        <article
-          class="panel"
-          aria-labelledby="review-title"
-        >
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">
-                05
-              </p>
-              <h2 id="review-title">
-                {{ copy.submit }} / {{ copy.approve }}
-              </h2>
-            </div>
-            <span class="status-pill">{{ statusLabel }}</span>
-          </div>
-          <div class="action-row action-row--wrap">
-            <button
-              class="button"
-              type="button"
-              :disabled="!workspace.canApprove || formDirty"
-              @click="workspace.approveReview"
-            >
-              {{ copy.approve }}
-            </button>
-            <label class="reason-field">
-              <span class="sr-only">{{ copy.rejectReason }}</span>
-              <input
-                v-model="workspace.rejectReason"
-                type="text"
-                :placeholder="copy.rejectReason"
-              >
-            </label>
-            <button
-              class="button button--danger"
-              type="button"
-              :disabled="workspace.busy || unsaved || !workspace.version || workspace.version.status !== 'in_review'"
-              @click="workspace.rejectReview"
-            >
-              {{ copy.reject }}
-            </button>
-          </div>
-        </article>
-
-        <article
-          class="panel"
-          aria-labelledby="publish-title"
-        >
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">
-                06
-              </p>
-              <h2 id="publish-title">
-                {{ copy.publish }}
-              </h2>
-            </div>
-            <span
-              class="status-pill"
-              :class="`status-pill--${workspace.publishJob?.status || 'idle'}`"
-            >{{ publishStatusLabel }}</span>
-          </div>
-          <div class="action-row action-row--wrap">
-            <button
-              class="button button--primary"
-              type="button"
-              :disabled="!workspace.canPublish || formDirty"
-              @click="workspace.publish"
-            >
-              {{ copy.publishAction }}
-            </button>
-            <button
-              class="button"
-              type="button"
-              :disabled="workspace.busy || !workspace.publishJob"
-              @click="workspace.refreshPublish"
-            >
-              {{ copy.refresh }}
-            </button>
-            <button
-              class="button button--danger"
-              type="button"
-              :disabled="!workspace.canRollback || unsaved"
-              @click="workspace.rollback"
-            >
-              {{ copy.rollback }}
-            </button>
-          </div>
-          <p
-            v-if="workspace.publishJob?.id"
-            class="job-meta"
-          >
-            {{ workspace.publishJob.id }} · {{ workspace.publishJob.buildId || '—' }}
-          </p>
-        </article>
-      </section>
-
-      <p
-        v-if="workspace.workflow.message"
-        class="notice"
-        :class="{ 'notice--error': workspace.workflow.status === 'error' }"
+        v-if="studio.initializing"
+        class="studio-loading"
+        data-testid="studio-loading"
         role="status"
       >
-        {{ workspace.workflow.message }}
-        <span v-if="workspace.workflow.requestId"> · {{ workspace.workflow.requestId }}</span>
-      </p>
-    </main>
+        <LoaderCircle
+          :size="24"
+          aria-hidden="true"
+        /><span>{{ copy.loading }}</span>
+      </div>
+      <main
+        v-else-if="!session.authenticated"
+        class="studio-login-page"
+      >
+        <div
+          class="studio-login-art"
+          aria-hidden="true"
+        >
+          <span>遇</span><div /><small>YUJIAN.ME</small>
+        </div>
+        <section class="studio-login-card">
+          <p class="studio-kicker">
+            YUJIAN.ME / STUDIO
+          </p><h1>{{ copy.brand }}</h1><p class="studio-muted">
+            {{ copy.studio }}
+          </p>
+          <div class="studio-login-rule" />
+          <LockKeyhole
+            :size="24"
+            aria-hidden="true"
+          />
+          <p class="studio-muted">
+            {{ session.expired ? copy.expired : session.loginAvailable ? copy.loginHint : copy.unavailable }}
+          </p>
+          <a
+            v-if="session.loginAvailable"
+            class="button button--primary"
+            :href="session.loginUrl"
+            data-testid="studio-login"
+          >{{ copy.login }}<ArrowRight
+            :size="17"
+            aria-hidden="true"
+          /></a>
+          <button
+            v-if="session.error || !session.loginAvailable"
+            type="button"
+            class="button"
+            :disabled="session.busy"
+            @click="studio.initialize"
+          >
+            {{ copy.retry }}
+          </button>
+          <button
+            v-if="session.expired && studio.unsaved"
+            class="button"
+            type="button"
+            @click="downloadSnapshot"
+          >
+            <Download
+              :size="16"
+              aria-hidden="true"
+            />{{ copy.export }}
+          </button>
+          <button
+            class="studio-locale rail-locale"
+            type="button"
+            :aria-label="copy.language"
+            @click="toggleLocale"
+          >
+            <Languages
+              :size="17"
+              aria-hidden="true"
+            /><span>{{ locale === 'en' ? 'EN' : '中文' }}</span>
+          </button>
+        </section>
+      </main>
+      <div
+        v-if="session.authenticated || session.expired"
+        v-show="session.authenticated && !studio.initializing"
+        :inert="!session.authenticated || session.busy"
+        class="studio-shell"
+        data-testid="studio-shell"
+      >
+        <StudioNavigation
+          :active="studio.module"
+          :locale="locale"
+          :name="session.principal?.name || session.principal?.subject || ''"
+          :collapsed="collapsed"
+          :busy="workspace.busy"
+          :logout-busy="studio.assetBusy || session.busy"
+          @navigate="navigate"
+          @logout="studio.request({ kind: 'logout' })"
+          @collapse="collapsed = !collapsed"
+        />
+        <div class="studio-main">
+          <header class="studio-topbar">
+            <button
+              class="icon-tool studio-menu"
+              type="button"
+              :aria-label="copy.menu"
+              @click="uiMode = 'navigation'"
+            >
+              <Menu
+                :size="20"
+                aria-hidden="true"
+              />
+            </button>
+            <div class="studio-breadcrumb">
+              <span>{{ copy.studio }}</span><span aria-hidden="true">/</span><strong>{{ copy.modules[studio.module] }}</strong>
+            </div>
+            <div class="studio-topbar-actions">
+              <a
+                class="icon-tool studio-public-link"
+                href="https://yujian.me"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="yujian.me"
+              ><ExternalLink
+                :size="17"
+                aria-hidden="true"
+              /></a>
+              <button
+                type="button"
+                class="icon-tool rail-locale"
+                :aria-label="copy.language"
+                :title="copy.language"
+                @click="toggleLocale"
+              >
+                <Languages
+                  :size="18"
+                  aria-hidden="true"
+                />
+              </button>
+              <button
+                type="button"
+                class="button studio-preview"
+                :disabled="workspace.busy || !workspace.editorAnalysis.snapshot"
+                data-testid="studio-preview"
+                :aria-label="copy.preview"
+                @click="preview"
+              >
+                <Eye
+                  :size="16"
+                  aria-hidden="true"
+                /><span>{{ copy.preview }}</span>
+              </button>
+              <button
+                type="button"
+                class="button button--primary studio-save"
+                data-testid="snapshot-save"
+                :disabled="studio.locked"
+                :aria-label="copy.save"
+                @click="studio.save"
+              >
+                <LoaderCircle
+                  v-if="workspace.busy"
+                  :size="16"
+                  class="studio-spinner"
+                  aria-hidden="true"
+                /><Save
+                  v-else
+                  :size="16"
+                  aria-hidden="true"
+                /><span>{{ copy.save }}</span>
+              </button>
+            </div>
+          </header>
+          <StudioVersionBar
+            :version="workspace.version"
+            :versions="workspace.versions"
+            :locale="locale"
+            :busy="workspace.busy"
+            :can-clone="studio.canEdit"
+            @select="id => workspace.version?.id !== id && studio.request({ kind: 'version', id })"
+            @clone="studio.request({ kind: 'clone' })"
+            @history="navigate('history')"
+          />
+          <main
+            class="studio-content"
+            data-studio-content
+          >
+            <div class="studio-page-heading">
+              <div>
+                <p class="studio-kicker">
+                  {{ copy.modules[studio.module] }}
+                </p><h1 data-testid="studio-version-name">
+                  {{ versionName }}
+                </h1>
+                <div class="studio-meta">
+                  <span
+                    v-if="workspace.version"
+                    class="studio-status"
+                    :data-status="workspace.version.status"
+                  >{{ copy.statuses[workspace.version.status] }}</span><span>{{ studio.locked && !workspace.busy ? copy.readonly : studio.unsaved ? copy.unsaved : copy.saved }}</span><span v-if="workspace.version">{{ copy.revision }} {{ workspace.version.revision }}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="icon-tool"
+                data-testid="studio-tools"
+                :aria-label="copy.tools"
+                :title="copy.tools"
+                :disabled="workspace.busy || studio.formDirty"
+                @click="uiMode = 'tools'"
+              >
+                <MoreHorizontal
+                  :size="20"
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+            <StudioContent
+              :studio="studio"
+              :locale="locale"
+              @navigate="navigate"
+              @workflow="mode => uiMode = mode"
+              @asset-busy="value => studio.assetBusy = value"
+              @asset-dirty="value => studio.assetDirty = value"
+            />
+          </main>
+        </div>
+      </div>
+    </div>
+    <StudioDialog
+      :open="Boolean(modal)"
+      :content-key="modal"
+      :title="modalTitle"
+      :close-label="copy.close"
+      :busy="workspace.busy"
+      :wide="modal === 'tools' || modal === 'preview'"
+      @close="closeModal"
+    >
+      <div
+        v-if="modal === 'leave'"
+        data-testid="leave-dialog"
+      >
+        <p class="studio-muted">
+          {{ studio.pending?.kind === 'logout' && studio.assetDirty ? copy.assetLeaveHint : copy.leaveHint }}
+        </p><div class="studio-dialog-actions">
+          <button
+            class="button"
+            type="button"
+            data-testid="leave-keep"
+            :disabled="workspace.busy"
+            @click="closeModal"
+          >
+            {{ copy.keep }}
+          </button><button
+            class="button button--danger"
+            type="button"
+            data-testid="leave-discard"
+            :disabled="workspace.busy"
+            @click="studio.discardPending"
+          >
+            {{ copy.discard }}
+          </button><button
+            class="button button--primary"
+            type="button"
+            data-testid="leave-save"
+            :disabled="studio.locked || (studio.pending?.kind === 'logout' && studio.assetDirty)"
+            @click="studio.savePending"
+          >
+            {{ copy.saveContinue }}
+          </button>
+        </div>
+      </div>
+      <form
+        v-else-if="modal === 'clone'"
+        @submit.prevent="studio.clone(cloneName)"
+      >
+        <label class="studio-field"><span>{{ copy.cloneName }}</span><input
+          v-model="cloneName"
+          autofocus
+          required
+          maxlength="120"
+          data-testid="clone-name"
+          :disabled="workspace.busy"
+        ></label><p class="studio-muted">
+          {{ copy.source }} · {{ versionName }}
+        </p><div class="studio-dialog-actions">
+          <button
+            class="button button--primary"
+            type="submit"
+            data-testid="clone-confirm"
+            :disabled="workspace.busy || !cloneName.trim()"
+          >
+            {{ copy.create }}
+          </button>
+        </div>
+      </form>
+      <div
+        v-else-if="modal === 'tools'"
+        class="studio-tools"
+      >
+        <div class="studio-tools-bar">
+          <span
+            data-testid="snapshot-validation"
+            :class="workspace.editorAnalysis.issues.length ? 'studio-muted' : 'studio-valid'"
+          >{{ validationLabel }}</span><button
+            class="button"
+            type="button"
+            data-testid="snapshot-import"
+            :disabled="studio.locked"
+            @click="snapshotFileInput?.click()"
+          >
+            <FileUp
+              :size="16"
+              aria-hidden="true"
+            />{{ copy.import }}
+          </button><button
+            class="button"
+            type="button"
+            data-testid="snapshot-export"
+            :disabled="workspace.busy || !workspace.editorAnalysis.snapshot"
+            @click="downloadSnapshot"
+          >
+            <Download
+              :size="16"
+              aria-hidden="true"
+            />{{ copy.export }}
+          </button>
+        </div>
+        <input
+          ref="snapshotFileInput"
+          type="file"
+          accept="application/json,.json"
+          class="sr-only"
+          tabindex="-1"
+          :aria-label="copy.import"
+          data-testid="snapshot-file-input"
+          :disabled="studio.locked"
+          @change="handleSnapshotFile"
+        >
+        <textarea
+          v-model="workspace.editorText"
+          class="json-editor"
+          :aria-label="copy.editor"
+          :readonly="studio.locked"
+          spellcheck="false"
+        />
+        <p
+          v-if="workspace.parsedEditor.error"
+          class="field-error"
+          role="status"
+        >
+          {{ workspace.parsedEditor.error }}
+        </p>
+        <SnapshotInsights
+          :analysis="workspace.editorAnalysis"
+          :locale="locale"
+        />
+      </div>
+      <HomepagePreview
+        v-else-if="modal === 'preview'"
+        :snapshot="workspace.editorAnalysis.snapshot"
+        :text-is-current="textCurrent"
+        :text-revision="studio.textRevision"
+        :form-dirty="studio.formDirty"
+        :locale="locale"
+        auto-open
+      />
+      <div
+        v-else-if="modal === 'review'"
+        class="studio-review"
+      >
+        <button
+          class="button button--primary"
+          type="button"
+          :disabled="!workspace.canApprove || !studio.canReview"
+          @click="workspace.approveReview"
+        >
+          <Check
+            :size="16"
+            aria-hidden="true"
+          />{{ copy.approve }}
+        </button><label class="studio-field"><span>{{ copy.reason }}</span><input
+          v-model="workspace.rejectReason"
+          :disabled="workspace.busy"
+        ></label><button
+          class="button button--danger"
+          type="button"
+          :disabled="workspace.busy || !studio.canReview || !workspace.rejectReason.trim() || workspace.version?.status !== 'in_review'"
+          @click="workspace.rejectReview"
+        >
+          {{ copy.reject }}
+        </button>
+      </div>
+      <div v-else-if="modal === 'publish' || modal === 'rollback'">
+        <p class="studio-muted">
+          {{ copy.publishingHint }}
+        </p><div class="studio-dialog-actions">
+          <button
+            class="button button--primary"
+            type="button"
+            :disabled="workspace.busy || !studio.canPublish"
+            @click="confirmRelease"
+          >
+            {{ copy.confirm }}
+          </button>
+        </div>
+      </div>
+      <StudioNavigation
+        v-else-if="modal === 'navigation'"
+        :active="studio.module"
+        :locale="locale"
+        :name="session.principal?.name || session.principal?.subject || ''"
+        drawer
+        :busy="workspace.busy"
+        :logout-busy="studio.assetBusy || session.busy"
+        @navigate="navigate"
+        @logout="uiMode = ''; studio.request({ kind: 'logout' })"
+      />
+      <template #messages>
+        <ToastViewport
+          :items="toasts.items"
+          :locale="locale"
+          @dismiss="toasts.dismiss"
+          @pause="toasts.pause"
+          @resume="toasts.resume"
+          @visibility="hidden => hidden ? toasts.pauseAll('hidden') : toasts.resumeAll('hidden')"
+        />
+      </template>
+    </StudioDialog>
   </div>
 </template>
-
-<style scoped>
-.admin-shell { min-height: 100vh; display: grid; grid-template-columns: 4.5rem 1fr; background: var(--bg); }
-.rail { border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 1.25rem .75rem; gap: 2rem; }
-.mark { width: 2.5rem; height: 2.5rem; display: grid; place-items: center; border: 1px solid var(--border); color: var(--accent); letter-spacing: .08em; }
-.rail-nav { display: grid; gap: .75rem; }
-.rail-item, .rail-locale { width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border: 1px solid transparent; color: var(--muted); background: transparent; }
-.rail-item--active, .rail-item:hover, .rail-locale:hover { color: var(--text); border-color: var(--border); background: var(--surface); }
-.rail-locale { margin-top: auto; font-size: .75rem; }
-.workspace { width: min(100% - 3rem, 90rem); margin: 0 auto; padding: 2.5rem 0 4rem; }
-.topbar { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: 2rem; }
-h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: 0; font-size: clamp(1.6rem, 3vw, 2.6rem); font-weight: 500; letter-spacing: -.03em; }
-.site-link { color: var(--muted); text-decoration: none; font-size: .85rem; }
-.site-link:hover { color: var(--text); }
-.connection { margin-bottom: 1rem; }
-.connection-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
-label { display: grid; gap: .45rem; color: var(--muted); font-size: .78rem; }
-label small { color: var(--muted); }
-input, textarea { width: 100%; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-radius: 0; padding: .7rem .75rem; }
-input:focus, textarea:focus { border-color: var(--accent); outline: 0; }
-.inline-control { display: flex; gap: .5rem; }
-.inline-control input { min-width: 0; }
-.workspace-grid, .workflow-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 1rem; margin-bottom: 1rem; }
-.json-editor, .json-preview { min-height: 28rem; font: .78rem/1.65 "SFMono-Regular", Consolas, monospace; tab-size: 2; }
-.json-editor { resize: vertical; }
-.json-preview { overflow: auto; margin: 0; color: #b6c0bd; background: #0f1314; border: 1px solid var(--border); padding: 1rem; white-space: pre-wrap; word-break: break-word; }
-.preview-badge, .status-pill { color: var(--muted); border: 1px solid var(--border); padding: .25rem .45rem; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
-.status-pill--valid { color: #aec3b5; border-color: #496455; }
-.status-pill--succeeded { color: #aec3b5; border-color: #496455; }
-.status-pill--failed { color: var(--danger); border-color: #714d47; }
-.status-dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--border); }
-.status-dot--active { background: var(--warm); }
-.meta-stack { display: grid; gap: .2rem; text-align: right; color: var(--muted); font-size: .72rem; }
-.editor-heading-actions { display: flex; align-items: start; justify-content: end; gap: .75rem; }
-.editor-tools { display: flex; align-items: center; gap: .4rem; }
-.action-row { display: flex; gap: .55rem; margin-top: 1rem; }
-.action-row--wrap { flex-wrap: wrap; }
-.reason-field { flex: 1 1 12rem; }
-.field-error, .notice { color: var(--warm); font-size: .82rem; }
-.notice { border-left: 2px solid var(--warm); padding: .7rem .85rem; background: var(--surface); }
-.notice--error { color: var(--danger); border-color: var(--danger); }
-.job-meta { margin: 1rem 0 0; color: var(--muted); font: .72rem monospace; overflow-wrap: anywhere; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media (max-width: 760px) {
-  .admin-shell { display: block; }
-  .rail { height: 4rem; flex-direction: row; justify-content: space-between; border-right: 0; border-bottom: 1px solid var(--border); padding: .7rem 1rem; }
-  .rail-nav { display: flex; gap: .35rem; }
-  .rail-locale { margin-top: 0; }
-  .workspace { width: min(100% - 1.5rem, 90rem); padding-top: 1.5rem; }
-  .topbar { align-items: start; flex-direction: column; }
-  .connection-grid, .workspace-grid, .workflow-grid { grid-template-columns: 1fr; }
-  .editor-heading-actions { flex-wrap: wrap; }
-  .json-editor, .json-preview { min-height: 20rem; }
-}
-</style>

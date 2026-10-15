@@ -24,6 +24,7 @@ type Repository interface {
 	WithinTransaction(context.Context, func(Repository) error) error
 	CreateVersion(context.Context, domain.ContentVersion) error
 	GetVersion(context.Context, string) (domain.ContentVersion, error)
+	ListVersions(context.Context, ListQuery) ([]VersionSummary, error)
 	UpdateVersion(context.Context, domain.ContentVersion, int64) error
 	AppendAudit(context.Context, domain.AuditEntry) error
 }
@@ -84,6 +85,18 @@ func (service *Service) CreateDraft(
 	actor domain.Principal,
 	snapshot json.RawMessage,
 ) (domain.ContentVersion, error) {
+	return service.CreateNamedDraft(ctx, actor, "", snapshot)
+}
+
+// CreateNamedDraft adds optional display metadata without changing the snapshot contract.
+func (service *Service) CreateNamedDraft(ctx context.Context, actor domain.Principal, name string, snapshot json.RawMessage) (domain.ContentVersion, error) {
+	name, err := normalizeName(name)
+	if err != nil {
+		return domain.ContentVersion{}, err
+	}
+	if actor.Subject == "" {
+		return domain.ContentVersion{}, domain.ErrForbidden
+	}
 	if !hasPermission(actor, auth.PermissionEditDraft) {
 		return domain.ContentVersion{}, domain.ErrForbidden
 	}
@@ -106,6 +119,10 @@ func (service *Service) CreateDraft(
 		UpdatedBy: actor.Subject,
 		CreatedAt: now,
 		UpdatedAt: now,
+	}
+	version.Name = name
+	if version.Name == "" {
+		version.Name = version.ID
 	}
 
 	err = service.store.WithinTransaction(ctx, func(repository Repository) error {

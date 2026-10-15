@@ -23,6 +23,11 @@
 | `DATABASE_URL` | 空 | 生产环境必填；不得写入日志。 |
 | `OIDC_ISSUER` | 空 | 生产环境必填。 |
 | `OIDC_AUDIENCE` | 空 | 生产环境必填。 |
+| `ADMIN_OIDC_CLIENT_ID` | 空 | 浏览器授权码登录的 OIDC client ID；ID token 的 audience 使用该值。 |
+| `ADMIN_OIDC_CLIENT_SECRET` | 空 | 可选 confidential client 密钥，通过 token endpoint 的 HTTP Basic 发送。 |
+| `ADMIN_OIDC_REDIRECT_URL` | 空 | 身份提供商注册的固定回调 URL，路径为 `/api/v1/auth/callback`。 |
+| `ADMIN_RETURN_URL` | 空 | 登录完成后的固定管理端 URL；Origin 必须位于允许列表。 |
+| `ADMIN_SESSION_KEY` | 空 | Base64 编码的 32 字节随机密钥，用于 AEAD 加密短期登录 Cookie。不得提交或记录。 |
 | `ADMIN_ALLOWED_ORIGINS` | 空 | 逗号分隔的管理端 Origin；生产环境至少一个且必须为 HTTPS。 |
 | `ALLOW_DEV_IDENTITY` | `false` | 仅非生产环境显式设置为 `true` 时读取 `X-Dev-Subject` 和 `X-Dev-Roles`。 |
 | `SHUTDOWN_TIMEOUT` | `10s` | 优雅关闭等待时间。 |
@@ -39,6 +44,20 @@
 | `EDGEONE_TOKEN` | 空 | 仅通过环境变量提供的 Bearer Token。 |
 
 生产环境禁止把开发身份头当作认证信息。OIDC 实现只信任发行方签发的 `sub`、`email`、`name` 和已知角色。
+
+### 浏览器登录与会话
+
+浏览器登录使用身份提供商托管的标准登录页、授权码和 S256 PKCE。管理端不接收密码，也不使用 password grant。配置 `ADMIN_OIDC_CLIENT_ID`、`ADMIN_OIDC_REDIRECT_URL`、`ADMIN_RETURN_URL`、`ADMIN_SESSION_KEY` 时须同时配置 `OIDC_ISSUER` 和 `ADMIN_ALLOWED_ORIGINS`；任何部分配置都会阻止启动。生产环境的 issuer、回调和返回 URL 必须为 HTTPS。`ADMIN_OIDC_CLIENT_SECRET` 按身份提供商的客户端类型选填；需为 ID token 配置顶层 `roles` 声明，值只允许 `editor`、`reviewer`、`publisher`、`admin`。
+
+`GET /api/v1/auth/session` 无需登录，返回 `authenticated` 和 `loginAvailable`。已认证时另含 `principal`、`csrfToken`、`expiresAt`；登录未配置时返回两个 `false`，不会生成开发身份或演示会话。`GET /api/v1/auth/login` 跳转至身份提供商；回调校验一次性 state、nonce、签名、issuer、client audience、有效期和授权方后设置会话。回调只跳转至配置的固定 URL，忽略用户提供的返回目标。
+
+会话 Cookie 为不透明随机值，设置 `HttpOnly`、`SameSite=Lax`、主机作用域和 `/api/` 路径，生产环境还设置 `Secure`。PostgreSQL 仅保存 bearer 的 SHA-256 摘要；会话在 ID token 过期或 8 小时后失效（取较早值），每次请求都检查有效期。生产环境使用迁移 `0006_admin_sessions.sql` 创建持久会话及已消费 state 表，服务重启和多实例不会恢复已撤销会话。开发模式显式选择内存依赖，会话随进程消失。
+
+管理 API 同时支持既有 Bearer JWT 和会话 Cookie。Cookie 写操作必须发送允许列表中的精确 `Origin` 和当前会话的 `X-CSRF-Token`；CORS 只对允许来源启用 credentials。`POST /api/v1/auth/logout` 使用同样校验，成功后撤销数据库会话并清除 Cookie，旧 Cookie 不能再次访问。所有认证响应禁止缓存。签名素材 URL 上传独立于会话认证，浏览器直传必须使用 `credentials: 'omit'`。
+
+会话缺失、过期或已撤销时，管理 API 与退出接口返回 401；Cookie 写操作的 CSRF 校验失败返回 403。会话查询或撤销遇到数据库故障时返回 503，不清除 Cookie，也不把有效会话标记为失效；数据库恢复后可重试原操作。错误响应不包含底层存储信息。
+
+数据库运维可定期删除 `admin_sessions` 和 `admin_login_flows` 中 `expires_at < now()` 的记录，以控制过期记录数量；清理延迟不影响认证有效期或撤销校验。生产接入仍需在真实身份提供商验证回调白名单、RS256 JWKS、角色声明和同站 HTTPS 域名部署；本地测试不能替代这些配置。
 
 ## 本地运行
 
@@ -104,6 +123,16 @@ COS 桶还需单独配置浏览器直传 CORS：Origin 与 `ADMIN_ALLOWED_ORIGIN
 
 ## 管理 API 示例
 
+### 版本库与克隆
+
+`GET /api/v1/versions?limit=20&cursor=...` 允许 `editor`、`reviewer`、`publisher` 和 `admin`，返回 `{items, nextCursor?}`。每项包含 `id`、`name`、可选 `sourceVersionId`、`status`、`revision`、`checksum`、`createdAt`、`updatedAt` 和可选 `reviewApproved`，不读取或返回内容快照。默认每页 20 项，上限 100 项，按 `(created_at, id)` 倒序稳定分页；非法、超长或重复分页参数返回 400。客户端须原样传递返回的游标。
+
+`POST /api/v1/versions` 兼容已有 `{snapshot}` 请求，并接受可选 `name`。显示名称会去除首尾空白，最多 120 个字符，不允许控制字符；省略或空名称回退为版本 ID。`name` 和 `sourceVersionId` 是版本元数据，不进入 canonical 内容快照及其 checksum。旧版本无名称时也显示 ID。
+
+`POST /api/v1/versions/{versionId}/clone` 接受 `{name}`，仅允许 `editor` 和 `admin`。服务在同一事务中读取源版本、校验 canonical JSON、checksum 和内容语义，生成新 ID、独立草稿和审计记录，再返回完整版本与 `ETag: "1"`。副本保留 `sourceVersionId`，固定 `status: "draft"`、`revision: 1`、无审核批准；源版本及线上发布指针不变。源不存在、角色不允许或快照损坏时不会创建副本。请求不能携带客户端 `snapshot` 覆盖服务端源内容。
+
+迁移 `0007_version_library.sql` 以可重复执行的方式新增名称和来源字段及分页索引，既有版本和内容快照保持兼容。来源字段是 `content_versions` 自引用外键，不复制发布任务或发布指针。
+
 创建草稿需要 Bearer Token：
 
 ```http
@@ -149,7 +178,7 @@ Authorization: Bearer <session-token>
 
 ### 发布与错误响应
 
-发布和回滚必须携带长度至少为 8 的 `Idempotency-Key`。重复使用同一个键只返回同一个逻辑任务，不重复写快照或触发构建。同一时刻只允许一个生产发布或回滚任务处于 `pending`、`building` 状态。
+发布和回滚必须携带有效 UTF-8 的 `Idempotency-Key`。去除首尾 Unicode White_Space 后，长度必须为 8–128 个 UTF-8 字节，且不能包含控制字符；BOM（U+FEFF）作为键的一部分保留。非法键返回 400，不冻结版本、写快照或创建任务。重复使用同一个归一化键只返回同一个逻辑任务，不重复写快照或触发构建。同一时刻只允许一个生产发布或回滚任务处于 `pending`、`building` 状态。
 
 错误响应统一为：
 
@@ -178,6 +207,10 @@ Authorization: Bearer <session-token>
 通知器失败只产生告警，不回滚已经成功切换的发布指针。
 
 ## EdgeOne 适配器
+
+仓库已提供实现该契约的 [Pages 自动发布进程](../publisher/README.md)。它独立构建 Nuxt，并通过腾讯云官方 SDK 上传 Direct Upload 项目。`EDGEONE_TRIGGER_URL` 与 `EDGEONE_STATUS_URL` 均指向该进程经反向代理提供的 HTTPS `/builds`；`EDGEONE_TOKEN` 是内部共享网关密钥，与其 `PUBLISHER_TOKEN` 一致，**不是**腾讯云 Pages API Token。
+
+先部署 Go API 执行 `0008_publisher_builds` 增量迁移，再启动发布进程；两个服务连接同一数据库与 schema。发布进程的任务在 PostgreSQL 持久化，上传结果不明时保持活动并要求核对，不会盲目重试云端创建。具体变量、容器和恢复流程见上述专项文档。
 
 `internal/providers/edgeone` 不依赖腾讯云 SDK。它向配置的触发端点发送：
 

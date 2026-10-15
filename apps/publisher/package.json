@@ -1,0 +1,17 @@
+{
+  "name": "@yujian/publisher",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:integration": "node --test test/postgres.integration.mjs",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-include=src/**/*.mjs --test-coverage-exclude=src/main.mjs --test-coverage-lines=80 --test-coverage-functions=80 --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1146.0",
+    "@edgeone/makers-sdk": "0.1.0",
+    "pg": "8.23.1",
+    "pnpm": "11.23.0"
+  }
+}

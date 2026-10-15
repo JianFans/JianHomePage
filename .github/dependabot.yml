@@ -68,6 +68,17 @@ updates:
           - minor
           - patch
 
+  - package-ecosystem: docker
+    directory: /apps/publisher
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:15"
+      timezone: Asia/Singapore
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(发布容器)"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

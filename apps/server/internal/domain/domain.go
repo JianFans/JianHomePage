@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 var (
@@ -64,16 +66,18 @@ func CanTransition(from, to ContentStatus, reviewApproved bool) bool {
 }
 
 type ContentVersion struct {
-	ID             string
-	Status         ContentStatus
-	Revision       int64
-	Snapshot       json.RawMessage
-	Checksum       string
-	ReviewApproved bool
-	CreatedBy      string
-	UpdatedBy      string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID              string
+	Name            string
+	SourceVersionID string
+	Status          ContentStatus
+	Revision        int64
+	Snapshot        json.RawMessage
+	Checksum        string
+	ReviewApproved  bool
+	CreatedBy       string
+	UpdatedBy       string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type AssetStatus string
@@ -110,9 +114,18 @@ const (
 	PublishOperationRollback PublishOperation = "rollback"
 )
 
+// NormalizeIdempotencyKey preserves opaque UTF-8 identity while rejecting keys the build gateway cannot accept.
 func NormalizeIdempotencyKey(value string) (string, bool) {
 	normalized := strings.TrimSpace(value)
-	return normalized, len(normalized) >= 8 && len(normalized) <= 128
+	if len(normalized) < 8 || len(normalized) > 128 || !utf8.ValidString(normalized) {
+		return normalized, false
+	}
+	for _, char := range normalized {
+		if unicode.IsControl(char) {
+			return normalized, false
+		}
+	}
+	return normalized, true
 }
 
 type PublishJob struct {

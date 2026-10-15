@@ -12,8 +12,9 @@
 - `zh-CN` / `en` 双语：优先读取 `localStorage`，其次读取浏览器语言，无法识别时回退到默认语言并显示非阻断提示。
 - 单实例音乐试听：封面播放入口、底部 Dock、进度控制、上一首/下一首和平台降级入口。
 - 静态 SEO：canonical、Open Graph、JSON-LD、`robots.txt` 和 `sitemap.xml`。
-- Nuxt 管理端：音乐作品与曲目表单、影像、现场与片段记录编辑、宣传位编辑、首页板块编排、隔离的真实首页预览、素材绑定、快照契约诊断、本地导入导出、素材签名直传、审核、发布状态和回滚操作台。
+- Nuxt 管理端：OIDC 托管登录、左侧内容导航、只读历史版本与服务端版本复制、统一保存、动画 Toast、音乐作品与曲目、影像、现场、片段、首页编排、隔离预览、素材管理及审核发布操作台。
 - Go 内容服务：PostgreSQL、OIDC、S3 兼容对象存储、EdgeOne 构建触发与后台任务对账。
+- Pages 自动发布进程：下载并校验审核快照、静态构建、官方 SDK 上传、持久化幂等和异常恢复。
 - 验证体系：ESLint、TypeScript、Vitest 覆盖率、Playwright、axe、Go test、Go vet、Go 覆盖率、容器检查、静态产物校验和独立的生产依赖审计。
 
 当前不包含论坛、首页登录入口、统一身份中心或第三方平台内容自动抓取。后续子站点可以复用统一身份认证，但不应破坏公开首页的静态独立性。
@@ -25,6 +26,7 @@
 | `apps/web` | Nuxt、Vue、Vue I18n | 从构建快照生成公开静态站点 |
 | `apps/admin` | Nuxt、Vue | 内容编辑、审核与发布操作台 |
 | `apps/server` | Go | 内容版本、素材、鉴权、审计和发布编排 |
+| `apps/publisher` | Node.js | 受控静态构建、腾讯云 Pages 上传和持久化部署对账 |
 | `packages/schema` | JSON Schema、TypeScript | 内容快照的唯一规范及生成类型 |
 | `content/fixtures` | JSON | 仅供本地开发和测试的样例快照 |
 | `scripts` | Node.js | fixture 生成、EdgeOne 门禁和静态产物验证 |
@@ -37,8 +39,9 @@
   -> canonical JSON 快照与素材完整性校验
   -> PostgreSQL 冻结发布目标
   -> S3/COS 保存不可变快照
-  -> EdgeOne 构建读取 CONTENT_SNAPSHOT_PATH
+  -> 发布进程读取 COS 快照并注入 CONTENT_SNAPSHOT_PATH
   -> Nuxt 生成纯静态产物
+  -> 官方 Pages SDK 上传 Production 部署
   -> EdgeOne Pages 分发 yujian.me
 ```
 
@@ -94,7 +97,7 @@ go run ./cmd/api
 | `pnpm lint` | 运行 ESLint |
 | `pnpm typecheck` | 检查所有 TypeScript/Nuxt 项目 |
 | `pnpm test` | 运行 Schema、管理端、公开站和脚本测试 |
-| `pnpm test:coverage` | 验证三个 TypeScript 工作区的覆盖率门槛 |
+| `pnpm test:coverage` | 验证 TypeScript 工作区与发布进程的覆盖率门槛 |
 | `pnpm test:coverage:go` | 验证 Go 全包语句覆盖率不低于 80% |
 | `pnpm test:automation` | 验证 GitHub Actions、Dependabot 和 Docker 配置契约 |
 | `pnpm schema:generate` | 根据 canonical Schema 生成 TypeScript 类型 |
@@ -104,14 +107,17 @@ go run ./cmd/api
 | `pnpm --filter @yujian/web test:e2e` | 运行 Chrome E2E 与无障碍测试 |
 | `pnpm --filter @yujian/admin test:e2e` | 运行管理端桌面与手机尺寸的音乐、影像、现场、片段、首页编辑、视觉预览及保存契约测试 |
 | `pnpm verify:edgeone` | 使用正式内容快照执行 EdgeOne 发布门禁 |
+| `pnpm --filter @yujian/publisher test:integration` | 使用独立 PostgreSQL 验证发布网关、任务恢复与进程启动 |
 | `pnpm fixture:images` | 重新生成开发图片 fixture |
 | `pnpm fixture:audio` | 重新生成开发音频 fixture |
 
 管理端编辑器直接复用 `packages/schema` 的 canonical 校验规则。界面诊断使用 250 ms 防抖，保存和导出始终重新校验当前文本。只有完整通过 Schema 与跨记录语义校验的快照才能保存或导出；本地 JSON 导入不会上传文件，也不会把会话 Token、API 地址或发布状态写入导出内容。
 
-首页视觉预览在独立 iframe 中复用公开站展示组件，支持桌面／手机视口与中英文。它只显示已应用的有效快照，JSON 变化立即撤下旧画面，临时表单不自动合并。预览不保存或发布内容，不上传未发布快照，也不传递 Token 或编辑连接；正式公开站仍只读取构建时快照。
+首页视觉预览在独立 iframe 中复用公开站展示组件，支持桌面／手机视口与中英文。打开预览会先校验并应用当前模块的临时表单，失败时保留输入并提示错误；JSON 变化立即撤下旧画面。预览不保存或发布内容，不上传未发布快照，也不传递 Token 或编辑连接；正式公开站仍只读取构建时快照。
 
-影像工作台维护视频标题、海报、时长、精选、平台链接和可选视频素材；现场工作台维护双语标题、城市、场馆、带时区时间、状态、详情链接和可选海报；片段工作台维护图片／GIF 素材、可选双语说明及内部或外部跳转。新记录先应用到快照，再通过首页工作台加入对应板块；不会自动改变首页排序和展示上限。音乐、影像、现场、片段与首页表单共用未应用保护，临时输入必须应用或放弃后才能保存、导出、审核或发布。
+管理端通过 OIDC 提供器托管的登录页认证；网站不接收或储存用户密码。会话使用 HttpOnly Cookie、CSRF 校验与服务端角色控制。独立导航只显示当前模块；顶部集中提供版本选择、预览与保存。历史版本保持只读，可从任意版本请求服务端克隆成新草稿。详细配置和 API 行为见 [apps/server/README.md](apps/server/README.md) 与 [apps/admin/README.md](apps/admin/README.md)。
+
+影像工作台维护视频标题、海报、时长、精选、平台链接和可选视频素材；现场工作台维护双语标题、城市、场馆、带时区时间、状态、详情链接和可选海报；片段工作台维护图片／GIF 素材、可选双语说明及内部或外部跳转。新记录先应用到快照，再通过首页工作台加入对应板块；不会自动改变首页排序和展示上限。模块共用未保存保护。素材库首次打开后保持挂载，切换模块不会丢弃上传信息；上传期间禁止退出，尚未上传的素材信息会在退出时明确询问。
 
 素材工作台支持 WebP、GIF、MP3、WAV 和 MP4，使用分块 SHA-256 与对象存储签名直传。上传完成后仍需把 `ready` 素材插入快照、保存草稿并走完审核发布流程。详细限制见 [apps/admin/README.md](apps/admin/README.md)。
 
@@ -166,14 +172,9 @@ PostgreSQL 集成测试需要显式设置 `YUJIAN_TEST_POSTGRES_URL`，否则会
 
 ### 公开静态站
 
-EdgeOne Pages 使用仓库根目录的 [edgeone.json](edgeone.json)：
+创建 EdgeOne Pages **Direct Upload** 项目，部署独立 `apps/publisher` 容器。管理端发布后，Go 写入 COS 审核快照；发布进程下载并核对 checksum，注入 `CONTENT_SNAPSHOT_PATH`，生成 `apps/web/.output/public`，再通过官方 SDK 上传 Production 部署。
 
-- 安装命令：`pnpm install --frozen-lockfile`
-- 构建命令：`pnpm verify:edgeone`
-- 输出目录：`apps/web/.output/public`
-- Node.js：22
-
-发布工作流必须提供 `CONTENT_SNAPSHOT_PATH`。缓存策略、响应头和上线后检查见 [apps/web/EDGEONE.md](apps/web/EDGEONE.md)。
+首次配置、项目 ID、Token、数据库迁移、HTTPS 网关和异常恢复见 [Pages 自动发布部署说明](apps/publisher/README.md)。根 [edgeone.json](edgeone.json) 保留 Git 集成构建基线，Direct Upload 不执行其中的命令。缓存策略、响应头和上线后检查见 [apps/web/EDGEONE.md](apps/web/EDGEONE.md)。
 
 ### Go 服务
 
@@ -196,10 +197,10 @@ docker rm --force yujian-server-local
 
 ### 上线检查清单
 
-- 代码已推送到 EdgeOne 可访问的 Git 远端。
+- 经过 CI 的固定代码提交已构建为发布镜像，Pages 项目类型为 Direct Upload。
 - `master` 工作区干净，提交历史符合原子化约束。
 - 前端、Go、覆盖率、E2E、容器扫描和生产依赖审计通过。
-- 已准备非 fixture 的审核快照并配置 `CONTENT_SNAPSHOT_PATH`。
+- 已准备非 fixture 的审核快照；发布进程会从 COS 下载并注入 `CONTENT_SNAPSHOT_PATH`。
 - PostgreSQL、OIDC、COS、媒体域名和 EdgeOne 参数已配置。
 - `MEDIA_PUBLIC_BASE_URL` 指向长期稳定的 EdgeOne 媒体域名；迁移对象存储源站时保持该公开域名不变。
 - COS 直传 CORS 允许管理端 Origin、`PUT`、`HEAD`、`Content-Type` 和 `X-Amz-Checksum-Sha256`。
@@ -210,6 +211,7 @@ docker rm --force yujian-server-local
 
 - [公开站 EdgeOne 部署基线](apps/web/EDGEONE.md)
 - [Go 服务配置、API 与运维](apps/server/README.md)
+- [Pages 自动发布进程部署与恢复](apps/publisher/README.md)
 - [管理端开发说明](apps/admin/README.md)
 - [生产上线加固计划](docs/superpowers/plans/2026-08-30-production-hardening.md)
 - [仓库代理工作指南](AGENTS.md)

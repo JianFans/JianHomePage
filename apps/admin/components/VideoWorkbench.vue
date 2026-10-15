@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { Film, Plus, X } from '@lucide/vue'
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, useId, watch } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
 import type { AdminLocale } from '../utils/admin-locale'
 import type { SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { createVideo, type VideoDraft, type VideoErrorCode } from '../utils/video-workbench'
 import { videoCopy } from '../utils/video-copy'
+import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
 import PlatformLinkFields from './PlatformLinkFields.vue'
 
@@ -14,11 +15,13 @@ const props = defineProps<{
   snapshot: YujianContentSnapshot | null
   locale: AdminLocale
   busy: boolean
+  readOnly?: boolean
   dirty: boolean
   stale: boolean
   error: VideoErrorCode | null
   issues: readonly SnapshotEditorIssue[]
   pending: boolean
+  studio?: boolean
 }>()
 const emit = defineEmits<{ open: []; apply: []; close: []; keep: []; discard: [] }>()
 const copy = computed(() => videoCopy(props.locale))
@@ -27,6 +30,13 @@ const selected = computed(() => draft.value?.videos[selectedIndex.value] ?? null
 const editSnapshot = shallowRef(props.snapshot)
 const posters = computed(() => editSnapshot.value?.assets.filter(asset => ['image', 'gif'].includes(asset.kind)) ?? [])
 const videoAssets = computed(() => editSnapshot.value?.assets.filter(asset => asset.kind === 'video') ?? [])
+const issueId = useId()
+
+/** 记录切换后按当前索引绑定 canonical 字段及诊断说明。 */
+function field(name: string) {
+  const path = `/videos/${selectedIndex.value}/${name}`
+  return issueFieldAttributes(props.issues.find(issue => issue.path === path), path, `${issueId}-${name}`, props.locale)
+}
 
 watch(() => props.snapshot, /** JSON 无效时保留最近有效素材选项，应用仍检查最新原文。 */ (snapshot) => {
   if (snapshot) editSnapshot.value = snapshot
@@ -38,13 +48,13 @@ watch(() => draft.value?.videos.length, /** 防御外部替换数组后选择越
 
 /** 新记录仅进入草稿，不自动添加首页引用。 */
 function addVideo() {
-  if (!draft.value || props.busy) return
+  if (!draft.value || props.busy || props.readOnly) return
   draft.value.videos.push(createVideo())
   selectedIndex.value = draft.value.videos.length - 1
 }
 /** 清空选填素材必须移除属性，避免留下空引用。 */
 function setVideoAsset(event: Event) {
-  if (!selected.value || props.busy) return
+  if (!selected.value || props.busy || props.readOnly) return
   const id = (event.target as HTMLSelectElement).value
   if (id) selected.value.videoAssetId = id
   else delete selected.value.videoAssetId
@@ -114,7 +124,7 @@ function setVideoAsset(event: Event) {
       {{ copy.stale }}
     </p>
     <div
-      v-if="error"
+      v-if="error && !studio"
       class="music-error"
       role="alert"
       data-testid="video-error"
@@ -147,7 +157,7 @@ function setVideoAsset(event: Event) {
             data-testid="video-add"
             :aria-label="copy.add"
             :title="copy.add"
-            :disabled="busy"
+            :disabled="busy || readOnly"
             @click="addVideo"
           >
             <Plus
@@ -185,6 +195,8 @@ function setVideoAsset(event: Event) {
             :aria-pressed="selectedIndex === index"
             :disabled="busy"
             :data-testid="`video-record-${video.id}`"
+            data-snapshot-record-kind="videos"
+            :data-snapshot-record-index="index"
             @click="selectedIndex = index"
           >
             <Film
@@ -203,39 +215,62 @@ function setVideoAsset(event: Event) {
           <fieldset
             class="music-fields"
             data-testid="video-fields"
-            :disabled="busy"
+            :disabled="busy || readOnly"
           >
             <LocalizedTextFields
               v-model="selected.title"
               :locale="locale"
               :label="copy.videoTitle"
               test-id="video-title"
+              :path="`/videos/${selectedIndex}/title`"
+              :issues="issues"
             />
             <div class="music-field-grid">
               <label><span>{{ copy.poster }}</span><select
                 v-model="selected.posterAssetId"
                 data-testid="video-poster"
+                :data-snapshot-path="field('posterAssetId')['data-snapshot-path']"
+                :aria-invalid="field('posterAssetId')['aria-invalid']"
+                :aria-describedby="field('posterAssetId')['aria-describedby']"
               ><option value="">{{ copy.select }}</option><option
                 v-for="asset in posters"
                 :key="asset.id"
                 :value="asset.id"
-              >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select></label>
+              >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select><small
+                v-if="field('posterAssetId').description"
+                :id="`${issueId}-posterAssetId`"
+                class="sr-only"
+              >{{ field('posterAssetId').description }}</small></label>
               <label><span>{{ copy.asset }}</span><select
                 :value="selected.videoAssetId || ''"
                 data-testid="video-asset"
+                :data-snapshot-path="field('videoAssetId')['data-snapshot-path']"
+                :aria-invalid="field('videoAssetId')['aria-invalid']"
+                :aria-describedby="field('videoAssetId')['aria-describedby']"
                 @change="setVideoAsset"
               ><option value="">{{ copy.none }}</option><option
                 v-for="asset in videoAssets"
                 :key="asset.id"
                 :value="asset.id"
-              >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select></label>
+              >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select><small
+                v-if="field('videoAssetId').description"
+                :id="`${issueId}-videoAssetId`"
+                class="sr-only"
+              >{{ field('videoAssetId').description }}</small></label>
               <label><span>{{ copy.duration }}</span><input
                 v-model.number="selected.durationSeconds"
                 type="number"
                 min="1"
                 step="1"
                 data-testid="video-duration"
-              ></label>
+                :data-snapshot-path="field('durationSeconds')['data-snapshot-path']"
+                :aria-invalid="field('durationSeconds')['aria-invalid']"
+                :aria-describedby="field('durationSeconds')['aria-describedby']"
+              ><small
+                v-if="field('durationSeconds').description"
+                :id="`${issueId}-durationSeconds`"
+                class="sr-only"
+              >{{ field('durationSeconds').description }}</small></label>
               <label class="music-checkbox"><input
                 v-model="selected.featured"
                 type="checkbox"
@@ -245,6 +280,8 @@ function setVideoAsset(event: Event) {
             <PlatformLinkFields
               v-model="selected.platformLinks"
               :locale="locale"
+              :path="`/videos/${selectedIndex}/platformLinks`"
+              :issues="issues"
             />
           </fieldset>
         </div>
@@ -254,7 +291,7 @@ function setVideoAsset(event: Event) {
           type="button"
           class="button button--primary"
           data-testid="video-apply"
-          :disabled="busy || stale || !dirty"
+          :disabled="busy || readOnly || stale || !dirty"
           @click="emit('apply')"
         >
           {{ copy.apply }}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { CalendarDays, Languages, Music2, Video } from '@lucide/vue'
-import { computed } from 'vue'
+import { ArrowUp, CalendarDays, Languages, Music2, Video } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import IconButton from '../ui/IconButton.vue'
 
@@ -13,6 +13,19 @@ const props = defineProps<{
 const emit = defineEmits<{
   toggleLocale: []
 }>()
+const showTop = ref(false)
+const identity = ref<HTMLAnchorElement | null>(null)
+
+/** 阈值状态不参与布局，监听仅在跨越阈值时触发界面更新。 */
+function updateScroll() { showTop.value = window.scrollY > 480 }
+/** 遵循减少动态效果偏好；把焦点交还始终可见的顶部入口。 */
+function backToTop() {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  window.scrollTo({ top: 0, behavior: reduced ? 'instant' : 'smooth' })
+  identity.value?.focus({ preventScroll: true })
+}
+onMounted(() => { updateScroll(); window.addEventListener('scroll', updateScroll, { passive: true }) })
+onBeforeUnmount(() => window.removeEventListener('scroll', updateScroll))
 
 const labels = computed(() => props.locale === 'en'
   ? {
@@ -22,6 +35,7 @@ const labels = computed(() => props.locale === 'en'
       events: 'Live',
       language: '切换为中文',
       navigation: 'Primary navigation',
+      top: 'Back to top',
     }
   : {
       home: '首页',
@@ -30,12 +44,14 @@ const labels = computed(() => props.locale === 'en'
       events: '现场',
       language: 'Switch to English',
       navigation: '主导航',
+      top: '返回顶部',
     })
 </script>
 
 <template>
   <header class="site-header">
     <a
+      ref="identity"
       class="site-identity"
       href="#top"
       :aria-label="labels.home"
@@ -73,6 +89,17 @@ const labels = computed(() => props.locale === 'en'
       >
         <Languages aria-hidden="true" />
       </IconButton>
+      <span class="site-header__top-slot">
+        <Transition name="top-control">
+          <IconButton
+            v-if="showTop"
+            data-testid="back-to-top"
+            :label="labels.top"
+            tooltip-align="end"
+            @click="backToTop"
+          ><ArrowUp aria-hidden="true" /></IconButton>
+        </Transition>
+      </span>
     </nav>
   </header>
 </template>
@@ -140,6 +167,11 @@ nav > a svg {
   height: 1.1rem;
   stroke-width: 1.7;
 }
+
+.site-header__top-slot { display: block; width: 2.75rem; height: 2.75rem; flex: 0 0 2.75rem; }
+.top-control-enter-active, .top-control-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
+.top-control-enter-from, .top-control-leave-to { opacity: 0; transform: translateY(.25rem); }
+@media (prefers-reduced-motion: reduce) { .top-control-enter-active, .top-control-leave-active { transition: none; } }
 
 @media (max-width: 34rem) {
   .site-header {
