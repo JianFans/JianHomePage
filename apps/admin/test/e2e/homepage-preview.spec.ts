@@ -88,6 +88,28 @@ test.beforeEach(async ({ page }) => {
   await startStudio(page)
 })
 
+test('预览弹窗的键盘导航可以进入首页并返回工具栏', async ({ page }) => {
+  await page.getByTestId('studio-preview').click()
+  const frame = await previewFrame(page)
+  const dismiss = page.getByRole('button', { name: 'Dismiss message' })
+  while (await dismiss.count()) {
+    const count = await dismiss.count()
+    await dismiss.first().click()
+    await expect(dismiss).toHaveCount(count - 1)
+  }
+  const toolbarClose = page.getByTestId('preview-close')
+  await toolbarClose.focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByTestId('preview-frame')).toBeFocused()
+  const first = frame.locator('a[href], button, input, select, textarea, [tabindex="0"]').filter({ visible: true }).first()
+  await expect(first).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(toolbarClose).toBeFocused()
+  await page.getByTestId('dialog-close').focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(page.getByTestId('preview-frame')).toBeFocused()
+})
+
 test('真实握手、样式隔离、缩放视口和双向语言切换，关闭后重建文档', async ({ page }) => {
   await expect(page.getByTestId('studio-preview')).toBeVisible()
   await expect(page.getByTestId('preview-frame')).toHaveCount(0)

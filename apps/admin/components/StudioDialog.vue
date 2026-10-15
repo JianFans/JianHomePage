@@ -34,7 +34,7 @@ function keydown(event: KeyboardEvent) {
   if (!props.open) return
   if (event.key === 'Escape') { event.preventDefault(); if (!props.busy) emit('close'); return }
   if (event.key !== 'Tab') return
-  const nodes = [...(root.value?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]') || [])]
+  const nodes = [...(root.value?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], iframe:not([tabindex="-1"]), [tabindex="0"]') || [])]
     .filter(node => !node.hidden && node.getAttribute('aria-hidden') !== 'true' && node.getClientRects().length > 0)
   if (!nodes.length) { event.preventDefault(); root.value?.focus(); return }
   if (event.shiftKey && document.activeElement === nodes[0]) { event.preventDefault(); nodes.at(-1)?.focus() }
