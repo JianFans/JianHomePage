@@ -1,6 +1,29 @@
 import { expect, test } from '@playwright/test'
 import { apply, fixtureSnapshot, navigate, roundTrip, snapshot, startStudio } from './studio'
 
+test('新增作品漏选封面时定位错误，修正后才能保存', async ({ page }) => {
+  const api = await startStudio(page)
+  await navigate(page, 'music')
+  await page.getByTestId('music-new').click()
+  await page.getByTestId('release-title-zh').fill('新作品')
+  await page.getByTestId('music-date').fill('2026-10-15')
+  await page.getByTestId('track-title-zh').fill('新曲目')
+  await page.getByTestId('track-duration').fill('180')
+  await page.getByTestId('snapshot-save').click()
+  const cover = page.getByTestId('music-cover')
+  const path = `/releases/${fixtureSnapshot().releases.length}/coverAssetId`
+  await expect(cover).toHaveAttribute('aria-invalid', 'true')
+  await expect(cover).toHaveAttribute('data-snapshot-path', path)
+  await expect(cover).toHaveAccessibleDescription(new RegExp(path))
+  await expect(cover).toBeFocused()
+  expect(api.saves).toHaveLength(0)
+  await expect(page.getByTestId('release-title-zh')).toHaveValue('新作品')
+  await cover.selectOption('asset_cover_01')
+  await page.getByTestId('snapshot-save').click()
+  await expect.poll(() => api.saves.length).toBe(1)
+  await expect(cover).not.toHaveAttribute('aria-invalid', 'true')
+})
+
 test('创建作品、绑定素材、编排并导出可重新导入的快照', async ({ page }) => {
   await startStudio(page)
   await navigate(page, 'music')

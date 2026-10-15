@@ -75,6 +75,30 @@ describe('canonical field issue navigation', () => {
     expect(description(field)).toContain('字段格式错误')
   })
 
+  it('binds a new release cover issue to the appended record and focuses it', async () => {
+    const { wrapper, form } = mountWorkbench('music')
+    await wrapper.get('[data-testid="music-new"]').trigger('click')
+    await wrapper.get('[data-testid="release-title-zh"]').setValue('新作品')
+    await wrapper.get('[data-testid="music-date"]').setValue('2026-10-15')
+    await wrapper.get('[data-testid="track-title-zh"]').setValue('新曲目')
+    await wrapper.get('[data-testid="track-duration"]').setValue('180')
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    const path = `/releases/${fixture.releases.length}/coverAssetId`
+    expect(form.issues).toEqual([expect.objectContaining({ path })])
+    const cover = wrapper.get('[data-testid="music-cover"]')
+    expect(cover.attributes('data-snapshot-path')).toBe(path)
+    expect(cover.attributes('aria-invalid')).toBe('true')
+    expect(description(cover.element)).toContain(path)
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    expect(document.activeElement).toBe(cover.element)
+    await cover.setValue('asset_cover_01')
+    expect(form.apply()).toBe(true)
+    await flushPromises()
+    expect(cover.attributes('aria-invalid')).toBeUndefined()
+    expect(cover.attributes('aria-describedby')).toBeUndefined()
+  })
+
   it('selects another hero for a hidden internal target instead of focusing an unrelated field', async () => {
     const { wrapper, form } = mountWorkbench('homepage')
     await wrapper.get('[data-testid="homepage-open"]').trigger('click')

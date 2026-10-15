@@ -34,7 +34,7 @@ const brokenCovers = ref<Record<string, boolean>>({})
 const sections = computed(() => props.snapshot?.homepage.sections.filter(section => section.type === 'music') ?? [])
 const issueId = useId()
 const releaseIndex = computed(() => props.snapshot?.releases.findIndex(item => item.id === draft.value?.release.id) ?? -1)
-const coverPath = computed(() => `/releases/${Math.max(0, releaseIndex.value)}/coverAssetId`)
+const coverPath = computed(() => `/releases/${releaseIndex.value < 0 ? (props.snapshot?.releases.length ?? 0) : releaseIndex.value}/coverAssetId`)
 const coverIssue = computed(() => props.issues.find(issue => issue.path === coverPath.value))
 const coverIssueAttrs = computed(() => issueFieldAttributes(coverIssue.value, coverPath.value, issueId, props.locale))
 
