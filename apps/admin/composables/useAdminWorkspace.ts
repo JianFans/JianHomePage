@@ -263,20 +263,13 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (!version.value || dirty.value || busy.value) return
     const current = version.value
     const key = operationKeys.get('publish', current.id)
-    const result = await run('publishing', () => api().publish(current.id, key), locale.value === 'en' ? 'Publish job created' : '发布任务已创建')
-    if (result) setPublishJob('publish', result)
+    await runPublishJob('publish', () => api().publish(current.id, key), locale.value === 'en' ? 'Publish job created' : '发布任务已创建')
   }
 
   /** 刷新当前发布任务，并在终态释放对应幂等键。 */
   async function refreshPublish() {
     if (!publishJob.value) return
-    const result = await run('publishing', () => api().refreshPublish(publishJob.value!.id), locale.value === 'en' ? 'Publish status refreshed' : '发布状态已刷新')
-    if (result) {
-      publishJob.value = result
-      if (publishOperation.value) {
-        operationKeys.settle(publishOperation.value, result.versionId, result.status)
-      }
-    }
+    await runPublishJob(publishOperation.value, () => api().refreshPublish(publishJob.value!.id), locale.value === 'en' ? 'Publish status refreshed' : '发布状态已刷新')
   }
 
   /** 为当前已发布或归档版本创建幂等回滚任务。 */
@@ -284,15 +277,40 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (!version.value) return
     const current = version.value
     const key = operationKeys.get('rollback', current.id)
-    const result = await run('publishing', () => api().rollback(current.id, key), locale.value === 'en' ? 'Rollback job created' : '回滚任务已创建')
-    if (result) setPublishJob('rollback', result)
+    await runPublishJob('rollback', () => api().rollback(current.id, key), locale.value === 'en' ? 'Rollback job created' : '回滚任务已创建')
   }
 
-  /** 记录发布任务，并依据任务状态维护操作幂等键。 */
-  function setPublishJob(operation: PublishOperation, job: AdminPublishJob) {
-    publishOperation.value = operation
-    publishJob.value = job
-    operationKeys.settle(operation, job.versionId, job.status)
+  /** 先保留已接受任务，再同步关联版本；读取失败不能丢失任务或重发云操作。 */
+  async function runPublishJob(operation: PublishOperation | null, request: () => Promise<AdminPublishJob>, message: string) {
+    const currentEpoch = epoch
+    await run('publishing', async () => {
+      const job = await request()
+      if (disposed || currentEpoch !== epoch) return
+      publishOperation.value = operation
+      publishJob.value = job
+      if (operation) operationKeys.settle(operation, job.versionId, job.status)
+      const relatedIds = new Set([job.versionId])
+      // Success can also archive the previous live version. Read it rather than infer its state.
+      if (job.status === 'succeeded') {
+        for (const item of versions.value) if (item.status === 'published') relatedIds.add(item.id)
+        if (version.value?.status === 'published') relatedIds.add(version.value.id)
+      }
+      for (const id of relatedIds) {
+        const next = await api().getVersion(id)
+        if (disposed || currentEpoch !== epoch) return
+        if (version.value?.id === next.id) setVersion(next, !dirty.value)
+        else {
+          // A historical job must not replace the currently selected editing context.
+          listSequence++
+          listing.value = false
+          const { snapshot, ...summary } = next
+          void snapshot
+          const index = versions.value.findIndex(item => item.id === next.id)
+          if (index < 0) versions.value.unshift(summary)
+          else versions.value[index] = summary
+        }
+      }
+    }, message)
   }
 
   /** 仅在服务端退出成功后清理内容和基线，失效会话仍保留可导出的输入。 */
