@@ -1,15 +1,24 @@
 <script setup lang="ts">
 import { ArrowDown, ArrowUp, Plus, X } from '@lucide/vue'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import type { PlatformLink, YujianContentSnapshot } from '@yujian/schema'
 import type { AdminLocale } from '../utils/admin-locale'
 import { homepageCopy } from '../utils/homepage-copy'
 import { musicProviders } from '../utils/music-copy'
+import type { SnapshotEditorIssue } from '../utils/snapshot-workbench'
+import { issueFieldAttributes } from '../utils/issue-accessibility'
 import { homepageItemOptions, homepageItemVisibility, type HomepageDraft, type HomepageSection } from '../utils/homepage-workbench'
 import LocalizedTextFields from './LocalizedTextFields.vue'
 
 const model = defineModel<HomepageSection>({ required: true })
-const props = defineProps<{ snapshot: YujianContentSnapshot; draft: HomepageDraft; locale: AdminLocale }>()
+const props = defineProps<{ snapshot: YujianContentSnapshot; draft: HomepageDraft; locale: AdminLocale; path?: string; issues?: readonly SnapshotEditorIssue[] }>()
+const issueId = useId()
+
+/** 编排重排时由父级更新路径，更多链接与上限使用同一诊断契约。 */
+function field(name: string) {
+  const path = props.path ? `${props.path}/${name}` : ''
+  return issueFieldAttributes(props.issues?.find(issue => issue.path === path), path, `${issueId}-${name.replaceAll('/', '-')}`, props.locale)
+}
 const copy = computed(() => homepageCopy(props.locale))
 const selectedId = ref('')
 const options = computed(() => homepageItemOptions(props.snapshot, props.draft, model.value))
@@ -74,6 +83,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
         min="1"
         :max="limitMaximum"
         data-testid="homepage-section-limit"
+        :data-snapshot-path="field('limit')['data-snapshot-path']"
+        :aria-invalid="field('limit')['aria-invalid']"
+        :aria-describedby="field('limit')['aria-describedby']"
       ></label>
     </div>
     <ol class="homepage-items">
@@ -132,6 +144,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
       <label><span>{{ copy.addItem }}</span><select
         v-model="selectedId"
         data-testid="homepage-item-add-select"
+        :data-snapshot-path="field('itemIds')['data-snapshot-path']"
+        :aria-invalid="field('itemIds')['aria-invalid']"
+        :aria-describedby="field('itemIds')['aria-describedby']"
         :disabled="model.itemIds.length >= maxItems"
       ><option value="">{{ copy.choose }}</option><option
         v-for="option in options"
@@ -164,6 +179,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
           <label><span>{{ copy.provider }}</span><select
             v-model="model.moreLink.provider"
             data-testid="homepage-more-provider"
+            :data-snapshot-path="field('moreLink/provider')['data-snapshot-path']"
+            :aria-invalid="field('moreLink/provider')['aria-invalid']"
+            :aria-describedby="field('moreLink/provider')['aria-describedby']"
           ><option
             v-for="provider in musicProviders"
             :key="provider"
@@ -174,6 +192,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
             type="url"
             spellcheck="false"
             data-testid="homepage-more-url"
+            :data-snapshot-path="field('moreLink/url')['data-snapshot-path']"
+            :aria-invalid="field('moreLink/url')['aria-invalid']"
+            :aria-describedby="field('moreLink/url')['aria-describedby']"
           ></label>
         </div>
         <label class="music-checkbox"><input
@@ -188,8 +209,20 @@ function toggleLabel(link: PlatformLink, event: Event) {
           :locale="locale"
           :label="copy.label"
           test-id="homepage-more-label"
+          :path="path ? `${path}/moreLink/label` : undefined"
+          :issues="issues"
         />
       </template>
+    </template>
+    <template
+      v-for="name in ['itemIds', 'limit', 'moreLink/provider', 'moreLink/url']"
+      :key="name"
+    >
+      <small
+        v-if="field(name).description"
+        :id="field(name)['aria-describedby']"
+        class="field-issue-hint"
+      >{{ field(name).description }}</small>
     </template>
   </div>
 </template>

@@ -4,7 +4,7 @@ import { computed, ref, useId, watch } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
 import type { AdminLocale } from '../utils/admin-locale'
 import type { SnapshotEditorIssue } from '../utils/snapshot-workbench'
-import { createMusicTrack, musicAssets, type MusicDraft, type MusicErrorCode } from '../utils/music-workbench'
+import { createMusicTrack, musicAssets, musicDraftTracks, type MusicDraft, type MusicErrorCode } from '../utils/music-workbench'
 import { musicCopy } from '../utils/music-copy'
 import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
@@ -34,9 +34,17 @@ const brokenCovers = ref<Record<string, boolean>>({})
 const sections = computed(() => props.snapshot?.homepage.sections.filter(section => section.type === 'music') ?? [])
 const issueId = useId()
 const releaseIndex = computed(() => props.snapshot?.releases.findIndex(item => item.id === draft.value?.release.id) ?? -1)
-const coverPath = computed(() => `/releases/${releaseIndex.value < 0 ? (props.snapshot?.releases.length ?? 0) : releaseIndex.value}/coverAssetId`)
+const releasePath = computed(() => `/releases/${releaseIndex.value < 0 ? (props.snapshot?.releases.length ?? 0) : releaseIndex.value}`)
+const coverPath = computed(() => `${releasePath.value}/coverAssetId`)
 const coverIssue = computed(() => props.issues.find(issue => issue.path === coverPath.value))
 const coverIssueAttrs = computed(() => issueFieldAttributes(coverIssue.value, coverPath.value, issueId, props.locale))
+const dateIssueAttrs = computed(() => {
+  const path = `${releasePath.value}/releaseDate`
+  return issueFieldAttributes(props.issues.find(issue => issue.path === path), path, `${issueId}-date`, props.locale)
+})
+const trackPaths = computed(() => new Map(props.snapshot && draft.value
+  ? musicDraftTracks(props.snapshot, draft.value).map((track, index) => [track.id, `/tracks/${index}`])
+  : []))
 
 watch(() => props.apiBaseUrl, /** 新连接允许重新加载同 ID 封面，不沿用旧连接的失败状态。 */ () => {
   brokenCovers.value = {}
@@ -266,6 +274,8 @@ function visible(section: MusicDraft['sections'][number]): boolean {
             :locale="locale"
             :label="copy.releaseTitle"
             test-id="release-title"
+            :path="`${releasePath}/title`"
+            :issues="issues"
           />
           <div class="music-field-grid music-field-grid--three">
             <label><span>{{ copy.kind }}</span><select
@@ -276,7 +286,14 @@ function visible(section: MusicDraft['sections'][number]): boolean {
               v-model="draft.release.releaseDate"
               type="date"
               data-testid="music-date"
-            ></label>
+              :data-snapshot-path="dateIssueAttrs['data-snapshot-path']"
+              :aria-invalid="dateIssueAttrs['aria-invalid']"
+              :aria-describedby="dateIssueAttrs['aria-describedby']"
+            ><small
+              v-if="dateIssueAttrs.description"
+              :id="dateIssueAttrs['aria-describedby']"
+              class="field-issue-hint"
+            >{{ dateIssueAttrs.description }}</small></label>
             <label class="music-checkbox"><input
               v-model="draft.release.featured"
               type="checkbox"
@@ -308,6 +325,8 @@ function visible(section: MusicDraft['sections'][number]): boolean {
           <PlatformLinkFields
             v-model="draft.release.platformLinks"
             :locale="locale"
+            :path="`${releasePath}/platformLinks`"
+            :issues="issues"
           />
           <h3>{{ copy.tracks }}</h3>
           <!-- 曲目 ID 可以重复；按引用位置标识各组字段。 -->
@@ -319,6 +338,8 @@ function visible(section: MusicDraft['sections'][number]): boolean {
             :audio-assets="audioAssets"
             :index="index"
             :count="draft.tracks.length"
+            :path="trackPaths.get(track.id)"
+            :issues="issues"
             @up="moveTrack(index, -1)"
             @down="moveTrack(index, 1)"
             @remove="draft.tracks.splice(index, 1)"

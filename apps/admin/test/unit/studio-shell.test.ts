@@ -220,7 +220,8 @@ describe('CMS 版本工作区', () => {
     const invalid = wrapper.get('[data-testid="release-title-zh"]').element
     expect(document.activeElement).toBe(invalid)
     expect(invalid.getAttribute('aria-invalid')).toBe('true')
-    expect(document.getElementById(invalid.getAttribute('aria-describedby') || '')?.textContent).toContain('required')
+    expect(document.getElementById(invalid.getAttribute('aria-describedby') || '')?.textContent)
+      .toBe('Text is too short · /releases/0/title/zh-CN')
     await wrapper.get('[data-testid="music-release-release_02"]').trigger('click')
     expect(wrapper.find('[data-testid="leave-dialog"]').exists()).toBe(true)
     await wrapper.get('[data-testid="leave-keep"]').trigger('click')

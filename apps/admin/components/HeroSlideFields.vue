@@ -14,12 +14,19 @@ const props = defineProps<{ snapshot: YujianContentSnapshot; draft: HomepageDraf
 const copy = computed(() => homepageCopy(props.locale))
 const id = useId()
 const heroIndex = computed(() => props.draft.heroSlides.findIndex(hero => hero.id === model.value.id))
+const heroPath = computed(() => `/heroSlides/${Math.max(0, heroIndex.value)}`)
 const targetPath = computed(() => `/heroSlides/${Math.max(0, heroIndex.value)}/target/contentId`)
 const targetIssue = computed(() => props.issues?.find(issue => issue.path === targetPath.value))
 const targetIssueAttrs = computed(() => issueFieldAttributes(targetIssue.value, targetPath.value, `${id}-target-error`, props.locale))
 const assetPath = computed(() => `/heroSlides/${Math.max(0, heroIndex.value)}/assetId`)
 const assetIssue = computed(() => props.issues?.find(issue => issue.path === assetPath.value))
 const assetIssueAttrs = computed(() => issueFieldAttributes(assetIssue.value, assetPath.value, `${id}-asset-error`, props.locale))
+
+/** 当前宣传位的字段随数组位置变化绑定诊断，避免增删后路径失效。 */
+function field(name: string) {
+  const path = `${heroPath.value}/${name}`
+  return issueFieldAttributes(props.issues?.find(issue => issue.path === path), path, `${id}-${name.replaceAll('/', '-')}`, props.locale)
+}
 const mediaAssets = computed(() => props.snapshot.assets.filter(asset => asset.kind === model.value.mediaKind))
 const posterAssets = computed(() => props.snapshot.assets.filter(asset => asset.kind === 'image' || asset.kind === 'gif'))
 const contentOptions = computed(() => [
@@ -75,6 +82,8 @@ function toggleLabel(link: PlatformLink, event: Event) {
       :locale="locale"
       :label="copy.headline"
       test-id="homepage-headline"
+      :path="`${heroPath}/headline`"
+      :issues="issues"
     />
     <div class="music-field-grid">
       <label><span>{{ copy.mediaKind }}</span><select
@@ -100,6 +109,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
       <label><span>{{ copy.mobileAsset }}</span><select
         :value="model.mobileAssetId || ''"
         data-testid="homepage-mobile-asset"
+        :data-snapshot-path="field('mobileAssetId')['data-snapshot-path']"
+        :aria-invalid="field('mobileAssetId')['aria-invalid']"
+        :aria-describedby="field('mobileAssetId')['aria-describedby']"
         @change="optionalField('mobileAssetId', $event)"
       ><option value="">{{ copy.none }}</option><option
         v-for="asset in mediaAssets"
@@ -109,6 +121,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
       <label><span>{{ copy.poster }}</span><select
         :value="model.posterAssetId || ''"
         data-testid="homepage-poster-asset"
+        :data-snapshot-path="field('posterAssetId')['data-snapshot-path']"
+        :aria-invalid="field('posterAssetId')['aria-invalid']"
+        :aria-describedby="field('posterAssetId')['aria-describedby']"
         @change="optionalField('posterAssetId', $event)"
       ><option value="">{{ copy.none }}</option><option
         v-for="asset in posterAssets"
@@ -121,6 +136,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
         min="0"
         max="100"
         data-testid="homepage-focal-x"
+        :data-snapshot-path="field('focalPoint/x')['data-snapshot-path']"
+        :aria-invalid="field('focalPoint/x')['aria-invalid']"
+        :aria-describedby="field('focalPoint/x')['aria-describedby']"
       ></label>
       <label><span>{{ copy.focalY }}</span><input
         v-model.number="model.focalPoint.y"
@@ -128,6 +146,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
         min="0"
         max="100"
         data-testid="homepage-focal-y"
+        :data-snapshot-path="field('focalPoint/y')['data-snapshot-path']"
+        :aria-invalid="field('focalPoint/y')['aria-invalid']"
+        :aria-describedby="field('focalPoint/y')['aria-describedby']"
       ></label>
     </div>
     <label class="music-checkbox"><input
@@ -138,6 +159,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
     <label><span>{{ copy.release }}</span><select
       :value="model.releaseId || ''"
       data-testid="homepage-release"
+      :data-snapshot-path="field('releaseId')['data-snapshot-path']"
+      :aria-invalid="field('releaseId')['aria-invalid']"
+      :aria-describedby="field('releaseId')['aria-describedby']"
       @change="optionalField('releaseId', $event)"
     ><option value="">{{ copy.none }}</option><option
       v-for="release in snapshot.releases"
@@ -181,6 +205,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
         <label><span>{{ copy.provider }}</span><select
           v-model="model.target.link.provider"
           data-testid="homepage-target-provider"
+          :data-snapshot-path="field('target/link/provider')['data-snapshot-path']"
+          :aria-invalid="field('target/link/provider')['aria-invalid']"
+          :aria-describedby="field('target/link/provider')['aria-describedby']"
         ><option
           v-for="provider in musicProviders"
           :key="provider"
@@ -191,6 +218,9 @@ function toggleLabel(link: PlatformLink, event: Event) {
           type="url"
           spellcheck="false"
           data-testid="homepage-target-url"
+          :data-snapshot-path="field('target/link/url')['data-snapshot-path']"
+          :aria-invalid="field('target/link/url')['aria-invalid']"
+          :aria-describedby="field('target/link/url')['aria-describedby']"
         ></label>
       </div>
       <label class="music-checkbox"><input
@@ -205,6 +235,8 @@ function toggleLabel(link: PlatformLink, event: Event) {
         :locale="locale"
         :label="copy.label"
         test-id="homepage-target-label"
+        :path="`${heroPath}/target/link/label`"
+        :issues="issues"
       />
     </div>
     <div class="music-field-grid">
@@ -213,8 +245,10 @@ function toggleLabel(link: PlatformLink, event: Event) {
         type="text"
         spellcheck="false"
         placeholder="2026-08-29T00:00:00Z"
-        :aria-describedby="`${id}-utc`"
         data-testid="homepage-starts-at"
+        :aria-describedby="[`${id}-utc`, field('startsAt')['aria-describedby']].filter(Boolean).join(' ')"
+        :data-snapshot-path="field('startsAt')['data-snapshot-path']"
+        :aria-invalid="field('startsAt')['aria-invalid']"
         @input="optionalField('startsAt', $event)"
       ></label>
       <label><span>{{ copy.endsAt }}</span><input
@@ -222,8 +256,10 @@ function toggleLabel(link: PlatformLink, event: Event) {
         type="text"
         spellcheck="false"
         placeholder="2026-09-01T00:00:00Z"
-        :aria-describedby="`${id}-utc`"
         data-testid="homepage-ends-at"
+        :aria-describedby="[`${id}-utc`, field('endsAt')['aria-describedby']].filter(Boolean).join(' ')"
+        :data-snapshot-path="field('endsAt')['data-snapshot-path']"
+        :aria-invalid="field('endsAt')['aria-invalid']"
         @input="optionalField('endsAt', $event)"
       ></label>
     </div>
@@ -233,5 +269,15 @@ function toggleLabel(link: PlatformLink, event: Event) {
     >
       {{ copy.utc }}
     </p>
+    <template
+      v-for="name in ['mobileAssetId', 'posterAssetId', 'focalPoint/x', 'focalPoint/y', 'releaseId', 'target/link/provider', 'target/link/url', 'startsAt', 'endsAt']"
+      :key="name"
+    >
+      <small
+        v-if="field(name).description"
+        :id="field(name)['aria-describedby']"
+        class="field-issue-hint"
+      >{{ field(name).description }}</small>
+    </template>
   </div>
 </template>

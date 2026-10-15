@@ -2,6 +2,42 @@ import { expect, test } from '@playwright/test'
 import { fixtureSnapshot, navigate, startStudio } from './studio'
 
 const source = fixtureSnapshot()
+
+for (const scenario of [
+  { kind: 'music', selector: '[data-testid="music-fields"] > details [data-testid="link-url"]', path: '/releases/0/platformLinks/0/url', invalid: 'http://example.com', valid: 'https://example.com' },
+  { kind: 'music', selector: '[data-testid="track-editor"] [data-testid="link-url"]', path: '/tracks/0/platformLinks/0/url', invalid: 'http://example.com', valid: 'https://example.com' },
+  { kind: 'video', selector: '[data-testid="link-url"]', path: '/videos/0/platformLinks/0/url', invalid: 'http://example.com', valid: 'https://example.com' },
+  { kind: 'music', selector: '[data-testid="music-date"]', path: '/releases/0/releaseDate', invalid: '', valid: '2026-10-15' },
+] as const) {
+  test(`保存定位 ${scenario.path}，展开折叠区域并在修正后保存`, async ({ page }) => {
+    const api = await startStudio(page)
+    await navigate(page, scenario.kind)
+    if (scenario.kind === 'music') await page.getByTestId(`music-release-${source.releases[0]!.id}`).click()
+    const field = page.locator(scenario.selector).first()
+    await expect(field).toBeAttached()
+    const details = field.locator('xpath=ancestor::details[1]')
+    if (await details.count()) await details.locator('summary').first().click()
+    await field.fill(scenario.invalid)
+    expect(await field.evaluate((element: HTMLInputElement) => element.validity.valid)).toBe(true)
+    if (await details.count()) await details.locator('summary').first().click()
+    if (scenario.kind === 'video') await page.getByTestId(`video-record-${source.videos[1]!.id}`).click()
+    await page.getByTestId('snapshot-save').click()
+    await expect(field).toBeFocused()
+    await expect(field).toHaveAttribute('aria-invalid', 'true')
+    await expect(field).toHaveAttribute('data-snapshot-path', scenario.path)
+    if (await details.count()) await expect(details).toHaveAttribute('open', '')
+    const description = await field.getAttribute('aria-describedby')
+    expect(description).toBeTruthy()
+    await expect(page.locator(`[id="${description}"]`)).toContainText(scenario.path)
+    expect(api.saves).toHaveLength(0)
+    await field.fill(scenario.valid)
+    await page.getByTestId('snapshot-save').click()
+    await expect(page.locator('.studio-meta')).toContainText('Saved')
+    expect(api.saves).toHaveLength(1)
+    await expect(field).not.toHaveAttribute('aria-invalid', 'true')
+  })
+}
+
 for (const operation of ['add', 'remove'] as const) {
   test(`宣传位 ${operation} 后跨记录定位错误，修正后可保存`, async ({ page }) => {
     const api = await startStudio(page)

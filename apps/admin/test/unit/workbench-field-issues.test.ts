@@ -14,6 +14,7 @@ import { useVideoWorkspace } from '../../composables/useVideoWorkspace'
 import { useMomentWorkspace } from '../../composables/useMomentWorkspace'
 import { analyzeSnapshotText } from '../../utils/snapshot-workbench'
 import { diagnosticLabel, focusSnapshotIssue } from '../../utils/issue-accessibility'
+import type { MusicDraft } from '../../utils/music-workbench'
 
 const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount() })
@@ -46,6 +47,147 @@ function description(element: Element) {
 }
 
 describe('canonical field issue navigation', () => {
+  it.each([
+    { kind: 'music', selector: '[data-testid="music-fields"] > details [data-testid="link-url"]', path: '/releases/0/platformLinks/0/url', invalid: 'http://example.com', valid: 'https://example.com' },
+    { kind: 'music', selector: '[data-testid="track-editor"] [data-testid="link-url"]', path: '/tracks/0/platformLinks/0/url', invalid: 'http://example.com', valid: 'https://example.com' },
+    { kind: 'video', selector: '[data-testid="link-url"]', path: '/videos/0/platformLinks/0/url', invalid: 'http://example.com', valid: 'https://example.com' },
+    { kind: 'music', selector: '[data-testid="music-date"]', path: '/releases/0/releaseDate', invalid: '', valid: '2026-10-15' },
+    { kind: 'music', selector: '[data-testid="track-duration"]', path: '/tracks/0/durationSeconds', invalid: '0', valid: '180' },
+    { kind: 'music', selector: '[data-testid="track-preview-duration"]', path: '/tracks/0/previewDurationSeconds', invalid: '91', valid: '30' },
+    { kind: 'music', selector: '[data-testid="credit-name"]', path: '/tracks/0/credits/0/name', invalid: '', valid: '王子健' },
+    { kind: 'event', selector: '[data-testid="event-city-zh"]', path: '/events/0/city/zh-CN', invalid: '', valid: '杭州' },
+    { kind: 'homepage', selector: '[data-testid="homepage-starts-at"]', path: '/heroSlides/0/startsAt', invalid: '2030-01-01T20:00:00', valid: '' },
+    { kind: 'homepage', selector: '[data-testid="homepage-ends-at"]', path: '/heroSlides/0/endsAt', invalid: 'invalid', valid: '' },
+    { kind: 'homepage', selector: '[data-testid="homepage-focal-x"]', path: '/heroSlides/0/focalPoint/x', invalid: '101', valid: '50' },
+    { kind: 'homepage', selector: '[data-testid="homepage-section-section_music"] [data-testid="homepage-more-url"]', path: '/homepage/sections/1/moreLink/url', invalid: 'http://example.com', valid: 'https://example.com' },
+    { kind: 'homepage', selector: '[data-testid="homepage-section-section_music"] [data-testid="homepage-section-limit"]', path: '/homepage/sections/1/limit', invalid: '0', valid: '5' },
+  ] as const)('locates $path with localized feedback and clears it after correction', async ({ kind, selector, path, invalid, valid }) => {
+    const { wrapper, form } = mountWorkbench(kind, 'en')
+    if (kind === 'music') await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    else await wrapper.get(`[data-testid="${kind}-open"]`).trigger('click')
+    await wrapper.get(selector).setValue(invalid)
+    if (kind === 'event') await wrapper.get(`[data-testid="event-record-${fixture.events[1]!.id}"]`).trigger('click')
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    expect(form.issues[0]?.path).toBe(path)
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    const field = wrapper.get(selector)
+    expect(document.activeElement).toBe(field.element)
+    expect(field.attributes('data-snapshot-path')).toBe(path)
+    expect(field.attributes('aria-invalid')).toBe('true')
+    expect(description(field.element)).toContain(path)
+    expect(description(field.element)).toContain(diagnosticLabel(form.issues[0]!.code, 'en'))
+    for (let parent = field.element.parentElement; parent; parent = parent.parentElement) {
+      if (parent instanceof HTMLDetailsElement) expect(parent.open).toBe(true)
+    }
+    await field.setValue(valid)
+    expect(form.apply()).toBe(true)
+    await flushPromises()
+    expect(field.attributes('aria-invalid')).toBeUndefined()
+    expect(description(field.element)).not.toContain(path)
+  })
+
+  it('locates an empty custom platform label in a collapsed link group', async () => {
+    const { wrapper, form } = mountWorkbench('music')
+    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    const link = wrapper.get('[data-testid="platform-link"]')
+    await link.get('input[type="checkbox"]').setValue(true)
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    const input = link.get('input[type="text"]')
+    expect(document.activeElement).toBe(input.element)
+    expect(description(input.element)).toContain('/releases/0/platformLinks/0/label/zh-CN')
+  })
+
+  it('expands all collapsed ancestors before focusing a nested field', async () => {
+    const { wrapper } = mountWorkbench('music')
+    const outer = document.createElement('details')
+    const inner = document.createElement('details')
+    const input = document.createElement('input')
+    input.dataset.snapshotPath = '/tracks/0/platformLinks/0/label/en'
+    inner.append(input)
+    outer.append(inner)
+    wrapper.element.append(outer)
+    expect(await focusSnapshotIssue(wrapper.element, [{ path: input.dataset.snapshotPath, source: 'schema', code: 'minLength' }])).toBe(true)
+    expect(outer.open).toBe(true)
+    expect(inner.open).toBe(true)
+    expect(document.activeElement).toBe(input)
+  })
+
+  it('locates the add-link control when every required video link was removed', async () => {
+    const { wrapper, form } = mountWorkbench('video')
+    await wrapper.get('[data-testid="video-open"]').trigger('click')
+    while (wrapper.find('[data-testid="platform-link"]').exists()) {
+      await wrapper.get('[data-testid="platform-link"] button').trigger('click')
+    }
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    expect(form.issues[0]?.path).toBe('/videos/0/platformLinks')
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    const add = wrapper.get('[data-testid="link-add"]')
+    expect(document.activeElement).toBe(add.element)
+    expect(description(add.element)).toContain('项目过少')
+  })
+
+  it('locates a removed hero reference list without focusing unrelated hero fields', async () => {
+    const { wrapper, form } = mountWorkbench('homepage')
+    await wrapper.get('[data-testid="homepage-open"]').trigger('click')
+    for (const hero of fixture.heroSlides) {
+      await wrapper.get(`[data-testid="homepage-hero-${hero.id}"]`).trigger('click')
+      await wrapper.get('[data-testid="homepage-hero-remove"]').trigger('click')
+    }
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    expect(form.issues[0]?.path).toBe('/homepage/sections/0/itemIds')
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    const select = wrapper.get('[data-testid="homepage-section-section_hero"] [data-testid="homepage-item-add-select"]')
+    expect(document.activeElement).toBe(select.element)
+    expect(description(select.element)).toContain('项目过少')
+  })
+
+  it.each(['reorder', 'remove', 'duplicate'] as const)('keeps track diagnostics aligned with canonical order after %s', async (operation) => {
+    const { wrapper, form } = mountWorkbench('music')
+    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    const original = wrapper.findAll('[data-testid="track-editor"]')[0]!
+    await wrapper.get('[data-testid="track-add"]').trigger('click')
+    const added = wrapper.findAll('[data-testid="track-editor"]')[1]!
+    await added.get('[data-testid="track-title-zh"]').setValue('新增曲目')
+    await added.get('[data-testid="track-duration"]').setValue('0')
+    if (operation === 'reorder') await added.get('[data-testid="track-up"]').trigger('click')
+    if (operation === 'remove') await original.get('[data-testid="track-remove"]').trigger('click')
+    if (operation === 'duplicate') {
+      // A canonical snapshot may reference the same track more than once.
+      const music = form as { draft: MusicDraft | null }
+      music.draft!.tracks.unshift(music.draft!.tracks[0]!)
+    }
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    const index = fixture.tracks.length - (operation === 'remove' ? 1 : 0)
+    const path = `/tracks/${index}/durationSeconds`
+    expect(form.issues[0]?.path).toBe(path)
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    const field = wrapper.get(`[data-snapshot-path="${path}"]`)
+    expect(document.activeElement).toBe(field.element)
+    expect(description(field.element)).toContain(path)
+    await field.setValue('180')
+    expect(form.apply()).toBe(true)
+  })
+
+  it('locates an invalid homepage external link after selecting another hero', async () => {
+    const { wrapper, form } = mountWorkbench('homepage')
+    await wrapper.get('[data-testid="homepage-open"]').trigger('click')
+    await wrapper.get('[data-testid="homepage-target-kind"]').setValue('external')
+    await wrapper.get('[data-testid="homepage-target-url"]').setValue('http://example.com')
+    await wrapper.get(`[data-testid="homepage-hero-${fixture.heroSlides[1]!.id}"]`).trigger('click')
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    const field = wrapper.get('[data-testid="homepage-target-url"]')
+    expect(document.activeElement).toBe(field.element)
+    expect(description(field.element)).toContain('/heroSlides/0/target/link/url')
+  })
+
   it.each(['add', 'remove'] as const)('reveals an invalid non-current hero after %s', async (operation) => {
     const { wrapper, form } = mountWorkbench('homepage')
     await wrapper.get('[data-testid="homepage-open"]').trigger('click')

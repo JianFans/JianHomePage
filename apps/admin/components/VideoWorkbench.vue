@@ -280,6 +280,8 @@ function setVideoAsset(event: Event) {
             <PlatformLinkFields
               v-model="selected.platformLinks"
               :locale="locale"
+              :path="`/videos/${selectedIndex}/platformLinks`"
+              :issues="issues"
             />
           </fieldset>
         </div>

@@ -70,8 +70,9 @@ export async function focusSnapshotIssue(root: ParentNode, issues: readonly Snap
   const field = [...root.querySelectorAll<HTMLElement>('[data-snapshot-path]')]
     .find(element => element.dataset.snapshotPath === path)
   if (!field) return false
-  const details = field.closest('details')
-  if (details) details.open = true
+  for (let ancestor = field.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (ancestor.tagName === 'DETAILS') (ancestor as HTMLDetailsElement).open = true
+  }
   field.focus()
   const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   field.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'instant' : 'auto' })

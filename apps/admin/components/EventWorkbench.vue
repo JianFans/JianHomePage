@@ -226,18 +226,24 @@ function setPosterAsset(event: Event) {
               :locale="locale"
               :label="copy.eventTitle"
               test-id="event-title"
+              :path="`/events/${selectedIndex}/title`"
+              :issues="issues"
             />
             <LocalizedTextFields
               v-model="selected.city"
               :locale="locale"
               :label="copy.city"
               test-id="event-city"
+              :path="`/events/${selectedIndex}/city`"
+              :issues="issues"
             />
             <LocalizedTextFields
               v-model="selected.venue"
               :locale="locale"
               :label="copy.venue"
               test-id="event-venue"
+              :path="`/events/${selectedIndex}/venue`"
+              :issues="issues"
             />
             <div class="music-field-grid">
               <label><span>{{ copy.dateTime }}</span><input

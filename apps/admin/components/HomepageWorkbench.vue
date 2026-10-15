@@ -302,6 +302,8 @@ function moveSection(index: number, direction: -1 | 1) {
               :snapshot="editSnapshot"
               :draft="draft"
               :locale="locale"
+              :path="`/homepage/sections/${index}`"
+              :issues="issues"
             />
           </fieldset>
         </div>
