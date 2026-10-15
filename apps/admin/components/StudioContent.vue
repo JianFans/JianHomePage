@@ -304,7 +304,7 @@ function navigate(module: StudioModule) { emit('navigate', module) }
     :token="workspace.token"
     :csrf-token="session.csrfToken"
     :authenticated="session.authenticated"
-    :can-upload="studio.canEdit"
+    :can-upload="studio.canEdit && !session.busy"
     studio
     :snapshot-locked="studio.locked"
     @busy="value => emit('assetBusy', value)"

@@ -3,9 +3,10 @@ import { flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fixture from '../../../../content/fixtures/homepage.json'
 import AdminPage from '../../pages/index.vue'
+import type { StudioWorkspace } from '../../composables/useStudioWorkspace'
 
 /** 模拟真实 HTTP 边界，不替代页面的表单、事务和版本状态。 */
-function backend(options: { authenticated?: boolean; status?: string; roles?: string[]; failSave?: boolean; empty?: boolean; paginated?: boolean } = {}) {
+function backend(options: { authenticated?: boolean; status?: string; roles?: string[]; failSave?: boolean; empty?: boolean; paginated?: boolean; logout?: Promise<Response> } = {}) {
   const records = new Map([
     ['ver_current', { id: 'ver_current', name: '工作草稿', status: options.status || 'draft', revision: 4, snapshot: structuredClone(fixture), checksum: 'sha256:test' }],
     ['ver_history', { id: 'ver_history', name: '之前版本', status: 'archived', revision: 2, snapshot: structuredClone(fixture), checksum: 'sha256:history' }],
@@ -16,7 +17,7 @@ function backend(options: { authenticated?: boolean; status?: string; roles?: st
     const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status })
     if (path.endsWith('/auth/session')) return json({ authenticated: options.authenticated !== false, loginAvailable: true,
       principal: { subject: 'editor_1', roles: options.roles || ['admin'] }, csrfToken: 'csrf-test', expiresAt: new Date(Date.now() + 3600000).toISOString() })
-    if (path.endsWith('/auth/logout')) return new Response(null, { status: 204 })
+    if (path.endsWith('/auth/logout')) return options.logout || new Response(null, { status: 204 })
     if (path.endsWith('/versions')) {
       if (init?.method === 'POST') {
         const body = JSON.parse(String(init.body))
@@ -143,6 +144,50 @@ it('clears the saved baseline after logout', async () => {
   window.dispatchEvent(event)
   expect(event.defaultPrevented).toBe(false)
   wrapper.unmount()
+})
+
+it.each(['homepage', 'assets'] as const)('locks %s during logout and restores input after failure', async (module) => {
+  let finish!: (response: Response) => void
+  const logout = new Promise<Response>((resolve) => { finish = resolve })
+  const { wrapper, fetcher } = await mountStudio({ logout })
+  const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+  try {
+    await wrapper.get(`[data-testid="nav-${module}"]`).trigger('click')
+    const input = wrapper.get(`[data-testid="${module === 'homepage' ? 'homepage-headline-en' : 'asset-source-zh'}"]`)
+    await input.setValue('Retain on logout failure')
+    await wrapper.get('[data-testid="studio-logout"]').trigger('click')
+    await wrapper.get('[data-testid="leave-discard"]').trigger('click')
+    await flushPromises()
+    expect(studio.workspace.busy).toBe(true)
+    expect(wrapper.get('[data-testid="studio-shell"]').attributes('inert')).toBeDefined()
+    expect(input.element.matches(':disabled') || input.element.closest('fieldset[disabled]') !== null).toBe(true)
+    for (const id of ['snapshot-save', 'version-clone', 'version-ver_history', 'nav-video']) {
+      expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    }
+    const calls = fetcher.mock.calls.length
+    await studio.request({ kind: 'module', module: 'video' })
+    await studio.request({ kind: 'version', id: 'ver_history' })
+    await studio.request({ kind: 'clone' })
+    await studio.save()
+    await studio.clone('Forbidden during logout')
+    await studio.workspace.saveDraft()
+    expect(studio.module).toBe(module)
+    expect(studio.pending).toBeNull()
+    expect(studio.cloneRequested).toBe(false)
+    expect(fetcher.mock.calls).toHaveLength(calls)
+    finish(new Response(JSON.stringify({ code: 'unavailable', message: 'Logout failed' }), { status: 500 }))
+    await flushPromises()
+    expect(studio.workspace.busy).toBe(false)
+    expect(wrapper.get('[data-testid="studio-shell"]').attributes('inert')).toBeUndefined()
+    expect(input.element).toHaveProperty('value', 'Retain on logout failure')
+    expect(input.element.matches(':disabled')).toBe(false)
+    expect(wrapper.get('[data-testid="nav-video"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="toast-viewport"]').text()).toContain('Sign-out failed')
+  } finally {
+    finish(new Response(null, { status: 204 }))
+    await flushPromises()
+    wrapper.unmount()
+  }
 })
 
 it('closes active dialogs on session expiry while retaining unsaved content', async () => {

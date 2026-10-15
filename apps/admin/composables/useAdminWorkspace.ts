@@ -29,6 +29,7 @@ const EDITOR_ANALYSIS_DEBOUNCE_MS = 250
 export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<AdminLocale>('zh-CN'), session: {
   csrfToken?: Readonly<Ref<string>>
   active?: Readonly<Ref<boolean>>
+  busy?: Readonly<Ref<boolean>>
   onUnauthorized?: () => void
 } = {}) {
   const runtime = useRuntimeConfig()
@@ -84,7 +85,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   /** Expose the existing debounce baseline without performing another snapshot analysis. */
   const analyzedText = computed(() => debouncedEditorText.value)
   const parsedEditor = computed(() => parseSnapshotJSON(debouncedEditorText.value, locale.value))
-  const busy = computed(() => importing.value || ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
+  const busy = computed(() => session.busy?.value === true || importing.value || ['loading', 'saving', 'reviewing', 'publishing'].includes(workflow.value.status))
   const dirty = computed(() => editorText.value !== savedText.value)
   const editable = computed(() => (!version.value || version.value.status === 'draft') && session.active?.value !== false)
   const canSave = computed(() => editable.value && Boolean(editorAnalysis.value.snapshot) && !busy.value)

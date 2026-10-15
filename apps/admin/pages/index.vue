@@ -174,7 +174,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
       <div
         v-if="session.authenticated || session.expired"
         v-show="session.authenticated && !studio.initializing"
-        :inert="!session.authenticated"
+        :inert="!session.authenticated || session.busy"
         class="studio-shell"
         data-testid="studio-shell"
       >
@@ -502,6 +502,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
         :locale="locale"
         :name="session.principal?.name || session.principal?.subject || ''"
         drawer
+        :busy="workspace.busy"
         :logout-busy="studio.assetBusy || session.busy"
         @navigate="navigate"
         @logout="uiMode = ''; studio.request({ kind: 'logout' })"

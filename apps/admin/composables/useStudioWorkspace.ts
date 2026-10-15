@@ -24,7 +24,7 @@ export type StudioWorkspace = UnwrapNestedRefs<ReturnType<typeof useStudioWorksp
 /** 组织整站版本上下文和单一活动表单，普通编辑不需要理解 JSON 应用步骤。 */
 export function useStudioWorkspace(locale: Ref<AdminLocale>) {
   const session = reactive(useAdminSession())
-  const workspace = reactive(useAdminWorkspace(locale, { csrfToken: toRef(session, 'csrfToken'), active: toRef(session, 'authenticated'), onUnauthorized: session.expire }))
+  const workspace = reactive(useAdminWorkspace(locale, { csrfToken: toRef(session, 'csrfToken'), active: toRef(session, 'authenticated'), busy: toRef(session, 'busy'), onUnauthorized: session.expire }))
   const toasts = reactive(useToasts())
   const module = ref<StudioModule>('overview')
   const copy = computed(() => studioCopy(locale.value))
