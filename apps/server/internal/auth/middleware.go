@@ -43,6 +43,10 @@ func (middleware *Middleware) Authenticate(next http.Handler) http.Handler {
 				writeAuthError(writer, request, http.StatusForbidden, "forbidden", "Request verification failed.")
 				return
 			}
+			if !errors.Is(err, domain.ErrForbidden) && !errors.Is(err, domain.ErrNotFound) {
+				writeAuthError(writer, request, http.StatusServiceUnavailable, "unavailable", "Session service unavailable.")
+				return
+			}
 			writeAuthError(writer, request, http.StatusUnauthorized, "unauthorized", "Authentication required.")
 			return
 		}

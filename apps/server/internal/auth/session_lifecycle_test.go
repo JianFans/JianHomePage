@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 	"yujian.me/server/internal/auth"
+	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/store/memory"
 )
 
@@ -66,6 +67,71 @@ func TestSessionStorageErrorsFailClosed(t *testing.T) {
 	manager.ServeHTTP(response, request)
 	if !strings.Contains(response.Body.String(), `"authenticated":true`) {
 		t.Fatal("failed revocation unexpectedly lost session")
+	}
+}
+
+// TestCookieSessionReadFailuresRemainRetryable distinguishes authentication
+// loss from infrastructure failures without disclosing storage error details.
+func TestCookieSessionReadFailuresRemainRetryable(t *testing.T) {
+	store := &failedSessionStore{SessionStore: memory.NewSessionStore()}
+	if err := store.CreateSession(context.Background(), auth.Session{TokenHash: auth.SessionTokenHash("cookie"), Principal: auth.SessionPrincipal{Subject: "editor", Roles: []string{"editor"}}, CSRFToken: "csrf", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := auth.NewSessions(auth.SessionOptions{Issuer: "https://issuer.test", ClientID: "client", RedirectURL: "https://api.test/api/v1/auth/callback", ReturnURL: "https://admin.test/", AllowedOrigins: []string{"https://admin.test"}, Key: make([]byte, 32), Store: store, Secure: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	middleware, err := auth.NewMiddleware(auth.MiddlewareOptions{Sessions: manager})
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := 0
+	protected := middleware.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequest("GET", "/api/v1/versions", nil)
+	request.AddCookie(&http.Cookie{Name: "yujian_session", Value: "cookie"})
+	response := httptest.NewRecorder()
+	protected.ServeHTTP(response, request.Clone(context.Background()))
+	if response.Code != http.StatusNoContent || called != 1 {
+		t.Fatal("valid session was rejected before the outage")
+	}
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"unavailable", errors.New("private database error"), http.StatusServiceUnavailable},
+		{"cancelled", context.Canceled, http.StatusServiceUnavailable},
+		{"revoked", domain.ErrNotFound, http.StatusUnauthorized},
+		{"invalid", domain.ErrForbidden, http.StatusUnauthorized},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store.readErr = test.err
+			for _, endpoint := range []string{"protected", "logout"} {
+				var handler http.Handler = protected
+				r := request.Clone(context.Background())
+				if endpoint == "logout" {
+					handler = manager
+					r = httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
+					r.AddCookie(&http.Cookie{Name: "yujian_session", Value: "cookie"})
+					r.Header.Set("Origin", "https://admin.test")
+					r.Header.Set("X-CSRF-Token", "csrf")
+				}
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, r)
+				if response.Code != test.status || strings.Contains(response.Body.String(), "private") || len(response.Result().Cookies()) != 0 {
+					t.Errorf("%s: got %d %s, want safe %d without cookie changes", endpoint, response.Code, response.Body.String(), test.status)
+				}
+			}
+		})
+	}
+	store.readErr = nil
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, request.Clone(context.Background()))
+	if response.Code != http.StatusNoContent || called != 2 {
+		t.Fatal("session did not recover or a failed request reached the handler")
 	}
 }
 

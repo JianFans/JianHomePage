@@ -55,6 +55,8 @@
 
 管理 API 同时支持既有 Bearer JWT 和会话 Cookie。Cookie 写操作必须发送允许列表中的精确 `Origin` 和当前会话的 `X-CSRF-Token`；CORS 只对允许来源启用 credentials。`POST /api/v1/auth/logout` 使用同样校验，成功后撤销数据库会话并清除 Cookie，旧 Cookie 不能再次访问。所有认证响应禁止缓存。签名素材 URL 上传独立于会话认证，浏览器直传必须使用 `credentials: 'omit'`。
 
+会话缺失、过期或已撤销时，管理 API 与退出接口返回 401；Cookie 写操作的 CSRF 校验失败返回 403。会话查询或撤销遇到数据库故障时返回 503，不清除 Cookie，也不把有效会话标记为失效；数据库恢复后可重试原操作。错误响应不包含底层存储信息。
+
 数据库运维可定期删除 `admin_sessions` 和 `admin_login_flows` 中 `expires_at < now()` 的记录，以控制过期记录数量；清理延迟不影响认证有效期或撤销校验。生产接入仍需在真实身份提供商验证回调白名单、RS256 JWKS、角色声明和同站 HTTPS 域名部署；本地测试不能替代这些配置。
 
 ## 本地运行

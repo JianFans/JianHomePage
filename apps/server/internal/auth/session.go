@@ -148,6 +148,10 @@ func (manager *Sessions) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "POST /api/v1/auth/logout":
 		session, err := manager.readSession(r)
 		if err != nil {
+			if !errors.Is(err, domain.ErrForbidden) && !errors.Is(err, domain.ErrNotFound) {
+				writeAuthError(w, r, 503, "unavailable", "Session service unavailable.")
+				return
+			}
 			writeAuthError(w, r, 401, "unauthorized", "Authentication required.")
 			return
 		}
