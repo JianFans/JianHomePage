@@ -192,6 +192,10 @@ jobs:
           persist-credentials: false
       - name: Build API image
         run: docker build --tag yujian-server:ci .
+      - name: Build publisher image
+        run: docker build --file apps/publisher/Dockerfile --build-arg CODE_REVISION="${{ github.sha }}" --tag yujian-publisher:ci .
+      - name: Verify publisher image builds offline as non-root
+        run: docker run --rm --network none --env YUJIAN_TEST_BUILD_SOURCE=/workspace --entrypoint node yujian-publisher:ci --test apps/publisher/test/build.integration.mjs
       - name: Run API smoke test
         shell: bash
         run: |
@@ -216,3 +220,32 @@ jobs:
       - name: Stop API container
         if: always()
         run: docker rm --force yujian-server-ci || true
+
+  publisher:
+    name: Publisher PostgreSQL Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      YUJIAN_TEST_POSTGRES_URL: postgresql://publisher_test:publisher_test@127.0.0.1:15432/publisher_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Start isolated PostgreSQL
+        run: docker compose -f apps/publisher/compose.test.yaml up --detach --wait
+      - name: Verify durable publisher integration
+        run: pnpm --filter @yujian/publisher test:integration
+      - name: Stop isolated PostgreSQL
+        if: always()
+        run: docker compose -f apps/publisher/compose.test.yaml down --volumes

@@ -27,6 +27,7 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
     'go-coverage',
     'e2e',
     'container',
+    'publisher',
   ]
   assert.deepEqual(Object.keys(workflow.jobs).sort(), requiredJobs.sort())
 
@@ -66,8 +67,14 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
   assert.ok(containerSteps.some(step => step.run === 'docker build --tag yujian-server:ci .'))
   assert.ok(containerSteps.some(step => step.run?.includes('http://127.0.0.1:8080/healthz')))
   assert.ok(containerSteps.some(step => step.uses?.startsWith('aquasecurity/trivy-action@')))
+  assert.ok(containerSteps.some(step => step.run?.includes('--file apps/publisher/Dockerfile')))
+  assert.ok(containerSteps.some(step => step.run?.includes('--network none') && step.run.includes('test/build.integration.mjs')))
+  assert.ok(workflow.jobs.publisher.steps.some(step => step.run === 'pnpm --filter @yujian/publisher test:integration'))
+  const publisherPackage = JSON.parse(await readText('apps/publisher/package.json'))
+  assert.match(publisherPackage.scripts['test:coverage'], /--test-coverage-lines=80/)
 
   const rootPackage = JSON.parse(await readText('package.json'))
+  assert.equal(publisherPackage.dependencies.pnpm, rootPackage.packageManager.split('@')[1])
   assert.equal(rootPackage.scripts['test:coverage:go'], 'node scripts/go-coverage.mjs --threshold=80')
   assert.match(rootPackage.scripts['verify:go'], /^pnpm check:format:go && /)
   const webPackage = JSON.parse(await readText('apps/web/package.json'))
@@ -85,7 +92,7 @@ test('Dependabot 覆盖所有依赖生态并按周执行', async () => {
     update,
   ]))
 
-  for (const key of ['npm:/', 'gomod:/apps/server', 'docker:/', 'github-actions:/']) {
+  for (const key of ['npm:/', 'gomod:/apps/server', 'docker:/', 'docker:/apps/publisher', 'github-actions:/']) {
     assert.ok(updates.has(key), `Dependabot 缺少 ${key}`)
     assert.equal(updates.get(key).schedule.interval, 'weekly')
   }
@@ -102,6 +109,19 @@ test('Dependabot 覆盖所有依赖生态并按周执行', async () => {
       ['version-update:semver-major'],
       `Dependabot 应暂缓 ${dependency} 的不兼容主版本升级`,
     )
+  }
+})
+
+test('发布镜像使用固定代码身份和非 root 构建环境，忽略本机产物与秘密', async () => {
+  const dockerfile = await readText('apps/publisher/Dockerfile')
+  const dockerignore = await readText('apps/publisher/Dockerfile.dockerignore')
+  assert.match(dockerfile, /^FROM node:22-[^\s]+$/m)
+  assert.match(dockerfile, /^USER node$/m)
+  assert.match(dockerfile, /pnpm install --frozen-lockfile/)
+  assert.match(dockerfile, /\.publisher-revision/)
+  assert.match(dockerfile, /^ENTRYPOINT \["node", "apps\/publisher\/src\/main.mjs"\]$/m)
+  for (const ignored of ['.git', '**/node_modules', '**/.output', '**/.env', '**/.env.*', '.publisher-revision']) {
+    assert.ok(dockerignore.split(/\r?\n/).includes(ignored))
   }
 })
 
