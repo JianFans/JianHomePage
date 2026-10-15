@@ -8,8 +8,14 @@ import { studioCopy } from '../utils/studio-copy'
 const props = defineProps<{ version: AdminVersion | null; versions: AdminVersionSummary[]; locale: AdminLocale; busy: boolean; canClone: boolean }>()
 const emit = defineEmits<{ select: [id: string]; clone: []; history: [] }>()
 const copy = computed(() => studioCopy(props.locale))
+const selectable = computed(() => {
+  const current = props.version
+  return current && !props.versions.some(item => item.id === current.id)
+    ? [...props.versions, current]
+    : props.versions
+})
 const visible = computed(() => {
-  const recent = props.versions.slice(0, 4)
+  const recent = selectable.value.slice(0, 4)
   if (props.version && !recent.some(item => item.id === props.version!.id)) recent[3] = props.version
   return recent
 })
@@ -53,17 +59,17 @@ function selectVersion(event: Event) {
       class="studio-version-select"
       :aria-label="copy.versions"
       :value="version?.id || ''"
-      :disabled="busy || !versions.length"
+      :disabled="busy || !selectable.length"
       @change="selectVersion"
     >
       <option
-        v-if="!versions.length"
+        v-if="!selectable.length"
         value=""
       >
         {{ copy.noVersion }}
       </option>
       <option
-        v-for="item in versions"
+        v-for="item in selectable"
         :key="item.id"
         :value="item.id"
       >
