@@ -71,7 +71,13 @@ export function createStore(database, { onLockLost = () => {} } = {}) {
       const connectionLost = () => { lost = true; onLockLost() }
       client.on('error', connectionLost)
       try {
-        locked = (await client.query('SELECT pg_try_advisory_lock($1) AS locked', [LOCK_ID])).rows[0].locked
+        try {
+          locked = (await client.query('SELECT pg_try_advisory_lock($1) AS locked', [LOCK_ID])).rows[0].locked
+        } catch (error) {
+          // A read timeout can leave a session lock on the server; never pool that session.
+          lost = true
+          throw error
+        }
         if (!locked) return null
         const guarded = {
           /** Refuse all phase changes after the session holding the publishing lock is lost. */

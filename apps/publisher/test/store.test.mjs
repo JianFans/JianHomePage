@@ -4,12 +4,15 @@ import { test } from 'node:test'
 import { createStore } from '../src/store.mjs'
 
 /** Model SQL transport failures only; actual SQL constraints are covered against PostgreSQL. */
-function database({ locked = true, unlockError = false } = {}) {
+function database({ locked = true, unlockError = false, acquisitionError } = {}) {
   const client = new EventEmitter()
   const calls = []
   client.query = async (sql, args) => {
     calls.push([sql, args])
-    if (sql.includes('pg_try_advisory_lock')) return { rows: [{ locked }] }
+    if (sql.includes('pg_try_advisory_lock')) {
+      if (acquisitionError) throw acquisitionError
+      return { rows: [{ locked }] }
+    }
     if (sql.includes('pg_advisory_unlock') && unlockError) throw new Error('disconnected')
     return { rows: [], rowCount: 0 }
   }
@@ -39,6 +42,24 @@ test('busy workers return immediately and failed unlocks notify the owner', asyn
   await createStore(broken, { onLockLost: () => { lost = true } }).withLock(async () => {})
   assert.ok(lost)
   assert.deepEqual(broken.calls.at(-1), ['release', true])
+})
+
+test('uncertain lock acquisition evicts the session without entering the worker', async () => {
+  const error = new Error('Query read timeout')
+  const db = database({ acquisitionError: error })
+  await assert.rejects(createStore(db).withLock(() => assert.fail('uncertain lock entered')), error)
+  assert.deepEqual(db.calls.at(-1), ['release', true])
+  assert.ok(!db.calls.some(([sql]) => sql.includes('pg_advisory_unlock')))
+  assert.equal(db.client.listenerCount('error'), 0)
+})
+
+test('worker failures unlock a healthy session before returning it to the pool', async () => {
+  const db = database()
+  const error = new Error('worker failed')
+  await assert.rejects(createStore(db).withLock(async () => { throw error }), error)
+  assert.ok(db.calls.some(([sql]) => sql.includes('pg_advisory_unlock')))
+  assert.deepEqual(db.calls.at(-1), ['release', false])
+  assert.equal(db.client.listenerCount('error'), 0)
 })
 
 test('SQL failures remain failures; missing records and invalid update identifiers are bounded', async () => {

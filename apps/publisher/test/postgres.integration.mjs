@@ -18,6 +18,28 @@ const databaseURL = process.env.YUJIAN_TEST_POSTGRES_URL
 const target = { projectId: 'project', region: 'china', codeRevision: 'a'.repeat(40), publicUrl: 'https://yujian.me/' }
 const request = { releaseId: 'rel_test', snapshotKey: `snapshots/rel_test/sha256:${'b'.repeat(64)}.json`, snapshotChecksum: `sha256:${'b'.repeat(64)}` }
 
+test('PostgreSQL releases an acquired lock when its response becomes uncertain', { skip: !databaseURL }, async t => {
+  const pool = new pg.Pool({ connectionString: databaseURL, max: 1 })
+  const observer = new pg.Client({ connectionString: databaseURL })
+  t.after(async () => { await observer.end(); await pool.end() })
+  await observer.connect()
+  const client = await pool.connect()
+  const ended = once(client, 'end')
+  const query = client.query.bind(client)
+  const timeout = new Error('Query read timeout')
+  client.query = async (...args) => {
+    const result = await query(...args)
+    // The backend owns the lock, but pg's read timeout can discard its response.
+    if (args[0].includes('pg_try_advisory_lock')) throw timeout
+    return result
+  }
+  await assert.rejects(module.createStore({ connect: async () => client }).withLock(() => assert.fail('uncertain lock entered')), timeout)
+  assert.equal(pool.totalCount, 0, 'the uncertain session must be removed from the pool')
+  await ended
+  const result = await observer.query('SELECT pg_try_advisory_lock($1) AS locked', [865734220])
+  assert.equal(result.rows[0].locked, true, 'an independent session must be able to acquire the released lock')
+})
+
 test('PostgreSQL persists idempotency, active slots, submission recovery and exclusive worker locks', { skip: !databaseURL }, async t => {
   assert.equal(typeof module.createStore, 'function', 'durable publisher store must exist')
   const admin = new pg.Pool({ connectionString: databaseURL })
