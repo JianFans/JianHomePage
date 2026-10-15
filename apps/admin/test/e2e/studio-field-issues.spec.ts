@@ -2,6 +2,33 @@ import { expect, test } from '@playwright/test'
 import { fixtureSnapshot, navigate, startStudio } from './studio'
 
 const source = fixtureSnapshot()
+for (const operation of ['add', 'remove'] as const) {
+  test(`宣传位 ${operation} 后跨记录定位错误，修正后可保存`, async ({ page }) => {
+    const api = await startStudio(page)
+    await navigate(page, 'homepage')
+    await page.getByTestId(`homepage-hero-${operation}`).click()
+    const invalidId = await page.getByTestId('homepage-hero-id').innerText()
+    if (operation === 'add') await page.getByTestId('homepage-headline-zh').fill('新宣传位')
+    await page.getByTestId('homepage-hero-asset').selectOption('')
+    const otherId = operation === 'add' ? source.heroSlides[0]!.id : source.heroSlides[2]!.id
+    await page.getByTestId(`homepage-hero-${otherId}`).click()
+    await page.getByTestId('snapshot-save').click()
+    await expect(page.getByTestId('homepage-hero-id')).toHaveText(invalidId)
+    const asset = page.getByTestId('homepage-hero-asset')
+    const path = `/heroSlides/${operation === 'add' ? source.heroSlides.length : 0}/assetId`
+    await expect(asset).toBeFocused()
+    await expect(asset).toHaveAttribute('aria-invalid', 'true')
+    await expect(asset).toHaveAttribute('data-snapshot-path', path)
+    expect(api.saves).toHaveLength(0)
+    await asset.selectOption('asset_cover_01')
+    await page.getByTestId('snapshot-save').click()
+    await expect(page.locator('.studio-meta')).toContainText('Saved')
+    expect(api.saves).toHaveLength(1)
+    expect(api.saves[0]!.heroSlides.find(hero => hero.id === invalidId)?.assetId).toBe('asset_cover_01')
+    await expect(asset).not.toHaveAttribute('aria-invalid', 'true')
+  })
+}
+
 for (const scenario of [
   { kind: 'video', field: 'video-title-zh', path: '/videos/0/title/zh-CN', invalid: '', valid: '修正影像', select: false },
   { kind: 'video', field: 'video-poster', path: '/videos/0/posterAssetId', invalid: '', valid: 'asset_cover_01', select: true },

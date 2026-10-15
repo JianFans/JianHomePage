@@ -46,6 +46,31 @@ function description(element: Element) {
 }
 
 describe('canonical field issue navigation', () => {
+  it.each(['add', 'remove'] as const)('reveals an invalid non-current hero after %s', async (operation) => {
+    const { wrapper, form } = mountWorkbench('homepage')
+    await wrapper.get('[data-testid="homepage-open"]').trigger('click')
+    await wrapper.get(`[data-testid="homepage-hero-${operation}"]`).trigger('click')
+    const invalidId = wrapper.get('[data-testid="homepage-hero-id"]').text()
+    if (operation === 'add') await wrapper.get('[data-testid="homepage-headline-zh"]').setValue('新宣传位')
+    await wrapper.get('[data-testid="homepage-hero-asset"]').setValue('')
+    const otherId = operation === 'add' ? fixture.heroSlides[0]!.id : fixture.heroSlides[2]!.id
+    await wrapper.get(`[data-testid="homepage-hero-${otherId}"]`).trigger('click')
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    const path = `/heroSlides/${operation === 'add' ? fixture.heroSlides.length : 0}/assetId`
+    expect(form.issues[0]?.path).toBe(path)
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe(invalidId)
+    const asset = wrapper.get('[data-testid="homepage-hero-asset"]')
+    expect(document.activeElement).toBe(asset.element)
+    expect(asset.attributes('aria-invalid')).toBe('true')
+    expect(description(asset.element)).toContain(path)
+    await asset.setValue('asset_cover_01')
+    expect(form.apply()).toBe(true)
+    await flushPromises()
+    expect(asset.attributes('aria-invalid')).toBeUndefined()
+  })
+
   it.each([
     { kind: 'video', field: 'video-title-zh', path: '/videos/0/title/zh-CN', second: fixture.videos[1]!.id },
     { kind: 'video', field: 'video-poster', path: '/videos/0/posterAssetId', second: fixture.videos[1]!.id },

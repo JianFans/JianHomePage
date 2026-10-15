@@ -197,7 +197,7 @@ function moveSection(index: number, direction: -1 | 1) {
               v-for="(hero, index) in draft.heroSlides"
               :key="index"
               data-snapshot-record-kind="heroSlides"
-              :data-snapshot-record-index="editSnapshot.heroSlides.findIndex(item => item.id === hero.id)"
+              :data-snapshot-record-index="index"
               type="button"
               class="music-release"
               :class="{ 'music-release--active': hero.id === selectedId }"
