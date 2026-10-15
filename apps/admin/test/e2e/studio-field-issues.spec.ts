@@ -30,6 +30,7 @@ for (const operation of ['add', 'remove'] as const) {
 }
 
 for (const scenario of [
+  { kind: 'event', field: 'event-detail-url', path: '/events/0/detailUrl', invalid: 'http://example.com', valid: 'https://example.com', select: false },
   { kind: 'video', field: 'video-title-zh', path: '/videos/0/title/zh-CN', invalid: '', valid: '修正影像', select: false },
   { kind: 'video', field: 'video-poster', path: '/videos/0/posterAssetId', invalid: '', valid: 'asset_cover_01', select: true },
   { kind: 'video', field: 'video-duration', path: '/videos/0/durationSeconds', invalid: '0', valid: '181', select: false },
@@ -44,7 +45,7 @@ for (const scenario of [
     const field = page.getByTestId(scenario.field)
     if (scenario.select) await field.selectOption(scenario.invalid)
     else await field.fill(scenario.invalid)
-    const records = scenario.kind === 'video' ? source.videos : source.moments
+    const records = scenario.kind === 'video' ? source.videos : scenario.kind === 'event' ? source.events : source.moments
     await page.getByTestId(`${scenario.kind}-record-${records[1]!.id}`).click()
     await page.getByTestId('snapshot-save').click()
     await expect(page.getByTestId(`${scenario.kind}-id`)).toHaveText(records[0]!.id)

@@ -30,6 +30,9 @@ const issueId = useId()
 const dateTimePath = computed(() => `/events/${selectedIndex.value}/dateTime`)
 const dateTimeIssue = computed(() => props.issues.find(issue => issue.path === dateTimePath.value))
 const dateTimeIssueAttrs = computed(() => issueFieldAttributes(dateTimeIssue.value, dateTimePath.value, issueId, props.locale))
+const detailUrlPath = computed(() => `/events/${selectedIndex.value}/detailUrl`)
+const detailUrlIssue = computed(() => props.issues.find(issue => issue.path === detailUrlPath.value))
+const detailUrlIssueAttrs = computed(() => issueFieldAttributes(detailUrlIssue.value, detailUrlPath.value, `${issueId}-detail-url`, props.locale))
 const editSnapshot = shallowRef(props.snapshot)
 const posters = computed(() => editSnapshot.value?.assets.filter(asset => ['image', 'gif'].includes(asset.kind)) ?? [])
 
@@ -261,8 +264,16 @@ function setPosterAsset(event: Event) {
                 type="url"
                 spellcheck="false"
                 placeholder="https://"
+                :data-snapshot-path="detailUrlIssueAttrs['data-snapshot-path']"
+                :aria-invalid="detailUrlIssueAttrs['aria-invalid']"
+                :aria-describedby="detailUrlIssueAttrs['aria-describedby']"
                 data-testid="event-detail-url"
-              ></label>
+              >
+                <small
+                  v-if="detailUrlIssue"
+                  :id="`${issueId}-detail-url`"
+                  class="field-issue-hint"
+                >{{ detailUrlIssueAttrs.description }}</small></label>
               <label><span>{{ copy.poster }}</span><select
                 :value="selected.posterAssetId || ''"
                 data-testid="event-poster"

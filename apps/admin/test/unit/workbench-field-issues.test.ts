@@ -19,7 +19,7 @@ const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount() })
 
 /** Exercise canonical validation and focus in an attached real workbench. */
-function mountWorkbench(kind: 'event' | 'music' | 'homepage' | 'video' | 'moment') {
+function mountWorkbench(kind: 'event' | 'music' | 'homepage' | 'video' | 'moment', locale: 'zh-CN' | 'en' = 'zh-CN') {
   const editorText = ref(JSON.stringify(fixture))
   const busy = ref(false)
   const snapshot = computed(() => analyzeSnapshotText(editorText.value).snapshot)
@@ -30,8 +30,8 @@ function mountWorkbench(kind: 'event' | 'music' | 'homepage' | 'video' | 'moment
           : useMusicWorkspace({ editorText, busy, snapshot }))
   const host = defineComponent({
     components: { Workbench: { event: EventWorkbench, music: MusicWorkbench, homepage: HomepageWorkbench, video: VideoWorkbench, moment: MomentWorkbench }[kind] },
-    setup: () => ({ form, snapshot, busy }),
-    template: `<Workbench v-model:draft="form.draft" :snapshot="snapshot" locale="zh-CN" :busy="busy"
+    setup: () => ({ form, snapshot, busy, locale }),
+    template: `<Workbench v-model:draft="form.draft" :snapshot="snapshot" :locale="locale" :busy="busy"
       :dirty="form.dirty" :stale="form.stale" :error="form.error" :issues="form.issues" :pending="false" studio
       @select="form.select" @open="form.open" @apply="form.apply" />`,
   })
@@ -125,6 +125,31 @@ describe('canonical field issue navigation', () => {
     expect(description(field)).toContain('±HH:MM')
     expect(description(field)).toContain('/events/0/dateTime')
     expect(description(field)).toContain('字段格式错误')
+  })
+
+  it.each(['zh-CN', 'en'] as const)('locates an invalid event HTTPS URL with a %s description and clears it after correction', async (locale) => {
+    const { wrapper, form } = mountWorkbench('event', locale)
+    await wrapper.get('[data-testid="event-open"]').trigger('click')
+    await wrapper.get('[data-testid="event-detail-url"]').setValue('http://example.com')
+    await wrapper.get(`[data-testid="event-record-${fixture.events[1]!.id}"]`).trigger('click')
+    expect(form.apply()).toBe(false)
+    await flushPromises()
+    const path = '/events/0/detailUrl'
+    expect(form.issues[0]?.path).toBe(path)
+    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    expect(wrapper.get('[data-testid="event-id"]').text()).toBe(fixture.events[0]!.id)
+    const field = wrapper.get('[data-testid="event-detail-url"]')
+    expect(document.activeElement).toBe(field.element)
+    expect(field.attributes('data-snapshot-path')).toBe(path)
+    expect(field.attributes('aria-invalid')).toBe('true')
+    expect(description(field.element)).toContain(path)
+    expect(description(field.element)).toContain(diagnosticLabel(form.issues[0]!.code, locale))
+    await field.setValue('https://example.com')
+    expect(form.apply()).toBe(true)
+    await flushPromises()
+    expect(field.attributes('aria-invalid')).toBeUndefined()
+    expect(field.attributes('aria-describedby')).toBeUndefined()
+    expect(field.attributes('data-snapshot-path')).toBe(path)
   })
 
   it('binds a new release cover issue to the appended record and focuses it', async () => {
