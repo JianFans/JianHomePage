@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import StudioDialog from '../../components/StudioDialog.vue'
 
 it('moves focus into replacement dialog content and restores the original trigger', async () => {
@@ -26,4 +26,40 @@ it('moves focus into replacement dialog content and restores the original trigge
     await flushPromises()
     expect(document.activeElement).toBe(trigger.element)
   } finally { wrapper.unmount() }
+})
+
+it('guards iframe Escape while busy and removes listeners on close and unmount', async () => {
+  const close = vi.fn()
+  const wrapper = mount(StudioDialog, {
+    attachTo: document.body,
+    props: { open: false, title: 'Preview', closeLabel: 'Close', busy: true, onClose: close },
+    slots: { default: '<iframe />' },
+  })
+  try {
+    await wrapper.setProps({ open: true })
+    const frame = wrapper.get('iframe')
+    const childDocument = (frame.element as HTMLIFrameElement).contentDocument!
+    expect(childDocument).not.toBeNull()
+    await frame.trigger('load')
+    childDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+    expect(wrapper.emitted('close')).toBeUndefined()
+    await wrapper.setProps({ busy: false })
+    childDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    const removeListener = vi.spyOn(childDocument, 'removeEventListener')
+    frame.element.remove()
+    await flushPromises()
+    expect(removeListener).toHaveBeenCalledWith('keydown', expect.any(Function))
+    childDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(close).toHaveBeenCalledOnce()
+    await wrapper.setProps({ open: false })
+    childDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    await wrapper.setProps({ open: true })
+    const reopenedDocument = (wrapper.get('iframe').element as HTMLIFrameElement).contentDocument!
+    await wrapper.get('iframe').trigger('load')
+    wrapper.unmount()
+    reopenedDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(close).toHaveBeenCalledOnce()
+  } finally { if (wrapper.exists()) wrapper.unmount() }
 })

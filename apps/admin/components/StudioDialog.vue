@@ -8,6 +8,55 @@ const id = useId()
 const root = ref<HTMLElement | null>(null)
 let previousFocus: HTMLElement | null = null
 let previousOverflow = ''
+const frameListeners = new Map<HTMLIFrameElement, { document: Document; keydown: (event: KeyboardEvent) => void }>()
+let frameObserver: MutationObserver | null = null
+const focusableSelector = 'button, input, textarea, select, a[href], iframe, summary, [tabindex]'
+
+/** 每次按键重新读取候选，使动态播放器和消息按钮遵守当前可见顺序。 */
+function focusableNodes(scope: HTMLElement | Document | null) {
+  return [...(scope?.querySelectorAll<HTMLElement>(focusableSelector) || [])]
+    .filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && !node.closest('[hidden], [inert], [aria-hidden="true"]') && node.getClientRects().length > 0)
+}
+
+/** 关闭或替换预览时释放子文档监听，不保留旧 iframe。 */
+function clearFrameListeners() {
+  frameObserver?.disconnect()
+  frameObserver = null
+  for (const entry of frameListeners.values()) entry.document.removeEventListener('keydown', entry.keydown)
+  frameListeners.clear()
+}
+
+/** 同源预览的按键不会冒泡到父文档，显式移交首尾 Tab 和 Escape。 */
+function syncFrameListeners() {
+  if (!props.open) return
+  const frames = [...(root.value?.querySelectorAll('iframe') || [])]
+  for (const [frame, entry] of frameListeners) {
+    if (!frames.includes(frame) || frame.contentDocument !== entry.document) {
+      entry.document.removeEventListener('keydown', entry.keydown)
+      frameListeners.delete(frame)
+    }
+  }
+  for (const frame of frames) {
+    // contentDocument 对跨源页面返回 null；不放宽 iframe 的 sandbox。
+    const childDocument = frame.contentDocument
+    if (!childDocument || frameListeners.has(frame)) continue
+    const listener = (event: KeyboardEvent) => {
+      if (!props.open) return
+      if (event.key === 'Escape') { event.preventDefault(); if (!props.busy) emit('close'); return }
+      if (event.key !== 'Tab') return
+      const children = focusableNodes(childDocument)
+      const boundary = event.shiftKey ? children[0] : children.at(-1)
+      if (children.length && childDocument.activeElement !== boundary) return
+      const nodes = focusableNodes(root.value)
+      const index = nodes.indexOf(frame)
+      if (index < 0) return
+      event.preventDefault()
+      nodes[(index + (event.shiftKey ? -1 : 1) + nodes.length) % nodes.length]?.focus()
+    }
+    childDocument.addEventListener('keydown', listener)
+    frameListeners.set(frame, { document: childDocument, keydown: listener })
+  }
+}
 
 /** 锁定背景滚动并把焦点送入弹窗，关闭后恢复触发者。 */
 watch(() => [props.open, props.contentKey] as const, async ([open], [wasOpen]) => {
@@ -19,10 +68,15 @@ watch(() => [props.open, props.contentKey] as const, async ([open], [wasOpen]) =
     }
     await nextTick()
     if (!props.open) return
+    frameObserver?.disconnect()
+    frameObserver = new MutationObserver(syncFrameListeners)
+    if (root.value) frameObserver.observe(root.value, { childList: true, subtree: true })
+    syncFrameListeners()
     const target = root.value?.querySelector<HTMLElement>('[autofocus]')
       || root.value?.querySelector<HTMLElement>('button, input, textarea, select, [tabindex="0"]')
     target?.focus()
   } else if (wasOpen) {
+    clearFrameListeners()
     document.body.style.overflow = previousOverflow
     previousFocus?.focus()
     previousFocus = null
@@ -34,13 +88,15 @@ function keydown(event: KeyboardEvent) {
   if (!props.open) return
   if (event.key === 'Escape') { event.preventDefault(); if (!props.busy) emit('close'); return }
   if (event.key !== 'Tab') return
-  const nodes = [...(root.value?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], iframe:not([tabindex="-1"]), [tabindex="0"]') || [])]
-    .filter(node => !node.hidden && node.getAttribute('aria-hidden') !== 'true' && node.getClientRects().length > 0)
+  const nodes = focusableNodes(root.value)
   if (!nodes.length) { event.preventDefault(); root.value?.focus(); return }
   if (event.shiftKey && document.activeElement === nodes[0]) { event.preventDefault(); nodes.at(-1)?.focus() }
   else if (!event.shiftKey && document.activeElement === nodes.at(-1)) { event.preventDefault(); nodes[0]?.focus() }
 }
-onBeforeUnmount(() => { if (props.open) document.body.style.overflow = previousOverflow })
+onBeforeUnmount(() => {
+  clearFrameListeners()
+  if (props.open) document.body.style.overflow = previousOverflow
+})
 </script>
 
 <template>
@@ -52,6 +108,7 @@ onBeforeUnmount(() => { if (props.open) document.body.style.overflow = previousO
     :aria-labelledby="open ? id : undefined"
     tabindex="-1"
     @keydown="keydown"
+    @load.capture="syncFrameListeners"
   >
     <Transition name="studio-dialog">
       <div
