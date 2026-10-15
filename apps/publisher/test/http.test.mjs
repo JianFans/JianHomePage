@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { test } from 'node:test'
 import { readFile } from 'node:fs/promises'
+import { request as httpRequest } from 'node:http'
 
 const module = await import('../src/http.mjs').catch(() => ({}))
 const token = 'internal-token'
@@ -28,6 +29,7 @@ async function serverContext(t, overrides = {}) {
   await once(server, 'listening')
   const origin = `http://127.0.0.1:${server.address().port}`
   return {
+    origin,
     jobs,
     request(path, method = 'GET', data, headers = {}) {
       return fetch(`${origin}${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...headers }, ...(data === undefined ? {} : { body: typeof data === 'string' ? data : JSON.stringify(data) }) })
@@ -50,6 +52,40 @@ test('accepts the Go contract once and returns the durable build through its sta
   const status = await context.request(`/builds/${build.id}`)
   assert.equal((await status.json()).id, build.id)
   assert.equal((await context.request(`/builds/build_${'b'.repeat(64)}`)).status, 404)
+})
+
+test('normalizes UTF-8 header bytes like Go while preserving opaque key identity', async t => {
+  const context = await serverContext(t)
+  for (const [input, expected, status] of [
+    ['12345678', '12345678', 202],
+    ['x'.repeat(128), 'x'.repeat(128), 202],
+    ['\u00e9'.repeat(4), '\u00e9'.repeat(4), 202],
+    ['\u00e9'.repeat(64), '\u00e9'.repeat(64), 202],
+    ['\u0085\u00a0 publish-key \u3000', 'publish-key', 202],
+    ['\ufeffpublish-key', '\ufeffpublish-key', 202],
+    ['1234567', undefined, 400],
+    ['\u00e9'.repeat(65), undefined, 400],
+    ['publish\tkey', undefined, 400],
+    ['publish\u0085key', undefined, 400],
+    [Buffer.from([112, 117, 98, 108, 105, 115, 104, 255, 107, 101, 121]), undefined, 400],
+  ]) {
+    // A Buffer body keeps node:http header serialization in Latin-1, matching Go's UTF-8 wire bytes.
+    const wireKey = Buffer.from(input).toString('latin1')
+    const size = context.jobs.size
+    const actual = await new Promise((resolve, reject) => {
+      const request = httpRequest(`${context.origin}/builds`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Idempotency-Key': wireKey },
+      }, response => {
+        response.resume()
+        response.on('end', () => resolve(response.statusCode))
+      })
+      request.on('error', reject)
+      request.end(Buffer.from(JSON.stringify(body)))
+    })
+    assert.equal(actual, status, `unexpected status for ${JSON.stringify(input)}`)
+    if (expected !== undefined) assert.ok(context.jobs.has(expected), `the durable key must match Go normalization for ${JSON.stringify(input)}`)
+    else assert.equal(context.jobs.size, size, 'invalid keys must not create jobs')
+  }
 })
 
 test('all operational endpoints require a Bearer token and errors never expose internals', async t => {

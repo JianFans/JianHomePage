@@ -54,6 +54,20 @@ function validateBuild(body) {
   return { releaseId: body.releaseId, snapshotKey: body.snapshotKey, snapshotChecksum: body.snapshotChecksum }
 }
 
+/** Recover Go's UTF-8 header bytes from Node's Latin-1 view; preserve BOM and match strings.TrimSpace. */
+function normalizeIdempotencyKey(value) {
+  let key
+  try {
+    key = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+      .decode(Buffer.from(value, 'latin1'))
+      .replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '')
+  } catch { throw new RequestError(400, 'Invalid Idempotency-Key') }
+  if (Buffer.byteLength(key) < 8 || Buffer.byteLength(key) > 128 || /\p{Cc}/u.test(key)) {
+    throw new RequestError(400, 'Invalid Idempotency-Key')
+  }
+  return key
+}
+
 /** Serve the stable BuildTrigger contract; long builds run outside the request lifecycle. */
 export function createGateway({ store, token, target, reconcile }) {
   return createServer({ requestTimeout: 15000, headersTimeout: 10000, maxHeaderSize: 8192 }, async (request, response) => {
@@ -71,10 +85,10 @@ export function createGateway({ store, token, target, reconcile }) {
       const match = /^\/builds\/(build_[a-f0-9]{64})(\/reconcile)?$/.exec(path)
       if (path === '/builds') {
         if (request.method !== 'POST') throw new RequestError(405, 'Method not allowed')
-        const key = request.headers['idempotency-key']?.trim()
-        if (request.headersDistinct['idempotency-key']?.length !== 1 || !key || Buffer.byteLength(key) < 8 || Buffer.byteLength(key) > 128 || /\p{Cc}/u.test(key)) {
+        if (request.headersDistinct['idempotency-key']?.length !== 1) {
           throw new RequestError(400, 'Invalid Idempotency-Key')
         }
+        const key = normalizeIdempotencyKey(request.headers['idempotency-key'])
         const body = validateBuild(await readJSON(request))
         const job = await store.enqueue(key, body, target)
         response.statusCode = 202

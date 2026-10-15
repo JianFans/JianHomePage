@@ -760,6 +760,45 @@ func TestPublishRejectsIdempotencyKeyOutsideContractLength(t *testing.T) {
 	}
 }
 
+// TestUnsafeIdempotencyKeysCannotFreezePublishOrRollback keeps validation ahead of all publishing side effects.
+func TestUnsafeIdempotencyKeysCannotFreezePublishOrRollback(t *testing.T) {
+	for _, operation := range []string{"publish", "rollback"} {
+		for _, key := range []string{"publish\tkey", "publish\x7fkey", "publish\u0085key", "publish\xffkey"} {
+			t.Run(operation+"/"+key, func(t *testing.T) {
+				repository := newMemoryRepository()
+				target := approvedVersion("ver_target", "rel_target")
+				if operation == "rollback" {
+					target.Status = domain.StatusArchived
+					historical := domain.PublishJob{
+						ID: "pub_history", VersionID: target.ID, Status: domain.PublishSucceeded,
+						SnapshotKey: "snapshots/rel_target/" + target.Checksum + ".json", SnapshotChecksum: target.Checksum,
+					}
+					repository.jobs[historical.ID] = historical
+					repository.successfulByVersion[target.ID] = historical.ID
+				}
+				initialJobs := len(repository.jobs)
+				repository.versions[target.ID] = target
+				blobs := newBlobStoreFake()
+				trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+				service := publishServiceForTest(repository, blobs, trigger)
+				var err error
+				if operation == "publish" {
+					_, err = service.Publish(t.Context(), publisher(), target.ID, key)
+				} else {
+					_, err = service.Rollback(t.Context(), publisher(), target.ID, key)
+				}
+				if !errors.Is(err, domain.ErrInvalidInput) {
+					t.Fatalf("unsafe key must be invalid input, got %v", err)
+				}
+				current := repository.versions[target.ID]
+				if current.Status != target.Status || current.Revision != target.Revision || len(repository.jobs) != initialJobs || len(repository.audits) != 0 || repository.lockCalls != 0 || blobs.putCalls != 0 || trigger.triggerCalls != 0 {
+					t.Fatal("unsafe key changed publishing state or triggered external work")
+				}
+			})
+		}
+	}
+}
+
 func TestPublishRejectsIdempotencyKeyReusedForDifferentRequest(t *testing.T) {
 	repository := newMemoryRepository()
 	repository.versions["ver_one"] = approvedVersion("ver_one", "rel_one")

@@ -490,7 +490,8 @@
           "name": "Idempotency-Key",
           "in": "header",
           "required": true,
-          "schema": { "type": "string", "minLength": 8, "maxLength": 128 }
+          "description": "Opaque UTF-8 key. Trim surrounding Unicode White_Space, then require 8–128 UTF-8 bytes and no control characters. Preserve U+FEFF (BOM). Invalid keys return 400 before publishing side effects.",
+          "schema": { "type": "string", "minLength": 1 }
         }],
         "requestBody": {
           "required": true,
@@ -567,7 +568,8 @@
           "name": "Idempotency-Key",
           "in": "header",
           "required": true,
-          "schema": { "type": "string", "minLength": 8, "maxLength": 128 }
+          "description": "Opaque UTF-8 key. Trim surrounding Unicode White_Space, then require 8–128 UTF-8 bytes and no control characters. Preserve U+FEFF (BOM). Invalid keys return 400 before publishing side effects.",
+          "schema": { "type": "string", "minLength": 1 }
         }],
         "requestBody": {
           "required": true,

@@ -176,7 +176,7 @@ Authorization: Bearer <session-token>
 
 ### 发布与错误响应
 
-发布和回滚必须携带长度至少为 8 的 `Idempotency-Key`。重复使用同一个键只返回同一个逻辑任务，不重复写快照或触发构建。同一时刻只允许一个生产发布或回滚任务处于 `pending`、`building` 状态。
+发布和回滚必须携带有效 UTF-8 的 `Idempotency-Key`。去除首尾 Unicode White_Space 后，长度必须为 8–128 个 UTF-8 字节，且不能包含控制字符；BOM（U+FEFF）作为键的一部分保留。非法键返回 400，不冻结版本、写快照或创建任务。重复使用同一个归一化键只返回同一个逻辑任务，不重复写快照或触发构建。同一时刻只允许一个生产发布或回滚任务处于 `pending`、`building` 状态。
 
 错误响应统一为：
 
