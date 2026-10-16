@@ -9,7 +9,7 @@
     "test:coverage": "node --experimental-test-coverage --test-coverage-include=src/**/*.mjs --test-coverage-exclude=src/main.mjs --test-coverage-lines=80 --test-coverage-functions=80 --test test/*.test.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1149.0",
+    "@aws-sdk/client-s3": "3.1150.0",
     "@edgeone/makers-sdk": "0.1.0",
     "pg": "8.23.1",
     "pnpm": "12.11.2"
