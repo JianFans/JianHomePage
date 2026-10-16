@@ -1,8 +1,8 @@
 # 遇健我内容与发布服务
 
-该服务为「遇健我」管理端提供内容版本、审核、素材和发布编排接口。业务层只依赖仓储、对象存储、构建触发和身份提供器接口，因此可以把 EdgeOne、对象存储和 OIDC 服务替换为其他实现。
+该 Go 服务内嵌「遇健我」管理端，并提供内容版本、审核、素材、Vue 静态生成和 Pages 自动发布。业务层通过明确接口接入 PostgreSQL、对象存储、身份提供器和 Pages，运行时不需要 Node.js 或外部构建进程。
 
-第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)，按顺序配置账号登录、数据库和两个服务器程序。本文用于查完整参数及 API 行为。
+第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)，按顺序配置账号登录、数据库和一个 Go 程序。本文用于查完整参数及 API 行为。
 
 ## 当前边界
 
@@ -11,10 +11,14 @@
 - `internal/publish`：不可变快照、SHA-256、发布幂等、构建状态、原子指针切换和回滚。
 - `internal/store/postgres`：pgx 标准库驱动、嵌入式迁移、事务锁和可替换 SQL 执行器。
 - `internal/httpapi`：标准库 `net/http` 管理 API，统一错误体、`ETag`、`If-Match` 和 `Idempotency-Key`。
-- `internal/providers/edgeone`：可配置的 EdgeOne 构建触发 HTTP 适配器。
+- `internal/publisher`：持久化发布 worker、固定目标、幂等和人工恢复。
+- `internal/providers/pages`：Pages Direct Upload 与部署状态查询。
+- `internal/sitegen`：Goja 执行内嵌 Vue SSR，生成 HTML、robots 和 sitemap。
+- `internal/webassets`：内嵌管理端、渲染器和带内容哈希的公开浏览器资源。
+- `internal/adminweb`：同源管理端 `/`、隔离预览 `/preview` 与静态资源服务。
 - `internal/providers/s3`：S3 兼容对象存储适配器，可配置腾讯云 COS 端点。
 
-公开首页不依赖该服务在线。Nuxt 构建只读取已经审核的静态快照；服务停止时，已发布的 `apps/web/.output/public` 仍可独立分发。
+公开首页不依赖该服务在线。发布时只读取已经审核的不可变快照；服务停止时，已上传 Pages 的 HTML 和浏览器资源仍可独立分发。
 
 ## 环境变量
 
@@ -41,9 +45,10 @@
 | `S3_SESSION_TOKEN` | 空 | 可选临时凭据 Token。 |
 | `S3_USE_PATH_STYLE` | `false` | 服务商要求 path-style URL 时设置为 `true`。 |
 | `MEDIA_PUBLIC_BASE_URL` | 空 | 生产环境必填；素材的稳定 HTTPS 公开基址，例如接入 EdgeOne 的 `https://media.yujian.me`。不得包含凭据、查询参数或片段。 |
-| `EDGEONE_TRIGGER_URL` | 空 | EdgeOne 构建触发端点。 |
-| `EDGEONE_STATUS_URL` | 空 | EdgeOne 构建状态端点，按 `/{buildId}` 查询。 |
-| `EDGEONE_TOKEN` | 空 | 仅通过环境变量提供的 Bearer Token。 |
+| `PAGES_API_TOKEN` | 空 | 生产环境必填；Pages API Token，只从环境变量或密钥服务读取。 |
+| `PAGES_PROJECT_ID` | 空 | 生产环境必填；Direct Upload 项目的 ID。 |
+| `PAGES_REGION` | 空 | 生产环境必填；`china` 或 `global`。 |
+| `PAGES_PUBLIC_URL` | 空 | 生产环境必填；公开站 HTTPS 基址，不得包含凭据、查询参数或片段。 |
 
 生产环境禁止把开发身份头当作认证信息。OIDC 实现只信任发行方签发的 `sub`、`email`、`name` 和已知角色。
 
@@ -63,9 +68,10 @@
 
 ## 本地运行
 
-当前标准库 HTTP 适配器和应用服务可以用内存依赖运行本地闭环：
+先在仓库根目录生成 Go 内嵌资源，再运行测试；缺少完整资源时生产启动会失败：
 
 ```powershell
+pnpm build:server:assets
 cd apps/server
 go test ./...
 go vet ./...
@@ -79,11 +85,21 @@ $env:ALLOW_DEV_IDENTITY = "true"
 go run ./cmd/api
 ```
 
-服务入口提供 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 SHA-256；上传成功后可通过与内容契约一致的 `/media/*` 路径读取，便于本地 API 调试和内容快照引用。生产环境不会自动降级到内存仓储；启动时按顺序加载配置、连接并探测 PostgreSQL、构造并校验 S3 适配器、在同一事务中执行迁移、构造 EdgeOne 适配器、注册路由并启动 HTTP Server。任一步失败都会关闭已打开的数据库并拒绝启动。
+服务入口提供管理页面 `/`、隔离预览 `/preview` 和 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 SHA-256；上传成功后可通过与内容契约一致的 `/media/*` 路径读取，便于本地 API 调试和内容快照引用。生产环境不会自动降级到内存仓储；启动时加载配置、探测 PostgreSQL、校验 S3、事务执行迁移，并校验 Pages、发布仓储和内嵌资源后注册路由。任一步失败都会关闭已打开的数据库并拒绝启动。
+
+在仓库根目录运行 `pnpm build:server`，输出 `dist/yujian-server`，Windows 为 `dist/yujian-server.exe`。此命令生成前端资源并编译 Go，不自动运行测试。交付二进制已包含管理端、SSR 渲染器和公开浏览器资源，目标机器无需安装 Node.js。`GOOS`、`GOARCH` 可用于指定编译目标。
+
+仅导出本地预览时可使用以下命令，输出目录必须为空：
+
+```powershell
+.\dist\yujian-server.exe --export-site content/fixtures/homepage.json --output dist/preview
+```
+
+该模式使用同一内嵌渲染器和浏览器资源，允许 fixture 与开发相对素材地址，不连接数据库或 Pages。导出目录包含 HTML 与浏览器资源；预览相对 `/media/*` 时，静态服务器还需提供对应开发媒体文件。正式发布 worker 仍要求审核快照和稳定 HTTPS 素材。
 
 ## 容器运行
 
-仓库根 `Dockerfile` 使用 Go 多阶段构建，只把静态 API 二进制复制到非 root 的 distroless 运行镜像。公开站和管理端不包含在该镜像中。
+仓库根 `Dockerfile` 先在 Node.js 阶段生成内嵌前端资源，再编译 Go，只把包含管理端和发布资源的二进制复制到非 root 的 distroless 运行镜像。运行镜像不包含 Node.js。
 
 Go 标准库会编入 API 二进制。修复标准库漏洞时，需要更新 `Dockerfile` 构建阶段的 Go 补丁版本并重新构建；仅更新 distroless 运行镜像不能替换二进制中的标准库。CI 会扫描最终镜像，并阻止包含 HIGH 或 CRITICAL 漏洞的镜像通过。
 
@@ -113,13 +129,14 @@ $env:S3_BUCKET = "yujian-media"
 $env:S3_ACCESS_KEY_ID = "..."
 $env:S3_SECRET_ACCESS_KEY = "..."
 $env:MEDIA_PUBLIC_BASE_URL = "https://media.yujian.me"
-$env:EDGEONE_TRIGGER_URL = "https://gateway.example.com/builds"
-$env:EDGEONE_STATUS_URL = "https://gateway.example.com/builds"
-$env:EDGEONE_TOKEN = "..."
-go run ./cmd/api
+$env:PAGES_API_TOKEN = "..."
+$env:PAGES_PROJECT_ID = "your-pages-project-id"
+$env:PAGES_REGION = "global"
+$env:PAGES_PUBLIC_URL = "https://yujian.me"
+.\dist\yujian-server.exe
 ```
 
-EdgeOne 可将 `/api/*` 回源至该进程。管理端跨域请求只接受 `ADMIN_ALLOWED_ORIGINS` 中的精确 Origin；未知来源和非 HTTPS 生产来源会被拒绝。
+生产示例在仓库根目录运行，浏览器登录还需配置前文的 `ADMIN_OIDC_*`、`ADMIN_RETURN_URL` 与 `ADMIN_SESSION_KEY`。管理域名的 HTTPS 反向代理应将 `/`、`/preview`、`/_nuxt/*` 和 `/api/*` 转发至同一进程；公开域名由 Pages 分发。管理端跨域请求只接受 `ADMIN_ALLOWED_ORIGINS` 中的精确 Origin；未知来源和非 HTTPS 生产来源会被拒绝。
 
 COS 桶还需单独配置浏览器直传 CORS：Origin 与 `ADMIN_ALLOWED_ORIGINS` 保持一致，允许 `PUT`、`HEAD`，并放行 `Content-Type`、`X-Amz-Checksum-Sha256` 请求头。公开读取建议通过 `MEDIA_PUBLIC_BASE_URL` 对应的 EdgeOne 域名，不直接暴露带凭据或签名参数的存储端点。
 
@@ -199,38 +216,45 @@ Authorization: Bearer <session-token>
 1. 读取已通过审核的 `in_review` 版本。
 2. 重新校验快照并规范化 JSON。
 3. 写入不可变对象 `snapshots/<releaseId>/<sha256>.json`。
-4. 调用 `BuildTrigger`，任务进入 `building`。
+4. 通过进程内 `BuildTrigger` 创建持久化 worker 任务，发布任务进入 `building`。
 5. 构建成功后，在同一事务内归档旧版本、发布新版本、切换 `production` 指针并写审计。
 6. 构建失败只标记任务失败，保留上一成功指针。
 7. 回滚重新触发历史快照，不覆盖历史对象。
 
-服务启动后每 15 秒自动对账一次活动任务：`pending` 任务会安全重试同一个构建幂等键，`building` 任务会自动查询 EdgeOne 并完成指针切换。管理端的手动刷新接口仅用于即时查看，不是发布完成的必要条件。
+服务启动后每 15 秒先运行发布 worker，再对账内容发布任务：`pending` 任务按原幂等键关联同一构建，`building` 任务自动更新部署结果并完成指针切换。管理端的手动刷新接口仅用于即时查看，不是发布完成的必要条件。
 
 通知器失败只产生告警，不回滚已经成功切换的发布指针。
 
-## EdgeOne 适配器
+## 内置 Pages 发布与恢复
 
-仓库已提供实现该契约的 [Pages 自动发布进程](../publisher/README.md)。它独立构建 Nuxt，并通过腾讯云官方 SDK 上传 Direct Upload 项目。`EDGEONE_TRIGGER_URL` 与 `EDGEONE_STATUS_URL` 均指向该进程经反向代理提供的 HTTPS `/builds`；`EDGEONE_TOKEN` 是内部共享网关密钥，与其 `PUBLISHER_TOKEN` 一致，**不是**腾讯云 Pages API Token。
+`internal/publisher` 与 API 在同一个 Go 进程运行。任务沿用 `0008_publisher_builds` 创建的 `publisher_builds` 表，阶段为 `queued`、`building`、`submitting`、`deployed`、`succeeded` 或 `failed`。固定 PostgreSQL 连接持有全局 worker 锁，网络请求期间不持有数据库事务；服务重启后继续读取持久化任务。
 
-先部署 Go API 执行 `0008_publisher_builds` 增量迁移，再启动发布进程；两个服务连接同一数据库与 schema。发布进程的任务在 PostgreSQL 持久化，上传结果不明时保持活动并要求核对，不会盲目重试云端创建。具体变量、容器和恢复流程见上述专项文档。
+每个任务冻结项目 ID、地域、公开 URL 和完整 Go 二进制的 SHA-256。身份包含 Go 逻辑与内嵌资源，无需额外代码版本环境变量。worker 校验下载快照的 checksum、release ID、canonical 契约及生产素材地址，使用 Goja 渲染页面，再通过 Pages Direct Upload 创建 Production 部署。目标漂移时不会用新配置继续旧任务。
 
-`internal/providers/edgeone` 不依赖腾讯云 SDK。它向配置的触发端点发送：
+调用云端创建前持久化 `submitting`。超时、断连或响应无法确认时保留该阶段，不自动重试创建；先在腾讯云核实部署，再由 `admin` 角色恢复：
+
+- `GET /api/v1/publisher/builds/{buildId}`：读取任务阶段、冻结目标与已绑定部署。
+- `POST /api/v1/publisher/builds/{buildId}/recovery`：仅恢复 `submitting`，且必须匹配当前冻结目标。
+
+已确认创建部署时，提交部署 ID 和核实说明：
 
 ```json
-{
-  "releaseId": "rel_20260830_example",
-  "snapshotKey": "snapshots/rel_20260830_example/sha256:...json",
-  "snapshotChecksum": "sha256:..."
-}
+{"deploymentId":"deployment-id","note":"已在 Pages 核实对应部署"}
 ```
 
-触发请求同时携带 `Idempotency-Key` HTTP 头，值与当前发布任务的键一致。网关或工作流必须按该键去重，并为同一键返回同一个逻辑构建，以便服务端在网络结果不确定时安全恢复。
+服务重新查询部署并验证项目及 Production 环境，绑定后由正常对账完成状态更新。只有确认云端未创建部署时才使用：
 
-状态端点返回 `pending`、`building`、`succeeded` 或 `failed`。端点和 Token 可替换，便于接 EdgeOne API 网关、Webhook 或内部发布工作流。
+```json
+{"confirmedAbsent":true,"note":"已核实该次提交未创建部署"}
+```
+
+这会将构建标记为失败，再由正常发布对账释放活动状态。两种恢复选择互斥，均必须提供 `note`。会话 Cookie 写操作需要精确 `Origin` 和 `X-CSRF-Token`，也支持已验证的 Bearer JWT。审计操作者由服务端认证身份记录，不接受客户端指定身份。
+
+升级前应先结束旧独立发布程序的活动任务，保留历史记录。存在历史 `submitting` 时应使用与冻结身份匹配的旧程序核对恢复；不要直接修改数据库、替换冻结身份或重复提交云端创建。切换完成后停用旧程序，避免同时调度。
 
 ## 安全与运维
 
-- 所有管理路径使用 Bearer 鉴权，写操作由 RBAC 再次校验。
+- 管理 API 使用已验证的会话或 Bearer 鉴权，写操作由 RBAC 再次校验；可公开读取的管理端静态文件不授予 API 权限。
 - 请求正文启用未知字段拒绝和大小上限；外部链接及媒体资源由内容契约校验。
 - 上传使用 15 分钟签名 URL，签名和完成确认都校验 SHA-256、实际大小与 MIME；不信任客户端自定义 metadata 中的摘要。
 - 普通 API 保持 15 秒读写期限。本地 `/local-upload/*` 只有在签名、有效期、MIME、声明大小和校验头通过后，才将本次连接的读写期限延长为 15 分钟；仍按声明大小流式校验，不全量缓存文件。生产素材直接上传到对象存储，不经过该本地路由。
@@ -245,10 +269,13 @@ Authorization: Bearer <session-token>
 
 ## PostgreSQL 集成验证
 
-指定 `YUJIAN_TEST_POSTGRES_URL` 后，可在 `apps/server` 中运行真实迁移、素材地址并发补全和分页查询计划检查：
+先在仓库根目录运行 `pnpm build:server:assets`。指定 `YUJIAN_TEST_POSTGRES_URL` 后，可在 `apps/server` 中运行真实迁移、素材地址并发补全、分页查询计划和发布恢复检查：
 
 ```bash
 go test ./internal/store/postgres -run TestPostgresAsset -count=1 -v
+go test ./internal/store/postgres -run TestPostgresPublisher -count=1 -v
 ```
 
 测试账号需要创建和删除 Schema 的权限。每个测试创建独立 Schema，执行两次迁移检查可重复性，结束后删除测试 Schema；不会访问现有应用表。分页测试创建 100,000 条临时素材，对仓储实际执行的 SQL 运行 `EXPLAIN (ANALYZE, BUFFERS)`，检查首、深页排序和游标、索引使用及扫描行数。未提供测试数据库时，这些集成测试明确跳过，其他单元测试仍正常执行。
+
+发布集成测试检查历史迁移兼容、单活动任务竞争、固定连接锁、服务重建及结果不明后的人工恢复。云端适配器使用受控测试实现，不证明真实 Pages 账号、权限或网络已验证。
