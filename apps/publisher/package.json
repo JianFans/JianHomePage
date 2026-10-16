@@ -12,6 +12,6 @@
     "@aws-sdk/client-s3": "3.1149.0",
     "@edgeone/makers-sdk": "0.1.0",
     "pg": "8.23.1",
-    "pnpm": "11.23.0"
+    "pnpm": "12.11.2"
   }
 }

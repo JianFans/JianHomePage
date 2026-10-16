@@ -60,11 +60,13 @@
 | 工具 | 版本 |
 | --- | --- |
 | Node.js | >=22.22.3，发布镜像使用 25，CI 按清单选择匹配的最新版本 |
-| pnpm | 11.23.0 |
+| pnpm | 12.11.2 |
 | Go | 1.25.1 |
 | Chrome | 用于 Playwright E2E |
 
 ## 快速开始
+
+pnpm 版本以根目录 `packageManager` 为准。旧版 Corepack 可能仍查找 `bin/pnpm.cjs`，无法启动 pnpm 12；遇到该错误时升级至支持 pnpm 12 的 Corepack，或使用独立安装的 pnpm 12。发布镜像在构建时通过 npm 安装清单指定的 pnpm，不依赖基础镜像中的 Corepack。
 
 安装依赖并启动公开站：
 

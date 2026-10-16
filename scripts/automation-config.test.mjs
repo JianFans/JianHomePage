@@ -75,6 +75,8 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
 
   const rootPackage = JSON.parse(await readText('package.json'))
   assert.equal(publisherPackage.dependencies.pnpm, rootPackage.packageManager.split('@')[1])
+  const workspace = await readYaml('pnpm-workspace.yaml')
+  assert.equal(workspace.allowBuilds.pnpm, false, 'pnpm 安装脚本不得改写发布器使用的 CLI 入口')
   assert.equal(rootPackage.scripts['test:coverage:go'], 'node scripts/go-coverage.mjs --threshold=80')
   assert.match(rootPackage.scripts['verify:go'], /^pnpm check:format:go && /)
   const webPackage = JSON.parse(await readText('apps/web/package.json'))

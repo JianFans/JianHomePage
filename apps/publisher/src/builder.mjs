@@ -24,9 +24,9 @@ function inside(root, target) {
 
 /** Use the publisher's fixed installed CLI; global shims and Corepack may download code. */
 function pnpmCli() {
-  // pnpm 11 exports its package manifest; its executable subpath is intentionally private.
+  // pnpm 12's bin map can point to a native executable; Node needs its stable wrapper.
   const installed = createRequire(import.meta.url)
-  return resolve(dirname(installed.resolve('pnpm')), installed('pnpm').bin.pnpm)
+  return resolve(dirname(installed.resolve('pnpm/package.json')), 'bin/pnpm.mjs')
 }
 
 /** Whitelist OS process essentials; build configuration cannot carry publisher secrets. */
@@ -35,7 +35,7 @@ function buildEnvironment(snapshotPath) {
   for (const [key, value] of Object.entries(process.env)) {
     if (['PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'TMPDIR'].includes(key.toUpperCase())) env[key] = value
   }
-  return { ...env, NODE_ENV: 'production', CI: 'true', NUXT_TELEMETRY_DISABLED: '1', CONTENT_SNAPSHOT_PATH: snapshotPath }
+  return { ...env, NODE_ENV: 'production', CI: 'true', NUXT_TELEMETRY_DISABLED: '1', COREPACK_ENABLE_NETWORK: '0', CONTENT_SNAPSHOT_PATH: snapshotPath }
 }
 
 /** Reject symlinked deletion targets and ancestors before touching fixed build directories. */
