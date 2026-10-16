@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useAdminSession } from '../../composables/useAdminSession'
 
 /** 在组件作用域管理会话的计时器与迟到请求。 */
-async function host(fetcher: typeof fetch) {
+async function host(fetcher: typeof fetch, baseUrl = 'https://api.yujian.me') {
   const wrapper = await mountSuspended(defineComponent({
-    setup() { return { session: reactive(useAdminSession({ baseUrl: 'https://api.yujian.me', fetcher })) } },
+    setup() { return { session: reactive(useAdminSession({ baseUrl, fetcher })) } },
     template: '<div />',
   }))
   return { wrapper, session: wrapper.vm.session }
@@ -23,6 +23,16 @@ function sessionResponse(authenticated = true) {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe('管理端登录会话', () => {
+  it('内嵌管理页面使用同源登录与会话接口', async () => {
+    const fetcher = vi.fn(async () => sessionResponse())
+    const { wrapper, session } = await host(fetcher, '/')
+    await session.restore()
+    expect(session.authenticated).toBe(true)
+    expect(session.loginUrl).toBe('/api/v1/auth/login')
+    expect(fetcher).toHaveBeenCalledWith('/api/v1/auth/session', expect.objectContaining({ credentials: 'include' }))
+    wrapper.unmount()
+  })
+
   it('恢复真实会话，只在内存保留身份与 CSRF', async () => {
     const fetcher = vi.fn(async () => sessionResponse())
     const { wrapper, session } = await host(fetcher)

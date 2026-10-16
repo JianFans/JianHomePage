@@ -62,6 +62,10 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version-file: package.json
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build embedded browser and renderer assets
+        run: pnpm build:server:assets
       - name: Verify Go service
         run: pnpm verify:go
       - name: Verify synchronized Go contracts
@@ -118,6 +122,10 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version-file: package.json
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build embedded browser and renderer assets
+        run: pnpm build:server:assets
       - name: Verify Go coverage
         run: pnpm test:coverage:go
       - name: Upload Go coverage profile
@@ -136,6 +144,12 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/server/go.mod
+          cache: true
+          cache-dependency-path: apps/server/go.sum
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
       - name: Set up Node.js
@@ -152,6 +166,10 @@ jobs:
         run: pnpm --filter @yujian/web test:e2e
       - name: Run admin E2E
         run: pnpm --filter @yujian/admin test:e2e
+      - name: Build embedded browser and renderer assets
+        run: pnpm build:server:assets
+      - name: Run browser checks against standalone Go output
+        run: pnpm test:embedded
       - name: Upload admin Playwright report
         if: always()
         uses: actions/upload-artifact@v7
@@ -190,18 +208,23 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build API image
+      - name: Build single-program image
         run: docker build --tag yujian-server:ci .
-      - name: Build publisher image
-        run: docker build --file apps/publisher/Dockerfile --build-arg CODE_REVISION="${{ github.sha }}" --tag yujian-publisher:ci .
-      - name: Verify publisher image builds offline as non-root
-        run: docker run --rm --network none --env YUJIAN_TEST_BUILD_SOURCE=/workspace --entrypoint node yujian-publisher:ci --test apps/publisher/test/build.integration.mjs
-      - name: Run API smoke test
+      - name: Verify standalone binary starts without network or Node
+        shell: bash
+        run: |
+          docker run --detach --rm --network none --name yujian-server-offline --entrypoint /usr/local/bin/yujian-server yujian-server:ci
+          sleep 2
+          test "$(docker inspect --format '{{.State.Running}}' yujian-server-offline)" = true
+          docker rm --force yujian-server-offline
+      - name: Run API and embedded admin smoke test
         shell: bash
         run: |
           docker run --detach --rm --name yujian-server-ci --publish 127.0.0.1:8080:8080 yujian-server:ci
           for attempt in {1..20}; do
             if curl --fail --silent http://127.0.0.1:8080/healthz; then
+              curl --fail --silent http://127.0.0.1:8080/ | grep -q '<!DOCTYPE html>'
+              curl --fail --silent http://127.0.0.1:8080/preview | grep -q '<!DOCTYPE html>'
               exit 0
             fi
             sleep 1
@@ -219,14 +242,26 @@ jobs:
           ignore-unfixed: false
       - name: Stop API container
         if: always()
-        run: docker rm --force yujian-server-ci || true
+        run: docker rm --force yujian-server-ci yujian-server-offline || true
 
-  publisher:
-    name: Publisher PostgreSQL Integration
+  publisher-integration:
+    name: Go Publisher PostgreSQL Integration
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       YUJIAN_TEST_POSTGRES_URL: postgresql://publisher_test:publisher_test@127.0.0.1:15432/publisher_test
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: publisher_test
+          POSTGRES_PASSWORD: publisher_test
+          POSTGRES_DB: publisher_test
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -U publisher_test -d publisher_test"
+          --health-interval 2s --health-timeout 2s --health-retries 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -234,6 +269,12 @@ jobs:
           persist-credentials: false
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/server/go.mod
+          cache: true
+          cache-dependency-path: apps/server/go.sum
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -242,10 +283,8 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Start isolated PostgreSQL
-        run: docker compose -f apps/publisher/compose.test.yaml up --detach --wait
-      - name: Verify durable publisher integration
-        run: pnpm --filter @yujian/publisher test:integration
-      - name: Stop isolated PostgreSQL
-        if: always()
-        run: docker compose -f apps/publisher/compose.test.yaml down --volumes
+      - name: Build embedded browser and renderer assets
+        run: pnpm build:server:assets
+      - name: Verify Go publisher and PostgreSQL integration
+        working-directory: apps/server
+        run: go test -race ./internal/publisher ./internal/store/postgres -count=1

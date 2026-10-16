@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -17,14 +18,16 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"yujian.me/server/internal/config"
 	"yujian.me/server/internal/httpapi"
 	"yujian.me/server/internal/ports"
-	"yujian.me/server/internal/providers/edgeone"
 	"yujian.me/server/internal/providers/local"
+	"yujian.me/server/internal/providers/pages"
 	providerS3 "yujian.me/server/internal/providers/s3"
+	"yujian.me/server/internal/publisher"
 	"yujian.me/server/internal/store/postgres"
 )
 
@@ -343,7 +346,7 @@ func TestDevelopmentDependenciesCloseLocalBlobStore(t *testing.T) {
 func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.T) {
 	database := &productionDatabaseFake{legacyAsset: true}
 	var blobConfig providerS3.Config
-	var buildConfig edgeone.Config
+	var buildConfig pages.Config
 	var databaseURL string
 	factory := productionFactory{
 		openDatabase: func(_ context.Context, value string) (productionDatabase, error) {
@@ -354,9 +357,14 @@ func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.
 			blobConfig = config
 			return local.NewBlobStore(), nil
 		},
-		newBuildTrigger: func(config edgeone.Config) (ports.BuildTrigger, error) {
+		newPages: func(config pages.Config) (publisher.Pages, error) {
 			buildConfig = config
-			return local.NewBuildTrigger(), nil
+			return pages.NewClient(config)
+		},
+		newGenerator: func() (siteGenerator, error) { return generatorFake{}, nil },
+		newAdmin:     func() (fs.FS, error) { return managementFiles(), nil },
+		readSnapshot: func(context.Context, ports.BlobStore, string) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("snapshot")), nil
 		},
 	}
 	settings := productionSettings()
@@ -364,7 +372,7 @@ func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.
 	if err != nil {
 		t.Fatalf("build production dependencies: %v", err)
 	}
-	if dependencies.Content == nil || dependencies.Assets == nil || dependencies.Publish == nil || dependencies.PublishReconciler == nil {
+	if dependencies.Content == nil || dependencies.Assets == nil || dependencies.Publish == nil || dependencies.PublishReconciler == nil || dependencies.PublisherReconciler == nil || dependencies.Publisher == nil {
 		t.Fatalf("incomplete production dependencies %#v", dependencies)
 	}
 	if blobConfig.PublicBaseURL != "https://media.yujian.me" {
@@ -376,8 +384,8 @@ func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.
 	if databaseURL != settings.DatabaseURL {
 		t.Fatalf("unexpected production database URL %q", databaseURL)
 	}
-	if buildConfig.TriggerURL != settings.EdgeOneTriggerURL || buildConfig.StatusURL != settings.EdgeOneStatusURL || !buildConfig.RequireHTTPS {
-		t.Fatalf("unexpected EdgeOne production configuration %#v", buildConfig)
+	if buildConfig.Token != settings.PagesAPIToken || buildConfig.Region != settings.PagesRegion {
+		t.Fatal("unexpected Pages production configuration")
 	}
 	if database.beginCalls != 1 || database.tx == nil || !database.tx.committed {
 		t.Fatalf("migrations did not commit in a database transaction: %#v", database)
@@ -538,7 +546,7 @@ func TestRunProductionReturnsDatabaseConfigurationError(t *testing.T) {
 
 func TestDefaultProductionFactoryReturnsAdapterConfigurationErrors(t *testing.T) {
 	factory := defaultProductionFactory()
-	if factory.openDatabase == nil || factory.newBlobStore == nil || factory.newBuildTrigger == nil {
+	if factory.openDatabase == nil || factory.newBlobStore == nil || factory.newPages == nil || factory.newGenerator == nil || factory.newAdmin == nil || factory.readSnapshot == nil {
 		t.Fatalf("incomplete default production factory %#v", factory)
 	}
 	if _, err := factory.openDatabase(context.Background(), ""); err == nil {
@@ -547,8 +555,8 @@ func TestDefaultProductionFactoryReturnsAdapterConfigurationErrors(t *testing.T)
 	if _, err := factory.newBlobStore(providerS3.Config{}); err == nil {
 		t.Fatal("expected empty object storage configuration to fail")
 	}
-	if _, err := factory.newBuildTrigger(edgeone.Config{}); err == nil {
-		t.Fatal("expected empty build trigger configuration to fail")
+	if _, err := factory.newPages(pages.Config{}); err == nil {
+		t.Fatal("expected empty Pages configuration to fail")
 	}
 }
 
@@ -719,7 +727,7 @@ func TestBuildProductionDependenciesClosesDatabaseOnBuildTriggerFailure(t *testi
 		newBlobStore: func(providerS3.Config) (ports.BlobStore, error) {
 			return local.NewBlobStore(), nil
 		},
-		newBuildTrigger: func(edgeone.Config) (ports.BuildTrigger, error) { return nil, sentinel },
+		newPages: func(pages.Config) (publisher.Pages, error) { return nil, sentinel },
 	}
 
 	_, _, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
@@ -754,9 +762,9 @@ func TestBuildProductionDependenciesClosesDatabaseOnProviderFailure(t *testing.T
 	database := &productionDatabaseFake{}
 	sentinel := errors.New("object storage unavailable")
 	factory := productionFactory{
-		openDatabase:    func(context.Context, string) (productionDatabase, error) { return database, nil },
-		newBlobStore:    func(providerS3.Config) (ports.BlobStore, error) { return nil, sentinel },
-		newBuildTrigger: func(edgeone.Config) (ports.BuildTrigger, error) { return local.NewBuildTrigger(), nil },
+		openDatabase: func(context.Context, string) (productionDatabase, error) { return database, nil },
+		newBlobStore: func(providerS3.Config) (ports.BlobStore, error) { return nil, sentinel },
+		newPages:     func(settings pages.Config) (publisher.Pages, error) { return pages.NewClient(settings) },
 	}
 	_, _, err := buildProductionDependencies(context.Background(), productionSettings(), factory)
 	if !errors.Is(err, sentinel) {
@@ -927,10 +935,32 @@ func productionSettings() config.Config {
 		S3AccessKeyID:       "access",
 		S3SecretAccessKey:   "secret",
 		MediaPublicBaseURL:  "https://media.yujian.me",
-		EdgeOneTriggerURL:   "https://edgeone.example.test/trigger",
-		EdgeOneStatusURL:    "https://edgeone.example.test/status",
-		EdgeOneToken:        "token",
+		PagesAPIToken:       "pages-token",
+		PagesProjectID:      "project_1",
+		PagesRegion:         "global",
+		PagesPublicURL:      "https://yujian.me",
 	}
+}
+
+// WithPublisherLock supplies the explicit worker lock required during assembly.
+func (database *productionDatabaseFake) WithPublisherLock(ctx context.Context, run func(postgres.Executor) error) error {
+	return run(database)
+}
+
+// generatorFake supplies deterministic compiled-code identity without JS setup.
+type generatorFake struct{}
+
+// Identity identifies one fixed renderer and browser asset compilation.
+func (generatorFake) Identity() string { return strings.Repeat("a", 64) }
+
+// Generate supplies a valid injected generator boundary for assembly tests.
+func (generatorFake) Generate(context.Context, []byte) (map[string][]byte, error) {
+	return map[string][]byte{"index.html": []byte("homepage")}, nil
+}
+
+// managementFiles represents the complete embedded application contract.
+func managementFiles() fs.FS {
+	return fstest.MapFS{"index.html": {Data: []byte("management")}, "preview.html": {Data: []byte("preview")}}
 }
 
 func devHeaders(request *http.Request, subject, roles string) {

@@ -6,6 +6,8 @@
   },
   "packageManager": "pnpm@12.11.2",
   "scripts": {
+    "build:server": "node scripts/build-server.mjs",
+    "build:server:assets": "node scripts/build-server-assets.mjs",
     "check:format:go": "node scripts/check-go-format.mjs",
     "dev": "pnpm --filter @yujian/web dev",
     "fixture:audio": "node scripts/generate-fixture-audio.mjs",
@@ -15,6 +17,7 @@
     "schema:generate": "pnpm --filter @yujian/schema generate",
     "test": "pnpm -r --if-present test && node --test scripts/verify-static-output.test.mjs scripts/edgeone-config.test.mjs scripts/automation-config.test.mjs scripts/check-go-format.test.mjs scripts/go-coverage.test.mjs",
     "test:automation": "node --test scripts/automation-config.test.mjs",
+    "test:embedded": "node scripts/test-embedded-site.mjs",
     "test:coverage": "pnpm -r --if-present test:coverage",
     "test:coverage:go": "node scripts/go-coverage.mjs --threshold=80",
     "test:go": "cd apps/server && go test ./...",

@@ -29,7 +29,7 @@ func TestLoadRequiresEveryProductionProviderSetting(t *testing.T) {
 	required := []string{
 		"DATABASE_URL", "OIDC_ISSUER", "OIDC_AUDIENCE", "ADMIN_ALLOWED_ORIGINS",
 		"S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "MEDIA_PUBLIC_BASE_URL",
-		"EDGEONE_TRIGGER_URL", "EDGEONE_STATUS_URL", "EDGEONE_TOKEN",
+		"PAGES_API_TOKEN", "PAGES_PROJECT_ID", "PAGES_REGION", "PAGES_PUBLIC_URL",
 	}
 	for _, key := range required {
 		t.Run(key, func(t *testing.T) {
@@ -55,13 +55,13 @@ func TestLoadParsesProviderConfiguration(t *testing.T) {
 		settings.S3Bucket != "yujian-media" || settings.MediaPublicBaseURL != "https://media.yujian.me/base" || !settings.S3UsePathStyle {
 		t.Fatalf("unexpected S3 config %#v", settings)
 	}
-	if settings.EdgeOneTriggerURL == "" || settings.EdgeOneStatusURL == "" || settings.EdgeOneToken == "" {
-		t.Fatalf("unexpected EdgeOne config %#v", settings)
+	if settings.PagesAPIToken != "pages-token" || settings.PagesProjectID != "project_1" || settings.PagesRegion != "global" || settings.PagesPublicURL != "https://yujian.me" {
+		t.Fatal("unexpected Pages configuration")
 	}
 }
 
 func TestLoadRejectsInsecureProductionProviderEndpoints(t *testing.T) {
-	for _, key := range []string{"S3_ENDPOINT", "MEDIA_PUBLIC_BASE_URL", "EDGEONE_TRIGGER_URL", "EDGEONE_STATUS_URL"} {
+	for _, key := range []string{"S3_ENDPOINT", "MEDIA_PUBLIC_BASE_URL", "PAGES_PUBLIC_URL"} {
 		t.Run(key, func(t *testing.T) {
 			env := productionEnvironment()
 			env[key] = "http://provider.example.test/path"
@@ -76,7 +76,7 @@ func TestLoadRejectsInsecureProductionProviderEndpoints(t *testing.T) {
 func TestLoadRejectsProductionURLsWithoutHostname(t *testing.T) {
 	for _, key := range []string{
 		"OIDC_ISSUER", "ADMIN_ALLOWED_ORIGINS", "S3_ENDPOINT", "MEDIA_PUBLIC_BASE_URL",
-		"EDGEONE_TRIGGER_URL", "EDGEONE_STATUS_URL",
+		"PAGES_PUBLIC_URL",
 	} {
 		t.Run(key, func(t *testing.T) {
 			env := productionEnvironment()
@@ -203,8 +203,27 @@ func productionEnvironment() map[string]string {
 		"S3_ACCESS_KEY_ID":      "access-key",
 		"S3_SECRET_ACCESS_KEY":  "secret-key",
 		"MEDIA_PUBLIC_BASE_URL": "https://media.yujian.me/base",
-		"EDGEONE_TRIGGER_URL":   "https://edgeone.example.test/trigger",
-		"EDGEONE_STATUS_URL":    "https://edgeone.example.test/status",
-		"EDGEONE_TOKEN":         "edgeone-token",
+		"PAGES_API_TOKEN":       "pages-token",
+		"PAGES_PROJECT_ID":      "project_1",
+		"PAGES_REGION":          "global",
+		"PAGES_PUBLIC_URL":      "https://yujian.me",
+	}
+}
+
+// TestLoadRejectsInvalidPagesSettings validates provider targets before startup.
+func TestLoadRejectsInvalidPagesSettings(t *testing.T) {
+	for _, tc := range []struct{ key, value string }{
+		{"PAGES_REGION", "ap-singapore"}, {"PAGES_PROJECT_ID", "../project"},
+		{"PAGES_API_TOKEN", "token\nheader"}, {"PAGES_PUBLIC_URL", "https://user:pass@site.test"},
+		{"PAGES_PUBLIC_URL", "https://site.test?token=secret"}, {"PAGES_PUBLIC_URL", "https://site.test#fragment"},
+		{"PAGES_API_TOKEN", "token\u0080"}, {"PAGES_PUBLIC_URL", "https://site.test?"},
+	} {
+		t.Run(tc.key+tc.value, func(t *testing.T) {
+			env := productionEnvironment()
+			env[tc.key] = tc.value
+			if _, err := Load(func(key string) string { return env[key] }); !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("expected invalid Pages config, got %v", err)
+			}
+		})
 	}
 }

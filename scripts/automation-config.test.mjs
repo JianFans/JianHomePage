@@ -27,7 +27,7 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
     'go-coverage',
     'e2e',
     'container',
-    'publisher',
+    'publisher-integration',
   ]
   assert.deepEqual(Object.keys(workflow.jobs).sort(), requiredJobs.sort())
 
@@ -51,6 +51,8 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
     'pnpm verify:go',
     'pnpm test:coverage',
     'pnpm test:coverage:go',
+    'pnpm build:server:assets',
+    'pnpm test:embedded',
     'pnpm --filter @yujian/web playwright:install',
     'pnpm --filter @yujian/web test:e2e',
     'pnpm --filter @yujian/admin test:e2e',
@@ -67,16 +69,23 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
   assert.ok(containerSteps.some(step => step.run === 'docker build --tag yujian-server:ci .'))
   assert.ok(containerSteps.some(step => step.run?.includes('http://127.0.0.1:8080/healthz')))
   assert.ok(containerSteps.some(step => step.uses?.startsWith('aquasecurity/trivy-action@')))
-  assert.ok(containerSteps.some(step => step.run?.includes('--file apps/publisher/Dockerfile')))
-  assert.ok(containerSteps.some(step => step.run?.includes('--network none') && step.run.includes('test/build.integration.mjs')))
-  assert.ok(workflow.jobs.publisher.steps.some(step => step.run === 'pnpm --filter @yujian/publisher test:integration'))
-  const publisherPackage = JSON.parse(await readText('apps/publisher/package.json'))
-  assert.match(publisherPackage.scripts['test:coverage'], /--test-coverage-lines=80/)
+  assert.ok(!containerSteps.some(step => step.run?.includes('yujian-publisher')))
+  assert.ok(containerSteps.some(step => step.run?.includes('http://127.0.0.1:8080/preview')))
+  assert.ok(containerSteps.some(step => step.run?.includes('--network none') && step.run.includes('--entrypoint /usr/local/bin/yujian-server')))
+  const integration = workflow.jobs['publisher-integration']
+  assert.ok(integration.services.postgres.image.startsWith('postgres:'))
+  assert.ok(integration.env.YUJIAN_TEST_POSTGRES_URL)
+  assert.ok(integration.steps.some(step => step.run === 'go test -race ./internal/publisher ./internal/store/postgres -count=1'))
+  for (const jobName of ['go', 'go-coverage', 'publisher-integration']) {
+    const jobSteps = workflow.jobs[jobName].steps
+    const install = jobSteps.findIndex(step => step.run === 'pnpm install --frozen-lockfile')
+    const assets = jobSteps.findIndex(step => step.run === 'pnpm build:server:assets')
+    const verify = jobSteps.findIndex(step => step.run?.startsWith('pnpm verify:go')
+      || step.run?.startsWith('pnpm test:coverage:go') || step.run?.startsWith('go test '))
+    assert.ok(install >= 0 && install < assets && assets < verify, `${jobName} 必须先生成嵌入资源再验证 Go`)
+  }
 
   const rootPackage = JSON.parse(await readText('package.json'))
-  assert.equal(publisherPackage.dependencies.pnpm, rootPackage.packageManager.split('@')[1])
-  const workspace = await readYaml('pnpm-workspace.yaml')
-  assert.equal(workspace.allowBuilds.pnpm, false, 'pnpm 安装脚本不得改写发布器使用的 CLI 入口')
   assert.equal(rootPackage.scripts['test:coverage:go'], 'node scripts/go-coverage.mjs --threshold=80')
   assert.match(rootPackage.scripts['verify:go'], /^pnpm check:format:go && /)
   const webPackage = JSON.parse(await readText('apps/web/package.json'))
@@ -94,36 +103,33 @@ test('Dependabot 覆盖所有依赖生态并按周执行', async () => {
     update,
   ]))
 
-  for (const key of ['npm:/', 'gomod:/apps/server', 'docker:/', 'docker:/apps/publisher', 'github-actions:/']) {
+  for (const key of ['npm:/', 'gomod:/apps/server', 'docker:/', 'github-actions:/']) {
     assert.ok(updates.has(key), `Dependabot 缺少 ${key}`)
     assert.equal(updates.get(key).schedule.interval, 'weekly')
   }
 
   assert.deepEqual(updates.get('npm:/').ignore ?? [], [], '依赖升级必须通过兼容性验证，不能忽略新版')
 
-  assert.ok(!updates.get('docker:/apps/publisher').ignore?.some(rule =>
-    rule['dependency-name'] === 'node' || rule['dependency-name'] === '*',
-  ), '发布器的 Node 更新必须交由兼容性验证，不能通过忽略新版规避')
+  assert.ok(!updates.has('docker:/apps/publisher'), '独立 Node 发布镜像已停用')
 })
 
-test('发布镜像使用固定代码身份和非 root 构建环境，忽略本机产物与秘密', async () => {
-  const dockerfile = await readText('apps/publisher/Dockerfile')
-  const dockerignore = await readText('apps/publisher/Dockerfile.dockerignore')
+test('单程序镜像只在编译阶段使用 Node 并嵌入管理页面和渲染程序', async () => {
+  const dockerfile = await readText('Dockerfile')
   const rootPackage = JSON.parse(await readText('package.json'))
   assert.match(rootPackage.engines.node, /^>=\d+\.\d+\.\d+$/, 'Node 只声明最低版本，不限制后续主版本')
-  const image = dockerfile.match(/^FROM node:(\d+)(?:\.\d+\.\d+)?-[^\s]+$/m)
-  assert.ok(image, '发布镜像必须声明明确的 Node 版本标签')
+  const image = dockerfile.match(/^FROM node:(\d+)(?:\.\d+\.\d+)?-[^\s]+ AS assets$/m)
+  assert.ok(image, '资源编译镜像必须声明明确的 Node 版本标签')
   assert.ok(Number(image[1]) >= Number(rootPackage.engines.node.match(/\d+/)[0]))
-  assert.match(dockerfile, /^USER node$/m)
   assert.match(dockerfile, /npm install --global --prefix \/opt\/pnpm/)
   assert.ok(dockerfile.includes('require(\'./package.json\').packageManager'))
   assert.doesNotMatch(dockerfile, /\bcorepack\b/)
   assert.match(dockerfile, /pnpm install --frozen-lockfile/)
-  assert.match(dockerfile, /\.publisher-revision/)
-  assert.match(dockerfile, /^ENTRYPOINT \["node", "apps\/publisher\/src\/main.mjs"\]$/m)
-  for (const ignored of ['.git', '**/node_modules', '**/.output', '**/.env', '**/.env.*', '.publisher-revision']) {
-    assert.ok(dockerignore.split(/\r?\n/).includes(ignored))
-  }
+  assert.match(dockerfile, /pnpm build:server:assets/)
+  assert.match(dockerfile, /COPY --from=assets \/workspace\/apps\/server\/internal\/webassets\/bundle\/ \.\/internal\/webassets\/bundle\//)
+  assert.ok(dockerfile.indexOf('pnpm build:server:assets') < dockerfile.indexOf('go build'))
+  const runtime = dockerfile.slice(dockerfile.lastIndexOf('FROM '))
+  assert.doesNotMatch(runtime, /\bnode\b|\bpnpm\b|node_modules|\/workspace/)
+  assert.doesNotMatch(dockerfile, /PUBLISHER_CODE_REVISION|ARG CODE_REVISION/)
 })
 
 test('Go API 镜像采用多阶段非 root 构建并排除无关文件', async () => {
@@ -139,5 +145,11 @@ test('Go API 镜像采用多阶段非 root 构建并排除无关文件', async (
 
   for (const ignored of ['.git', 'node_modules', 'coverage', 'apps/web/.output']) {
     assert.match(dockerignore, new RegExp(`^${ignored.replaceAll('.', '\\.')}/?$`, 'm'))
+  }
+  for (const required of ['apps/web', 'apps/admin', 'packages', 'scripts', 'content']) {
+    assert.ok(!dockerignore.split(/\r?\n/).includes(required), `Docker 资源编译需要 ${required}`)
+  }
+  for (const ignored of ['**/node_modules', '**/.env', '**/.env.*', 'apps/server/internal/webassets/bundle']) {
+    assert.ok(dockerignore.split(/\r?\n/).includes(ignored), `Docker 必须排除 ${ignored}`)
   }
 })
