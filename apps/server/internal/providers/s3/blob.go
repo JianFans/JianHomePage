@@ -49,6 +49,25 @@ type BlobStore struct {
 
 const defaultHTTPTimeout = 30 * time.Second
 
+// ReadSnapshot reads immutable release data through the authenticated storage
+// adapter. The publisher owns the returned body and enforces size and checksum.
+func (store *BlobStore) ReadSnapshot(ctx context.Context, key string) (io.ReadCloser, error) {
+	if err := validateKey(key); err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(key, "snapshots/") {
+		return nil, domain.ErrInvalidInput
+	}
+	result, err := store.client.GetObject(ctx, &awss3.GetObjectInput{Bucket: aws.String(store.bucket), Key: aws.String(key)})
+	if err != nil {
+		return nil, mapBlobError(err)
+	}
+	if result.Body == nil {
+		return nil, errors.New("object storage returned no snapshot body")
+	}
+	return result.Body, nil
+}
+
 func NewBlobStore(config Config) (*BlobStore, error) {
 	if err := validateConfig(config); err != nil {
 		return nil, err

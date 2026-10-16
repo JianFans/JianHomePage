@@ -12,3 +12,5 @@ test-results/
 .env
 .env.*
 !.env.example
+apps/server/internal/webassets/bundle/*
+!apps/server/internal/webassets/bundle/.gitkeep

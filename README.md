@@ -15,8 +15,7 @@
 - 单实例音乐试听：封面播放入口、底部 Dock、进度控制、上一首/下一首和平台降级入口。
 - 静态 SEO：canonical、Open Graph、JSON-LD、`robots.txt` 和 `sitemap.xml`。
 - Nuxt 管理端：OIDC 托管登录、左侧内容导航、只读历史版本与服务端版本复制、统一保存、动画 Toast、音乐作品与曲目、影像、现场、片段、首页编排、隔离预览、素材管理及审核发布操作台。
-- Go 内容服务：PostgreSQL、OIDC、S3 兼容对象存储、EdgeOne 构建触发与后台任务对账。
-- Pages 自动发布进程：下载并校验审核快照、静态构建、官方 SDK 上传、持久化幂等和异常恢复。
+- Go 一体化服务：内嵌管理端、PostgreSQL、OIDC、S3 兼容对象存储、Vue 静态渲染、Pages Direct Upload 与持久化任务恢复。
 - 验证体系：ESLint、TypeScript、Vitest 覆盖率、Playwright、axe、Go test、Go vet、Go 覆盖率、容器检查、静态产物校验和独立的生产依赖审计。
 
 当前不包含论坛、首页登录入口、统一身份中心或第三方平台内容自动抓取。后续子站点可以复用统一身份认证，但不应破坏公开首页的静态独立性。
@@ -25,10 +24,9 @@
 
 | 模块 | 技术 | 职责 |
 | --- | --- | --- |
-| `apps/web` | Nuxt、Vue、Vue I18n | 从构建快照生成公开静态站点 |
+| `apps/web` | Nuxt、Vue、Vue I18n、Vite | 公开站组件、开发服务器和可嵌入的 SSR／浏览器资源 |
 | `apps/admin` | Nuxt、Vue | 内容编辑、审核与发布操作台 |
-| `apps/server` | Go | 内容版本、素材、鉴权、审计和发布编排 |
-| `apps/publisher` | Node.js | 受控静态构建、腾讯云 Pages 上传和持久化部署对账 |
+| `apps/server` | Go、Goja | 管理端静态服务、内容 API、静态生成、Pages 上传与发布对账 |
 | `packages/schema` | JSON Schema、TypeScript | 内容快照的唯一规范及生成类型 |
 | `content/fixtures` | JSON | 仅供本地开发和测试的样例快照 |
 | `scripts` | Node.js | fixture 生成、EdgeOne 门禁和静态产物验证 |
@@ -41,9 +39,9 @@
   -> canonical JSON 快照与素材完整性校验
   -> PostgreSQL 冻结发布目标
   -> S3/COS 保存不可变快照
-  -> 发布进程读取 COS 快照并注入 CONTENT_SNAPSHOT_PATH
-  -> Nuxt 生成纯静态产物
-  -> 官方 Pages SDK 上传 Production 部署
+  -> 同一 Go 进程读取并校验 COS 快照
+  -> Goja 执行内嵌 Vue SSR，组合内嵌浏览器资源
+  -> Pages Direct Upload 创建 Production 部署
   -> EdgeOne Pages 分发 yujian.me
 ```
 
@@ -53,7 +51,8 @@
 - `generated.ts`、`generated.go` 等生成文件不得手工修改。
 - 公开页面必须从构建时快照渲染，不能在浏览器中调用运行时内容 API。
 - 正式构建必须使用已审核快照，不能直接使用 `content/fixtures`。
-- 素材地址使用稳定 HTTPS 地址或仓库内 `/media/*` 路径，不能保存短期签名 URL。生产地址在素材创建时持久化，后续发布不根据当前服务商配置重算。
+- 生产素材使用稳定 HTTPS 地址，不能保存相对路径或短期签名 URL。仓库内 `/media/*` 只用于开发和本地预览。生产地址在素材创建时持久化，后续发布不根据当前服务商配置重算。
+- 管理端、渲染器和浏览器资源在编译 Go 前生成并内嵌；生产运行只需要一个 Go 二进制，不需要 Node.js 或外部构建子进程。
 - QQ 音乐、网易云音乐、Bilibili、微博、抖音等第三方站点只作为外链目标。
 - PostgreSQL、OIDC、S3/COS 与 EdgeOne 通过明确接口和配置接入，领域层不依赖服务商 SDK 类型。
 
@@ -61,14 +60,14 @@
 
 | 工具 | 版本 |
 | --- | --- |
-| Node.js | >=22.22.3，发布镜像使用 25，CI 按清单选择匹配的最新版本 |
+| Node.js | >=22.22.3，仅开发、测试和编译前端资源时需要 |
 | pnpm | 12.11.2 |
-| Go | 1.25.1 |
+| Go | 1.26.0 |
 | Chrome | 用于 Playwright E2E |
 
 ## 快速开始
 
-pnpm 版本以根目录 `packageManager` 为准。旧版 Corepack 可能仍查找 `bin/pnpm.cjs`，无法启动 pnpm 12；遇到该错误时升级至支持 pnpm 12 的 Corepack，或使用独立安装的 pnpm 12。发布镜像在构建时通过 npm 安装清单指定的 pnpm，不依赖基础镜像中的 Corepack。
+pnpm 版本以根目录 `packageManager` 为准。旧版 Corepack 可能仍查找 `bin/pnpm.cjs`，无法启动 pnpm 12；遇到该错误时升级至支持 pnpm 12 的 Corepack，或使用独立安装的 pnpm 12。Docker 构建阶段使用清单指定的 pnpm，运行镜像不包含 Node.js。
 
 安装依赖并启动公开站：
 
@@ -83,14 +82,17 @@ pnpm dev
 pnpm --filter @yujian/admin dev
 ```
 
-开发模式启动 Go 服务：
+在仓库根目录先生成内嵌资源，再启动 Go 开发服务：
 
 ```bash
+pnpm build:server:assets
 cd apps/server
 go run ./cmd/api
 ```
 
-开发模式使用内存仓储和本地素材适配器。服务入口为 `http://127.0.0.1:8080`，健康检查为 `GET /healthz`。生产环境不会自动降级到开发实现。
+开发模式使用内存仓储和本地素材适配器。管理端入口为 `http://127.0.0.1:8080/`，隔离预览为 `/preview`，健康检查为 `GET /healthz`。生产环境不会自动降级到开发实现。
+
+交付程序使用 `pnpm build:server`，输出 `dist/yujian-server`，Windows 为 `dist/yujian-server.exe`。该命令先编译内嵌资源，再编译 Go；测试门禁需另外执行。内容更新在后台发布，代码更新则重新编译并部署二进制。
 
 ## 常用命令
 
@@ -101,17 +103,19 @@ go run ./cmd/api
 | `pnpm lint` | 运行 ESLint |
 | `pnpm typecheck` | 检查所有 TypeScript/Nuxt 项目 |
 | `pnpm test` | 运行 Schema、管理端、公开站和脚本测试 |
-| `pnpm test:coverage` | 验证 TypeScript 工作区与发布进程的覆盖率门槛 |
+| `pnpm test:coverage` | 验证 TypeScript 工作区的覆盖率门槛 |
 | `pnpm test:coverage:go` | 验证 Go 全包语句覆盖率不低于 80% |
 | `pnpm test:automation` | 验证 GitHub Actions、Dependabot 和 Docker 配置契约 |
 | `pnpm schema:generate` | 根据 canonical Schema 生成 TypeScript 类型 |
 | `pnpm generate` | 生成 Schema 类型及所有静态站点 |
 | `pnpm verify` | 运行前端完整门禁并检查静态产物 |
 | `pnpm verify:go` | 检查 gofmt，运行 Go generate、全包测试和 Go vet |
+| `pnpm build:server:assets` | 生成 Go 内嵌的管理端、SSR 渲染器和公开浏览器资源；Go 全包测试前执行 |
+| `pnpm build:server` | 生成内嵌资源并输出单个 Go 程序 |
+| `pnpm test:embedded` | 验证 Go 导出页面的真实浏览器渲染与交互 |
 | `pnpm --filter @yujian/web test:e2e` | 运行 Chrome E2E 与无障碍测试 |
 | `pnpm --filter @yujian/admin test:e2e` | 运行管理端桌面与手机尺寸的音乐、影像、现场、片段、首页编辑、视觉预览及保存契约测试 |
 | `pnpm verify:edgeone` | 使用正式内容快照执行 EdgeOne 发布门禁 |
-| `pnpm --filter @yujian/publisher test:integration` | 使用独立 PostgreSQL 验证发布网关、任务恢复与进程启动 |
 | `pnpm fixture:images` | 重新生成开发图片 fixture |
 | `pnpm fixture:audio` | 重新生成开发音频 fixture |
 
@@ -129,7 +133,17 @@ go run ./cmd/api
 
 本地构建默认读取 `content/fixtures/homepage.json`。该文件只用于开发和自动测试。
 
-正式 EdgeOne 构建必须设置 `CONTENT_SNAPSHOT_PATH`，指向发布工作流下载或生成的已审核快照：
+正式后台发布由 Go 直接读取 COS 中已审核的不可变快照，并验证 checksum、发布批次、完整 Go 二进制 SHA-256 和稳定 HTTPS 素材。无需设置 `CONTENT_SNAPSHOT_PATH`。
+
+本地可以使用同一二进制导出预览；输出目录必须为空，允许开发 fixture，不连接数据库或 Pages，也不会发布：
+
+```powershell
+.\dist\yujian-server.exe --export-site content/fixtures/homepage.json --output dist/preview
+```
+
+导出文件包含 HTML 与内嵌浏览器资源；预览相对 `/media/*` 时，静态服务器还需提供对应开发媒体文件。
+
+独立 Nuxt 构建与可选 Git 构建仍可使用 `CONTENT_SNAPSHOT_PATH` 指向非 fixture 的已审核快照执行原有门禁：
 
 ```powershell
 $env:CONTENT_SNAPSHOT_PATH = "D:\release\homepage.json"
@@ -152,8 +166,10 @@ pnpm verify:edgeone
 ```bash
 pnpm verify
 pnpm test:coverage
+pnpm build:server:assets
 pnpm test:coverage:go
 pnpm verify:go
+pnpm test:embedded
 pnpm --filter @yujian/web test:e2e
 pnpm --filter @yujian/admin test:e2e
 ```
@@ -176,18 +192,17 @@ PostgreSQL 集成测试需要显式设置 `YUJIAN_TEST_POSTGRES_URL`，否则会
 
 ## 生产上线
 
-按 [部署操作指南](docs/DEPLOYMENT.md) 从头操作。默认方案是：公开首页放 EdgeOne Pages，管理页面、Go 后端和发布程序放自己的服务器，文件放 COS，数据放 PostgreSQL。
+按 [部署操作指南](docs/DEPLOYMENT.md) 从头操作。默认方案是：公开首页放 EdgeOne Pages，内嵌管理页面与发布 worker 的 Go 程序放自己的服务器，文件放 COS，数据放 PostgreSQL。
 
-第一次需要配置云服务和账号登录。配置完成后，日常更新只需在后台编辑、保存、审核、点发布；发布程序通过腾讯云官方接口自动上传网页。
+第一次需要配置云服务和账号登录，并设置 `PAGES_API_TOKEN`、`PAGES_PROJECT_ID`、`PAGES_REGION`、`PAGES_PUBLIC_URL`。配置完成后，日常更新只需在后台编辑、保存、审核、点发布；Go worker 自动生成和上传网页。
 
-管理页面需要单独打包，Go 镜像不包含它。代码升级和内容更新也是两件事：换程序需要重新打包部署，改内容直接在后台发布。已有数据库的升级注意事项见 [服务端安全与运维](apps/server/README.md#安全与运维)，发布中断后的处理见 [发布恢复步骤](apps/publisher/README.md#超时恢复与升级)。
+`pnpm build:server` 和 Docker 构建均自动打包管理页面。已有数据库的升级注意事项见 [服务端安全与运维](apps/server/README.md#安全与运维)，发布中断后的处理见 [内置 Pages 发布与恢复](apps/server/README.md#内置-pages-发布与恢复)。云端创建结果不明时不会自动重试，需要管理员核实后恢复。
 
 ## 文档索引
 
 - [部署操作指南：准备、配置、启动和首次发布](docs/DEPLOYMENT.md)
 - [公开站 EdgeOne 部署基线](apps/web/EDGEONE.md)
 - [Go 服务配置、API 与运维](apps/server/README.md)
-- [Pages 自动发布进程部署与恢复](apps/publisher/README.md)
 - [管理端开发说明](apps/admin/README.md)
 - [生产上线加固计划](docs/superpowers/plans/2026-08-30-production-hardening.md)
 - [仓库代理工作指南](AGENTS.md)

@@ -7,6 +7,16 @@ function response(status: number, body: unknown) {
 }
 
 describe('admin API client', () => {
+  it('uses same-origin paths with cookie sessions and CSRF for an embedded build', async () => {
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => response(200, { authenticated: true }))
+    const api = createAdminApi({ baseUrl: '/', csrfToken: 'csrf-memory', fetcher })
+    await api.getSession()
+    expect(fetcher).toHaveBeenLastCalledWith('/api/v1/auth/session', expect.objectContaining({ credentials: 'include', cache: 'no-store' }))
+    await api.logout()
+    expect(fetcher).toHaveBeenLastCalledWith('/api/v1/auth/logout', expect.objectContaining({ method: 'POST', credentials: 'include' }))
+    expect(new Headers(fetcher.mock.calls[1]![1]?.headers).get('X-CSRF-Token')).toBe('csrf-memory')
+  })
+
   it('uses cookie sessions and CSRF only for management writes', async () => {
     const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => response(200, { items: [] }))
     const api = createAdminApi({ baseUrl: 'https://api.yujian.me', csrfToken: 'csrf-memory', fetcher })

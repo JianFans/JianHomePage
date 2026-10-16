@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const port = 49318
-const baseURL = `http://localhost:${port}`
+const baseURL = process.env.PLAYWRIGHT_ADMIN_BASE_URL || `http://localhost:${port}`
 
 export default defineConfig({
   testDir: './test/e2e',
@@ -20,7 +20,7 @@ export default defineConfig({
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
   ],
-  webServer: {
+  webServer: process.env.PLAYWRIGHT_ADMIN_BASE_URL ? undefined : {
     command: `pnpm build && pnpm exec nuxt preview --host localhost --port ${port}`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,

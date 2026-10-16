@@ -1,3 +1,11 @@
+FROM node:24-bookworm-slim AS assets
+
+WORKDIR /workspace
+COPY . .
+RUN npm install --global --prefix /opt/pnpm "$(node -p "require('./package.json').packageManager")" \
+    && /opt/pnpm/bin/pnpm install --frozen-lockfile \
+    && /opt/pnpm/bin/pnpm build:server:assets
+
 FROM golang:1.27.2-alpine AS build
 
 WORKDIR /src
@@ -5,6 +13,7 @@ COPY apps/server/go.mod apps/server/go.sum ./
 RUN go mod download
 
 COPY apps/server/ ./
+COPY --from=assets /workspace/apps/server/internal/webassets/bundle/ ./internal/webassets/bundle/
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/yujian-server ./cmd/api
 
 FROM gcr.io/distroless/static-debian12:nonroot

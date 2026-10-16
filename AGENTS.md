@@ -61,10 +61,9 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 
 | 路径 | 所有权与职责 |
 | --- | --- |
-| `apps/web` | Nuxt 公开静态站、i18n、SEO、试听与 E2E |
+| `apps/web` | Nuxt 公开站开发、共享 Vue 展示组件、Vite SSR／浏览器资源与 E2E |
 | `apps/admin` | Nuxt/Vue 内容管理端 |
-| `apps/server` | Go 内容、素材、鉴权、审计和发布服务 |
-| `apps/publisher` | Node 静态构建、Pages Direct Upload 与持久化任务恢复 |
+| `apps/server` | Go 单程序：内嵌管理端、内容 API、Goja Vue SSR、Pages Direct Upload 与持久化发布恢复 |
 | `packages/schema` | canonical 内容 Schema、生成类型和语义校验 |
 | `content/fixtures` | 仅供开发和测试的内容快照 |
 | `scripts` | fixture、EdgeOne 和静态产物工具 |
@@ -76,7 +75,6 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 - `apps/web/EDGEONE.md`
 - `apps/admin/README.md`
 - `apps/server/README.md`
-- `apps/publisher/README.md`
 
 ## 架构与契约
 
@@ -86,6 +84,8 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 - 不手工修改 `packages/schema/src/generated.ts`、`apps/server/internal/snapshot/generated.go` 或其他生成文件。
 - Schema 变更后运行 `pnpm schema:generate` 和 `pnpm verify:go`，保持 TypeScript、Go 和 OpenAPI 副本一致。
 - 公开站只从构建时快照渲染，不添加浏览器端运行时内容 API。
+- 生产只运行一个 Go 程序；管理端、SSR 渲染器和浏览器资源在编译前生成并内嵌，不添加 Node.js 运行时或外部构建子进程。
+- 生产发布 worker 必须校验不可变快照、完整 Go 二进制 SHA-256 和稳定 HTTPS 素材，拒绝开发相对素材地址。`--export-site` 只用于本地预览，允许 fixture，且输出目录必须为空。
 - `content/fixtures` 只用于开发和测试，EdgeOne 正式构建必须拒绝 fixture 路径。
 - 第三方音乐和社交站点是外链目标，不是运行时数据源。
 - 内部跳转必须指向实际生成的稳定锚点，并遵守板块启用、编排、限制和时间窗口。
@@ -171,6 +171,9 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 | `pnpm generate` | Schema 类型与 Nuxt 静态生成 |
 | `pnpm verify` | 前端完整门禁和静态产物检查 |
 | `pnpm verify:go` | gofmt、Go generate、全包测试和 Go vet |
+| `pnpm build:server:assets` | 编译 Go 内嵌资源；Go 全包测试及覆盖率前先执行 |
+| `pnpm build:server` | 生成内嵌资源并编译 `dist/yujian-server`，Windows 输出 `.exe` |
+| `pnpm test:embedded` | Go 导出页面的真实浏览器渲染与交互 |
 | `pnpm verify:edgeone` | 正式快照约束下的 EdgeOne 完整门禁 |
 
 ### 按改动范围
@@ -180,11 +183,11 @@ Skills 与用户指令冲突时，以用户明确要求为准。不要因为流�
 - 首页交互、响应式或无障碍：`pnpm --filter @yujian/web test:e2e`。
 - 管理端：`pnpm --filter @yujian/admin test`、`pnpm --filter @yujian/admin typecheck`。
 - 管理端表单、快照交接或交互：另运行 `pnpm --filter @yujian/admin test:e2e`；保存场景使用拦截 API，只验证契约，不替代真实服务端联调。
-- Go 服务：在 `apps/server` 运行目标包测试，再运行 `pnpm verify:go`。
-- 发布进程：`pnpm --filter @yujian/publisher test` 与 `test:coverage`；持久化或网关交接另配置 `YUJIAN_TEST_POSTGRES_URL` 运行 `pnpm --filter @yujian/publisher test:integration`。构建与 Pages 上传必须保持固定代码身份和单 worker 数据库锁；不得自动重试结果不明的云端创建。
+- Go 服务：先在根目录运行 `pnpm build:server:assets`，在 `apps/server` 运行目标包测试，再运行 `pnpm verify:go`。
+- 发布、静态生成或内嵌资源：在 `apps/server` 运行 `go test ./internal/publisher ./internal/providers/pages ./internal/sitegen ./internal/adminweb ./internal/webassets ./cmd/api`，再运行 `pnpm test:embedded`；持久化与 worker 锁另配置 `YUJIAN_TEST_POSTGRES_URL` 运行 `go test ./internal/store/postgres -count=1`。构建与 Pages 上传必须保持固定代码身份和单 worker 数据库锁；不得自动重试结果不明的云端创建。
 - 覆盖率策略或测试范围：`pnpm test:coverage` 和 `pnpm test:coverage:go`。
 - Docker 或 GitHub 配置：`pnpm test:automation`，并在 Docker 可用时构建镜像和检查 `/healthz`。
-- EdgeOne 配置或构建快照：使用非 fixture 的 `CONTENT_SNAPSHOT_PATH` 运行 `pnpm verify:edgeone`。
+- EdgeOne 配置或构建快照：验证 Go 发布路径；独立 Nuxt／Git 构建另使用非 fixture 的 `CONTENT_SNAPSHOT_PATH` 运行 `pnpm verify:edgeone`。
 
 完成声明和提交前必须运行能证明结论的最新命令，并阅读退出码与失败数。不得用「之前通过」「理论上可行」或局部测试替代当前证据。
 
@@ -234,6 +237,7 @@ chore(依赖): 替换存在安全公告的版本
 - EdgeOne 构建使用非 fixture 的审核快照。
 - PostgreSQL、OIDC、S3/COS、稳定媒体域名和 EdgeOne 参数完整。
 - 首次执行 `0003_publish_target_freeze.sql` 前没有活动发布任务。
+- 从旧独立发布程序升级前等待活动任务结束，保留 `publisher_builds` 历史；配置完整的 `PAGES_*` 参数。
 - COS 直传 CORS、EdgeOne `/api/*` 回源、TLS 和域名配置已验证。
 - 真实环境通过健康检查、首页、素材、发布、回滚、robots 和 sitemap 冒烟。
 - 回滚方案、不可变快照和历史发布指针可用。

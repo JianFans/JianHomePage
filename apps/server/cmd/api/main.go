@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"yujian.me/server/internal/adminweb"
 	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/config"
@@ -20,18 +23,28 @@ import (
 	"yujian.me/server/internal/contract"
 	"yujian.me/server/internal/httpapi"
 	"yujian.me/server/internal/ports"
-	"yujian.me/server/internal/providers/edgeone"
 	"yujian.me/server/internal/providers/local"
+	"yujian.me/server/internal/providers/pages"
 	providerS3 "yujian.me/server/internal/providers/s3"
 	"yujian.me/server/internal/publish"
+	"yujian.me/server/internal/publisher"
+	"yujian.me/server/internal/sitegen"
 	"yujian.me/server/internal/store/memory"
 	"yujian.me/server/internal/store/postgres"
+	"yujian.me/server/internal/webassets"
 )
 
 // main validates startup settings and translates process signals into the
 // cancellation used by HTTP, reconciliation and dependency cleanup.
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if handled, err := runCommand(os.Args[1:], os.Stdout); handled {
+		if err != nil {
+			logger.Error("export site", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	settings, err := config.Load(os.Getenv)
 	if err != nil {
 		logger.Error("load configuration", "error", err)
@@ -67,8 +80,8 @@ func run(ctx context.Context, settings config.Config, logger *slog.Logger) (retu
 	if err != nil {
 		return err
 	}
-	if dependencies.PublishReconciler != nil {
-		stopReconciler := startPublishReconciler(ctx, 15*time.Second, dependencies.PublishReconciler, logger)
+	if dependencies.PublishReconciler != nil || dependencies.PublisherReconciler != nil {
+		stopReconciler := startPublishReconciler(ctx, 15*time.Second, serviceReconcilers{worker: dependencies.PublisherReconciler, publish: dependencies.PublishReconciler}, logger)
 		defer stopReconciler()
 	}
 	return runServer(ctx, settings, logger, handler)
@@ -101,27 +114,56 @@ type publishReconciler interface {
 	Reconcile(context.Context) error
 }
 
+// serviceReconcilers advances durable builds before updating published pointers.
+type serviceReconcilers struct{ worker, publish publishReconciler }
+
+// Reconcile runs both boundaries in order while retaining independent failures.
+func (services serviceReconcilers) Reconcile(ctx context.Context) error {
+	var result error
+	if services.worker != nil {
+		result = services.worker.Reconcile(ctx)
+	}
+	if services.publish != nil {
+		result = errors.Join(result, services.publish.Reconcile(ctx))
+	}
+	return result
+}
+
 type ServiceDependencies struct {
-	Content           httpapi.ContentService
-	Assets            httpapi.AssetService
-	Publish           httpapi.PublishService
-	PublishReconciler publishReconciler
-	LocalUploads      http.Handler
-	Close             func() error
-	Sessions          auth.SessionStore
+	Content             httpapi.ContentService
+	Assets              httpapi.AssetService
+	Publish             httpapi.PublishService
+	PublishReconciler   publishReconciler
+	PublisherReconciler publishReconciler
+	Publisher           *publisher.Service
+	AdminFiles          fs.FS
+	LocalUploads        http.Handler
+	Close               func() error
+	Sessions            auth.SessionStore
 }
 
 type productionDatabase interface {
 	postgres.Executor
+	postgres.PublisherLocker
 	Close() error
 }
 
 type productionFactory struct {
-	openDatabase    func(context.Context, string) (productionDatabase, error)
-	newBlobStore    func(providerS3.Config) (ports.BlobStore, error)
-	newBuildTrigger func(edgeone.Config) (ports.BuildTrigger, error)
+	openDatabase func(context.Context, string) (productionDatabase, error)
+	newBlobStore func(providerS3.Config) (ports.BlobStore, error)
+	newPages     func(pages.Config) (publisher.Pages, error)
+	newGenerator func() (siteGenerator, error)
+	newAdmin     func() (fs.FS, error)
+	readSnapshot func(context.Context, ports.BlobStore, string) (io.ReadCloser, error)
 }
 
+// siteGenerator freezes compiled renderer identity alongside its build operation.
+type siteGenerator interface {
+	Generate(context.Context, []byte) (map[string][]byte, error)
+	Identity() string
+}
+
+// defaultProductionFactory uses in-process rendering and direct provider clients.
 func defaultProductionFactory() productionFactory {
 	return productionFactory{
 		openDatabase: func(ctx context.Context, databaseURL string) (productionDatabase, error) {
@@ -130,10 +172,41 @@ func defaultProductionFactory() productionFactory {
 		newBlobStore: func(settings providerS3.Config) (ports.BlobStore, error) {
 			return providerS3.NewBlobStore(settings)
 		},
-		newBuildTrigger: func(settings edgeone.Config) (ports.BuildTrigger, error) {
-			return edgeone.NewClient(settings)
+		newPages: func(settings pages.Config) (publisher.Pages, error) {
+			return pages.NewClient(settings)
 		},
+		newGenerator: embeddedGenerator,
+		newAdmin:     webassets.Admin,
+		readSnapshot: readStoredSnapshot,
 	}
+}
+
+// embeddedGenerator refuses missing renderer or browser resources at startup.
+func embeddedGenerator() (siteGenerator, error) {
+	renderer, err := webassets.Renderer()
+	if err != nil {
+		return nil, err
+	}
+	files, err := webassets.Public()
+	if err != nil {
+		return nil, err
+	}
+	generator, err := sitegen.New(renderer, files)
+	if err != nil {
+		return nil, err
+	}
+	return freezeExecutableIdentity(generator)
+}
+
+// readStoredSnapshot uses authenticated object reads without browser signed URLs.
+func readStoredSnapshot(ctx context.Context, blobs ports.BlobStore, key string) (io.ReadCloser, error) {
+	reader, ok := blobs.(interface {
+		ReadSnapshot(context.Context, string) (io.ReadCloser, error)
+	})
+	if !ok {
+		return nil, errors.New("object storage cannot read publish snapshots")
+	}
+	return reader.ReadSnapshot(ctx, key)
 }
 
 // buildProductionDependencies migrates PostgreSQL and assembles production
@@ -170,17 +243,44 @@ func buildProductionDependencies(
 	}); err != nil {
 		return ServiceDependencies{}, nil, fmt.Errorf("migrate production database: %w", err)
 	}
-	trigger, err := factory.newBuildTrigger(edgeone.Config{
-		TriggerURL: settings.EdgeOneTriggerURL, StatusURL: settings.EdgeOneStatusURL,
-		Token: settings.EdgeOneToken, RequireHTTPS: true,
+	pagesClient, err := factory.newPages(pages.Config{
+		Token: settings.PagesAPIToken, Region: settings.PagesRegion,
 	})
 	if err != nil {
-		return ServiceDependencies{}, nil, fmt.Errorf("configure EdgeOne build trigger: %w", err)
+		return ServiceDependencies{}, nil, fmt.Errorf("configure Pages client: %w", err)
+	}
+	generator, err := factory.newGenerator()
+	if err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("configure embedded site generator: %w", err)
+	}
+	adminFiles, err := factory.newAdmin()
+	if err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("configure embedded management pages: %w", err)
+	}
+	if _, err := adminweb.NewHandler(adminFiles, http.NotFoundHandler()); err != nil {
+		return ServiceDependencies{}, nil, err
+	}
+	repository := postgres.NewPublisherRepository(database, database)
+	if err := repository.Health(ctx); err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("verify publisher storage: %w", err)
+	}
+	if factory.readSnapshot == nil {
+		return ServiceDependencies{}, nil, errors.New("snapshot reader is required")
+	}
+	worker, err := publisher.NewService(publisher.Options{
+		Repository: repository, Pages: pagesClient, Generate: generator.Generate,
+		ReadSnapshot: func(ctx context.Context, key string) (io.ReadCloser, error) {
+			return factory.readSnapshot(ctx, blobs, key)
+		},
+		Target: publisher.Target{ProjectID: settings.PagesProjectID, Region: settings.PagesRegion, PublicURL: settings.PagesPublicURL, CodeRevision: generator.Identity()},
+	})
+	if err != nil {
+		return ServiceDependencies{}, nil, fmt.Errorf("configure built-in publisher: %w", err)
 	}
 	validator := contract.NewValidator()
 	publishService := publish.NewService(publish.ServiceOptions{
 		Repository: postgres.NewPublishRepository(database), BlobStore: blobs,
-		BuildTrigger: trigger, Validator: validator,
+		BuildTrigger: worker, Validator: validator,
 	})
 	dependencies := ServiceDependencies{
 		Sessions: postgres.NewSessionStore(database),
@@ -190,8 +290,11 @@ func buildProductionDependencies(
 		Assets: assets.NewService(assets.ServiceOptions{
 			Repository: postgres.NewAssetRepository(database), BlobStore: blobs,
 		}),
-		Publish:           publishService,
-		PublishReconciler: publishService,
+		Publish:             publishService,
+		PublishReconciler:   publishService,
+		PublisherReconciler: worker,
+		Publisher:           worker,
+		AdminFiles:          adminFiles,
 	}
 	closeOnError = false
 	return dependencies, database.Close, nil
@@ -235,7 +338,11 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 	if err != nil {
 		return nil, err
 	}
-	return httpapi.NewRouter(httpapi.RouterOptions{
+	var recovery httpapi.PublisherService
+	if dependencies.Publisher != nil {
+		recovery = dependencies.Publisher
+	}
+	api := httpapi.NewRouter(httpapi.RouterOptions{
 		Content:        dependencies.Content,
 		Assets:         dependencies.Assets,
 		Publish:        dependencies.Publish,
@@ -243,7 +350,19 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 		AllowedOrigins: settings.AllowedAdminOrigins,
 		LocalUploads:   dependencies.LocalUploads,
 		Sessions:       sessions,
-	}), nil
+		Publisher:      recovery,
+	})
+	adminFiles := dependencies.AdminFiles
+	if adminFiles == nil {
+		adminFiles, err = webassets.Admin()
+		if err != nil {
+			if settings.Environment == "production" {
+				return nil, err
+			}
+			return api, nil
+		}
+	}
+	return adminweb.NewHandler(adminFiles, api)
 }
 
 // developmentDependencies shares one in-memory state and temporary blob store

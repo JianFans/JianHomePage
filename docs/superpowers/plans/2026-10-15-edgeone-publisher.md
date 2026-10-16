@@ -1,5 +1,7 @@
 # EdgeOne Pages 自动发布实现计划
 
+> 历史计划：独立 Node 发布程序已由 [Go 单程序计划](2026-10-16-go-all-in-one.md) 替代。当前部署请使用 [部署指南](../../DEPLOYMENT.md)。
+
 > **面向 AI 代理的工作者：** 使用 `subagent-driven-development` 完成隔离的构建适配器任务，再内联整合持久化网关；各阶段执行规格和质量审查。
 
 **目标：** 接通现有发布按钮与腾讯云 Pages Direct Upload。

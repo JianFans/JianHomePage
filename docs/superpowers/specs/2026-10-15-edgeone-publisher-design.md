@@ -1,5 +1,7 @@
 # EdgeOne Pages 自动发布设计
 
+> 历史方案：独立 Node 发布程序已由 [Go 单程序设计](2026-10-16-go-all-in-one-design.md) 替代。当前部署请使用 [部署指南](../../DEPLOYMENT.md)。下文保留原设计背景，不作为现行运行方式。
+
 ## 目标与边界
 
 管理端沿用现有审核、发布和回滚操作。Go 服务冻结版本并写入 COS 不可变快照；新增 `apps/publisher` 执行静态构建和 Pages Direct Upload。首页不增加运行时内容 API，腾讯云凭据不进入浏览器或静态产物。

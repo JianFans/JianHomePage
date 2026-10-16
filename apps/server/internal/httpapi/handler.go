@@ -52,6 +52,7 @@ type PublishService interface {
 }
 
 type RouterOptions struct {
+	Publisher      PublisherService
 	Content        ContentService
 	Assets         AssetService
 	Publish        PublishService
@@ -64,6 +65,7 @@ type RouterOptions struct {
 }
 
 type Handler struct {
+	publisher    PublisherService
 	content      ContentService
 	assets       AssetService
 	publish      PublishService
@@ -158,6 +160,7 @@ func NewRouter(options RouterOptions) http.Handler {
 		maxBodyBytes = defaultMaxBodyBytes
 	}
 	handler := &Handler{
+		publisher:    options.Publisher,
 		content:      options.Content,
 		assets:       options.Assets,
 		publish:      options.Publish,
@@ -188,6 +191,8 @@ func NewRouter(options RouterOptions) http.Handler {
 	register("GET /api/v1/publishes/{publishId}", auth.PermissionPublish, handler.getPublish)
 	register("POST /api/v1/publishes/{publishId}/refresh", auth.PermissionPublish, handler.refreshPublish)
 	register("POST /api/v1/rollbacks", auth.PermissionRollback, handler.createRollback)
+	register("GET /api/v1/publisher/builds/{buildId}", auth.PermissionRecoverPublish, handler.inspectBuild)
+	register("POST /api/v1/publisher/builds/{buildId}/recovery", auth.PermissionRecoverPublish, handler.recoverBuild)
 
 	root := http.NewServeMux()
 	sessions := options.Sessions

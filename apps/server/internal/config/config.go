@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -37,13 +38,15 @@ type Config struct {
 	S3SessionToken        string
 	S3UsePathStyle        bool
 	MediaPublicBaseURL    string
-	EdgeOneTriggerURL     string
-	EdgeOneStatusURL      string
-	EdgeOneToken          string
+	PagesAPIToken         string
+	PagesProjectID        string
+	PagesRegion           string
+	PagesPublicURL        string
 	AllowDevIdentity      bool
 	ShutdownTimeout       time.Duration
 }
 
+// Load validates explicit deployment dependencies before creating services.
 func Load(getenv func(string) string) (Config, error) {
 	config := Config{
 		Environment:           valueOrDefault(strings.TrimSpace(getenv("APP_ENV")), "development"),
@@ -62,9 +65,10 @@ func Load(getenv func(string) string) (Config, error) {
 		S3SecretAccessKey:     strings.TrimSpace(getenv("S3_SECRET_ACCESS_KEY")),
 		S3SessionToken:        strings.TrimSpace(getenv("S3_SESSION_TOKEN")),
 		MediaPublicBaseURL:    strings.TrimSpace(getenv("MEDIA_PUBLIC_BASE_URL")),
-		EdgeOneTriggerURL:     strings.TrimSpace(getenv("EDGEONE_TRIGGER_URL")),
-		EdgeOneStatusURL:      strings.TrimSpace(getenv("EDGEONE_STATUS_URL")),
-		EdgeOneToken:          strings.TrimSpace(getenv("EDGEONE_TOKEN")),
+		PagesAPIToken:         strings.TrimSpace(getenv("PAGES_API_TOKEN")),
+		PagesProjectID:        strings.TrimSpace(getenv("PAGES_PROJECT_ID")),
+		PagesRegion:           strings.TrimSpace(getenv("PAGES_REGION")),
+		PagesPublicURL:        strings.TrimSpace(getenv("PAGES_PUBLIC_URL")),
 		ShutdownTimeout:       10 * time.Second,
 	}
 	if !isEnvironment(config.Environment) {
@@ -111,7 +115,7 @@ func Load(getenv func(string) string) (Config, error) {
 			len(config.AllowedAdminOrigins) == 0 || config.S3Endpoint == "" || config.S3Region == "" ||
 			config.S3Bucket == "" || config.S3AccessKeyID == "" || config.S3SecretAccessKey == "" ||
 			config.MediaPublicBaseURL == "" ||
-			config.EdgeOneTriggerURL == "" || config.EdgeOneStatusURL == "" || config.EdgeOneToken == "" {
+			config.PagesAPIToken == "" || config.PagesProjectID == "" || config.PagesRegion == "" || config.PagesPublicURL == "" {
 			return Config{}, ErrMissingProductionConfig
 		}
 	}
@@ -121,9 +125,7 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 	}
 	for name, endpoint := range map[string]string{
-		"S3_ENDPOINT":         config.S3Endpoint,
-		"EDGEONE_TRIGGER_URL": config.EdgeOneTriggerURL,
-		"EDGEONE_STATUS_URL":  config.EdgeOneStatusURL,
+		"S3_ENDPOINT": config.S3Endpoint,
 	} {
 		if endpoint != "" {
 			if err := validateEndpoint(endpoint, config.Environment == "production"); err != nil {
@@ -134,6 +136,26 @@ func Load(getenv func(string) string) (Config, error) {
 	if config.MediaPublicBaseURL != "" {
 		if err := validatePublicBaseURL(config.MediaPublicBaseURL, config.Environment == "production"); err != nil {
 			return Config{}, fmt.Errorf("%w: MEDIA_PUBLIC_BASE_URL: %v", ErrInvalidConfig, err)
+		}
+	}
+	if config.PagesRegion != "" && config.PagesRegion != "china" && config.PagesRegion != "global" {
+		return Config{}, fmt.Errorf("%w: PAGES_REGION must be china or global", ErrInvalidConfig)
+	}
+	if config.PagesProjectID != "" && !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$`).MatchString(config.PagesProjectID) {
+		return Config{}, fmt.Errorf("%w: PAGES_PROJECT_ID is invalid", ErrInvalidConfig)
+	}
+	for _, value := range config.PagesAPIToken {
+		if value <= 32 || value >= 127 {
+			return Config{}, fmt.Errorf("%w: PAGES_API_TOKEN contains invalid characters", ErrInvalidConfig)
+		}
+	}
+	if config.PagesPublicURL != "" {
+		if err := validatePublicBaseURL(config.PagesPublicURL, config.Environment == "production"); err != nil {
+			return Config{}, fmt.Errorf("%w: PAGES_PUBLIC_URL: %v", ErrInvalidConfig, err)
+		}
+		parsed, _ := httpurl.ParseAbsolute(config.PagesPublicURL)
+		if parsed.ForceQuery {
+			return Config{}, fmt.Errorf("%w: PAGES_PUBLIC_URL must not contain a query", ErrInvalidConfig)
 		}
 	}
 
@@ -169,6 +191,7 @@ func loadAdminLogin(settings *Config, rawKey string) error {
 	return nil
 }
 
+// valueOrDefault supplies development defaults only for absent values.
 func valueOrDefault(value, fallback string) string {
 	if value == "" {
 		return fallback
@@ -176,6 +199,7 @@ func valueOrDefault(value, fallback string) string {
 	return value
 }
 
+// isEnvironment restricts dependency modes to the supported deployment states.
 func isEnvironment(value string) bool {
 	switch value {
 	case "development", "test", "production":
@@ -185,6 +209,7 @@ func isEnvironment(value string) bool {
 	}
 }
 
+// parseOrigins deduplicates exact origins while rejecting credentials and paths.
 func parseOrigins(raw string, requireHTTPS bool) ([]string, error) {
 	seen := make(map[string]struct{})
 	origins := make([]string, 0)
@@ -210,6 +235,7 @@ func parseOrigins(raw string, requireHTTPS bool) ([]string, error) {
 	return origins, nil
 }
 
+// validateEndpoint accepts only absolute transport URLs for configured adapters.
 func validateEndpoint(value string, requireHTTPS bool) error {
 	parsed, err := httpurl.ParseAbsolute(value)
 	if err != nil {
@@ -221,6 +247,7 @@ func validateEndpoint(value string, requireHTTPS bool) error {
 	return nil
 }
 
+// validateOIDCIssuer prevents discovery targets containing query or fragments.
 func validateOIDCIssuer(value string, requireHTTPS bool) error {
 	parsed, err := httpurl.ParseAbsolute(value)
 	if err != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
@@ -232,6 +259,7 @@ func validateOIDCIssuer(value string, requireHTTPS bool) error {
 	return nil
 }
 
+// validatePublicBaseURL ensures published URLs remain stable and credential-free.
 func validatePublicBaseURL(value string, requireHTTPS bool) error {
 	parsed, err := httpurl.ParseAbsolute(value)
 	if err != nil || parsed.RawQuery != "" || parsed.Fragment != "" {

@@ -11,6 +11,7 @@ export default [
       '**/.nuxt/**',
       '**/.output/**',
       '**/dist/**',
+      'apps/server/internal/webassets/bundle/**',
       '**/coverage/**',
       '**/playwright-report/**',
       '**/test-results/**',

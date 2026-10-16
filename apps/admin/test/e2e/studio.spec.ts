@@ -4,7 +4,7 @@ import { apply, csrfToken, fixtureSnapshot, navigate, openTools, selectVersion, 
 test('匿名只显示真实 OIDC 登录入口，不暴露连接和令牌表单', async ({ page }) => {
   await page.route('**/api/v1/auth/session', route => route.fulfill({ json: { authenticated: false, loginAvailable: true } }))
   await page.goto('/')
-  await expect(page.getByTestId('studio-login')).toHaveAttribute('href', 'http://127.0.0.1:8080/api/v1/auth/login')
+  await expect(page.getByTestId('studio-login')).toHaveAttribute('href', '/api/v1/auth/login')
   await expect(page.getByTestId('studio-shell')).toHaveCount(0)
   await expect(page.getByLabel('Session token')).toHaveCount(0)
   await expect(page.getByLabel('API base URL')).toHaveCount(0)
