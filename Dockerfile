@@ -1,4 +1,4 @@
-FROM node:25-bookworm-slim AS assets
+FROM node:24-bookworm-slim AS assets
 
 WORKDIR /workspace
 COPY . .

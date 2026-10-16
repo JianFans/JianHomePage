@@ -210,13 +210,32 @@ jobs:
           persist-credentials: false
       - name: Build single-program image
         run: docker build --tag yujian-server:ci .
-      - name: Verify standalone binary starts without network or Node
+      - name: Verify development mode starts without network or Node
         shell: bash
         run: |
-          docker run --detach --rm --network none --name yujian-server-offline --entrypoint /usr/local/bin/yujian-server yujian-server:ci
-          sleep 2
-          test "$(docker inspect --format '{{.State.Running}}' yujian-server-offline)" = true
-          docker rm --force yujian-server-offline
+          # No production configuration is injected; this checks development startup only.
+          fail_startup() {
+            echo "::error::$1"
+            docker inspect --format '{{json .State}}' yujian-server-offline || true
+            docker logs yujian-server-offline || true
+            exit 1
+          }
+          # Keep exited containers until cleanup so startup failures retain their logs.
+          docker run --detach --network none --name yujian-server-offline --entrypoint /usr/local/bin/yujian-server yujian-server:ci || fail_startup "Could not start offline container"
+          for attempt in {1..20}; do
+            state=$(docker inspect --format '{{.State.Status}}' yujian-server-offline) || fail_startup "Could not inspect offline container"
+            case "$state" in
+              running)
+                if docker logs yujian-server-offline 2>&1 | grep -q '"msg":"http server listening"'; then
+                  exit 0
+                fi
+                ;;
+              created) ;;
+              *) fail_startup "Offline container stopped during startup (state: $state)" ;;
+            esac
+            sleep 1
+          done
+          fail_startup "Offline container did not start within 20 seconds"
       - name: Run API and embedded admin smoke test
         shell: bash
         run: |
