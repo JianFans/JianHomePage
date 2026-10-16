@@ -1,5 +1,6 @@
 import {
 	detectLocale,
+	LOCALE_STORAGE_KEY,
 	readLocalePreference,
 	writeLocalePreference,
 } from '../../composables/useLocale'
@@ -49,6 +50,14 @@ describe('detectLocale', () => {
 })
 
 describe('语言偏好存储降级', () => {
+	it('使用浏览器 Storage 保存语言，并与 sessionStorage 隔离', () => {
+		expect(window.localStorage).toBeInstanceOf(window.Storage)
+		expect(window.sessionStorage).toBeInstanceOf(window.Storage)
+		writeLocalePreference(undefined, 'en')
+		expect(readLocalePreference()).toBe('en')
+		expect(window.sessionStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+	})
+
 	it('读取异常时回退为空偏好且不抛错', () => {
 		const storage = { getItem: () => { throw new Error('storage blocked') } }
 		expect(readLocalePreference(storage)).toBeNull()

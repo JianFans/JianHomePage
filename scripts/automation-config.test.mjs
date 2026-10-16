@@ -97,30 +97,25 @@ test('Dependabot 覆盖所有依赖生态并按周执行', async () => {
     assert.equal(updates.get(key).schedule.interval, 'weekly')
   }
 
-  const npmUpdate = updates.get('npm:/')
-  const ignoredMajorUpdates = new Map(npmUpdate.ignore.map(rule => [
-    rule['dependency-name'],
-    rule['update-types'],
-  ]))
+  assert.deepEqual(updates.get('npm:/').ignore ?? [], [], '依赖升级必须通过兼容性验证，不能忽略新版')
 
-  for (const dependency of ['vitest', '@vitest/coverage-v8']) {
-    assert.deepEqual(
-      ignoredMajorUpdates.get(dependency),
-      ['version-update:semver-major'],
-      `Dependabot 应暂缓 ${dependency} 的不兼容主版本升级`,
-    )
-  }
-
-  assert.ok(updates.get('docker:/apps/publisher').ignore?.some(rule =>
-    rule['dependency-name'] === 'node' && rule['update-types']?.includes('version-update:semver-major'),
-  ), '发布器应保持 package.json 声明的 Node 主版本，迁移主版本需单独验证')
+  assert.ok(!updates.get('docker:/apps/publisher').ignore?.some(rule =>
+    rule['dependency-name'] === 'node' || rule['dependency-name'] === '*',
+  ), '发布器的 Node 更新必须交由兼容性验证，不能通过忽略新版规避')
 })
 
 test('发布镜像使用固定代码身份和非 root 构建环境，忽略本机产物与秘密', async () => {
   const dockerfile = await readText('apps/publisher/Dockerfile')
   const dockerignore = await readText('apps/publisher/Dockerfile.dockerignore')
-  assert.match(dockerfile, /^FROM node:22(?:\.\d+\.\d+)?-[^\s]+$/m)
+  const rootPackage = JSON.parse(await readText('package.json'))
+  assert.match(rootPackage.engines.node, /^>=\d+\.\d+\.\d+$/, 'Node 只声明最低版本，不限制后续主版本')
+  const image = dockerfile.match(/^FROM node:(\d+)(?:\.\d+\.\d+)?-[^\s]+$/m)
+  assert.ok(image, '发布镜像必须声明明确的 Node 版本标签')
+  assert.ok(Number(image[1]) >= Number(rootPackage.engines.node.match(/\d+/)[0]))
   assert.match(dockerfile, /^USER node$/m)
+  assert.match(dockerfile, /npm install --global --prefix \/opt\/pnpm/)
+  assert.ok(dockerfile.includes('require(\'./package.json\').packageManager'))
+  assert.doesNotMatch(dockerfile, /\bcorepack\b/)
   assert.match(dockerfile, /pnpm install --frozen-lockfile/)
   assert.match(dockerfile, /\.publisher-revision/)
   assert.match(dockerfile, /^ENTRYPOINT \["node", "apps\/publisher\/src\/main.mjs"\]$/m)
