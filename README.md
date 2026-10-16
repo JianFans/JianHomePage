@@ -59,7 +59,7 @@
 
 | 工具 | 版本 |
 | --- | --- |
-| Node.js | 22 |
+| Node.js | >=22.22.3，发布镜像使用 25，CI 按清单选择匹配的最新版本 |
 | pnpm | 12.11.2 |
 | Go | 1.25.1 |
 | Chrome | 用于 Playwright E2E |
@@ -159,6 +159,8 @@ pnpm --filter @yujian/admin test:e2e
 TypeScript 门槛为行和语句 80%、函数 75%、分支 70%；Go 语句覆盖率门槛为 80%。GitHub Actions 在 `master` 的 push、Pull Request 和手动触发时并行执行前端、Go、覆盖率、E2E 与容器门禁。Go 门禁还会执行 race 测试，前端和 Go 生成命令执行后必须保持已跟踪契约文件不变。失败的 Playwright 报告和覆盖率产物会保留为工作流制品。
 
 Dependabot 每周检查 pnpm 工作区、Go Modules、Docker 基础镜像和 GitHub Actions。Node.js、pnpm、Go 与应用依赖版本由 `package.json`、`go.mod` 和锁文件管理，Docker 基础镜像版本由 `Dockerfile` 管理；工作流不重复声明这些版本。GitHub Actions 引用按工作流语法保留在 YAML 中，并由 Dependabot 更新。前端门禁还会按根锁文件审计生产依赖的高危和严重漏洞。
+
+浏览器单元测试使用 Vitest 5 与 Nuxt 测试环境，确保 Node.js 25 及以后内置的 Web Storage 不覆盖模拟浏览器的 `localStorage` 和 `sessionStorage`。测试无需配置 Node.js 的本地存储文件，语言偏好仍使用浏览器 Storage 并在测试间清理。
 
 生产依赖审计：
 

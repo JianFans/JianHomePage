@@ -2,7 +2,7 @@
   "name": "yujian-me",
   "private": true,
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=22.22.3"
   },
   "packageManager": "pnpm@12.11.2",
   "scripts": {
