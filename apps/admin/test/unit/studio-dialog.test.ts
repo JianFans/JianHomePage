@@ -33,7 +33,8 @@ it('guards iframe Escape while busy and removes listeners on close and unmount',
   const wrapper = mount(StudioDialog, {
     attachTo: document.body,
     props: { open: false, title: 'Preview', closeLabel: 'Close', busy: true, onClose: close },
-    slots: { default: '<iframe />' },
+    // srcdoc creates an isolated same-origin document without enabling network page loading.
+    slots: { default: '<iframe srcdoc="<button>Preview</button>" />' },
   })
   try {
     await wrapper.setProps({ open: true })
