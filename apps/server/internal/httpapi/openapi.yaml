@@ -981,10 +981,9 @@
       },
       "PublisherBuild": {
         "type": "object",
-        "required": ["id", "idempotencyKey", "request", "target", "phase", "deploymentId", "previewUrl", "error", "reconciliation", "createdAt"],
+        "required": ["id", "request", "target", "phase", "deploymentId", "previewUrl", "error", "reconciliation", "createdAt"],
         "properties": {
           "id": { "type": "string" },
-          "idempotencyKey": { "type": "string" },
           "request": { "type": "object", "required": ["releaseId", "snapshotKey", "snapshotChecksum"], "properties": { "releaseId": { "type": "string" }, "snapshotKey": { "type": "string" }, "snapshotChecksum": { "type": "string" } } },
           "target": { "type": "object", "required": ["projectId", "region", "codeRevision", "publicUrl"], "properties": { "projectId": { "type": "string" }, "region": { "enum": ["china", "global"] }, "codeRevision": { "type": "string" }, "publicUrl": { "type": "string", "format": "uri" } } },
           "phase": { "enum": ["queued", "building", "submitting", "deployed", "succeeded", "failed"] },

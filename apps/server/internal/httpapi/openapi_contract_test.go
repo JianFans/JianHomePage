@@ -138,6 +138,13 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	if !containsString(document.Components.Schemas["AdminSession"].Required, "loginAvailable") {
 		t.Fatal("session availability contract missing")
 	}
+	buildSchema := document.Components.Schemas["PublisherBuild"]
+	if containsString(buildSchema.Required, "idempotencyKey") {
+		t.Fatal("publisher responses do not expose the internal idempotency key")
+	}
+	if _, exists := buildSchema.Properties["idempotencyKey"]; exists {
+		t.Fatal("publisher response properties must omit the internal idempotency key")
+	}
 	if _, exists := document.Components.Schemas["VersionWrite"].Properties["name"]; exists {
 		t.Fatal("update schema must reject display names")
 	}
