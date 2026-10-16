@@ -78,6 +78,11 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(发布容器)"
+    # package.json 当前仅支持 Node 22；主版本迁移需同步验证运行时与构建工具。
+    ignore:
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /

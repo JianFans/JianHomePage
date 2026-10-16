@@ -110,12 +110,16 @@ test('Dependabot 覆盖所有依赖生态并按周执行', async () => {
       `Dependabot 应暂缓 ${dependency} 的不兼容主版本升级`,
     )
   }
+
+  assert.ok(updates.get('docker:/apps/publisher').ignore?.some(rule =>
+    rule['dependency-name'] === 'node' && rule['update-types']?.includes('version-update:semver-major'),
+  ), '发布器应保持 package.json 声明的 Node 主版本，迁移主版本需单独验证')
 })
 
 test('发布镜像使用固定代码身份和非 root 构建环境，忽略本机产物与秘密', async () => {
   const dockerfile = await readText('apps/publisher/Dockerfile')
   const dockerignore = await readText('apps/publisher/Dockerfile.dockerignore')
-  assert.match(dockerfile, /^FROM node:22-[^\s]+$/m)
+  assert.match(dockerfile, /^FROM node:22(?:\.\d+\.\d+)?-[^\s]+$/m)
   assert.match(dockerfile, /^USER node$/m)
   assert.match(dockerfile, /pnpm install --frozen-lockfile/)
   assert.match(dockerfile, /\.publisher-revision/)
