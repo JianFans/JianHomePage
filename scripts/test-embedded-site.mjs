@@ -41,8 +41,8 @@ try {
   const runner = spawn(process.execPath, [require.resolve('@playwright/test/cli'), 'test'], {
     cwd: resolve(root, 'apps/web'), stdio: 'inherit', env: { ...process.env, YUJIAN_EMBEDDED_SITE: '1', PLAYWRIGHT_BASE_URL: `http://127.0.0.1:${server.address().port}` },
   })
-  const [code] = await once(runner, 'exit')
-  if (code !== 0) throw new Error('Embedded site browser checks failed')
+  const [code, signal] = await once(runner, 'exit')
+  if (code !== 0) throw new Error(`Embedded site browser checks failed (code: ${code}, signal: ${signal ?? 'none'})`)
 } finally {
   server.closeAllConnections()
   await new Promise(resolveClose => server.close(resolveClose))
