@@ -65,6 +65,8 @@ func NewHandler(adminFS fs.FS, api http.Handler) (http.Handler, error) {
 		cache := "no-cache"
 		if strings.HasSuffix(name, ".html") {
 			cache = "no-store"
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		} else if strings.HasPrefix(name, "_nuxt/") && hashedAsset.MatchString(path.Base(name)) {
 			cache = "public, max-age=31536000, immutable"
 		}

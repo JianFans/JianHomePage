@@ -79,6 +79,13 @@ func TestHandlerServesOnlyPublishedFiles(t *testing.T) {
 			if response.Header().Get("X-Content-Type-Options") != "nosniff" {
 				t.Error("missing nosniff")
 			}
+			csp, frameOptions := "", ""
+			if tc.mime == "text/html" {
+				csp, frameOptions = "frame-ancestors 'self'", "SAMEORIGIN"
+			}
+			if response.Header().Get("Content-Security-Policy") != csp || response.Header().Get("X-Frame-Options") != frameOptions {
+				t.Errorf("unexpected framing policy: %v", response.Header())
+			}
 		})
 	}
 }
@@ -100,6 +107,9 @@ func TestHandlerPreservesAPIRoutes(t *testing.T) {
 		if response.Code != 404 || response.Header().Get("Content-Type") != "application/json" || !strings.Contains(response.Body.String(), path) {
 			t.Fatalf("route %s changed: %d %s", path, response.Code, response.Body.String())
 		}
+		if response.Header().Get("Content-Security-Policy") != "" || response.Header().Get("X-Frame-Options") != "" {
+			t.Fatalf("HTML framing policy applied to API route %s", path)
+		}
 	}
 }
 
@@ -114,6 +124,13 @@ func TestHandlerMethods(t *testing.T) {
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodHead, path, nil))
 		if response.Code != 200 || response.Body.Len() != 0 || response.Header().Get("Content-Length") == "" {
 			t.Fatalf("HEAD %s: %d %s", path, response.Code, response.Body.String())
+		}
+		csp, frameOptions := "", ""
+		if path == "/" || path == "/preview" {
+			csp, frameOptions = "frame-ancestors 'self'", "SAMEORIGIN"
+		}
+		if response.Header().Get("Content-Security-Policy") != csp || response.Header().Get("X-Frame-Options") != frameOptions {
+			t.Errorf("HEAD %s: unexpected framing policy: %v", path, response.Header())
 		}
 		response = httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
