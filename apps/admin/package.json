@@ -26,6 +26,6 @@
     "@vue/test-utils": "2.5.1",
     "happy-dom": "21.0.1",
     "vitest": "4.1.11",
-    "vue-tsc": "3.3.12"
+    "vue-tsc": "3.3.13"
   }
 }
