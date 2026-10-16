@@ -63,7 +63,7 @@ docker run --detach --name yujian-publisher --restart unless-stopped \
 | `PUBLISHER_WORK_ROOT` | 默认系统临时目录中的 `yujian-publisher`，必须位于源码目录之外。 |
 | `PUBLISHER_BUILD_TIMEOUT_MS` | 默认 `600000`，读取快照、只读产物扫描与构建命令共用总预算，可配置范围为 10000–1800000 ms。 |
 
-依赖在镜像构建时执行 `pnpm install --frozen-lockfile`。发布进程直接执行工作区安装的固定版本 pnpm JavaScript CLI，禁用脚本执行前的自动依赖安装；不依赖 root 用户的 Corepack 缓存，也不会在发布时下载构建工具。运行时只执行快照路径守卫、Schema 类型生成、公开站生成和静态产物检查；完整 lint、类型、测试和覆盖率由 CI 在镜像发布前执行。上传目录不携带根 `edgeone.json` 的安装命令，Pages 不再次构建。
+依赖在镜像构建时执行 `pnpm install --frozen-lockfile`。根目录 `packageManager` 与发布进程的 pnpm 依赖保持同一版本。pnpm 12 的原生二进制由锁文件中的可选依赖提供；`allowBuilds.pnpm: false` 明确跳过改写 CLI 入口的安装脚本。发布进程通过固定的 `bin/pnpm.mjs` Node 包装入口启动，设置 `COREPACK_ENABLE_NETWORK=0`，并禁用脚本执行前的自动依赖安装；不依赖 root 用户的 Corepack 缓存，缺少原生二进制时直接失败，不在发布时下载构建工具。运行时只执行快照路径守卫、Schema 类型生成、公开站生成和静态产物检查；完整 lint、类型、测试和覆盖率由 CI 在镜像发布前执行。上传目录不携带根 `edgeone.json` 的安装命令，Pages 不再次构建。
 
 快照最多 8 MiB，逐字节核对 SHA-256 和内嵌 `releaseId`。开发 fixture 路径及已知样例媒体引用会被拒绝；已知样例文件也会从上传产物移除。上线前需在管理端换成已登记权利与稳定公开地址的真实素材。
 

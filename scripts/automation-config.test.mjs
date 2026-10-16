@@ -75,6 +75,8 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
 
   const rootPackage = JSON.parse(await readText('package.json'))
   assert.equal(publisherPackage.dependencies.pnpm, rootPackage.packageManager.split('@')[1])
+  const workspace = await readYaml('pnpm-workspace.yaml')
+  assert.equal(workspace.allowBuilds.pnpm, false, 'pnpm 安装脚本不得改写发布器使用的 CLI 入口')
   assert.equal(rootPackage.scripts['test:coverage:go'], 'node scripts/go-coverage.mjs --threshold=80')
   assert.match(rootPackage.scripts['verify:go'], /^pnpm check:format:go && /)
   const webPackage = JSON.parse(await readText('apps/web/package.json'))
@@ -118,6 +120,9 @@ test('发布镜像使用固定代码身份和非 root 构建环境，忽略本�
   assert.match(dockerfile, /^FROM node:22-[^\s]+$/m)
   assert.match(dockerfile, /^USER node$/m)
   assert.match(dockerfile, /pnpm install --frozen-lockfile/)
+  assert.match(dockerfile, /npm install --global --prefix \/opt\/pnpm/)
+  assert.match(dockerfile, /require\('\.\/package\.json'\)\.packageManager/)
+  assert.doesNotMatch(dockerfile, /corepack enable/)
   assert.match(dockerfile, /\.publisher-revision/)
   assert.match(dockerfile, /^ENTRYPOINT \["node", "apps\/publisher\/src\/main.mjs"\]$/m)
   for (const ignored of ['.git', '**/node_modules', '**/.output', '**/.env', '**/.env.*', '.publisher-revision']) {

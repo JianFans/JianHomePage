@@ -4,6 +4,8 @@ packages:
 
 allowBuilds:
   esbuild: true
+  # Use the Node wrapper and lockfile-installed native binary without rewriting CLI shims.
+  pnpm: false
 
 auditConfig:
   ignoreGhsas:

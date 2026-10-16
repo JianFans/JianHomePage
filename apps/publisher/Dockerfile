@@ -2,7 +2,8 @@ FROM node:22-bookworm-slim
 
 WORKDIR /workspace
 COPY --chown=node:node . .
-RUN corepack enable && corepack install && pnpm install --frozen-lockfile
+RUN npm install --global --prefix /opt/pnpm "$(node -p "require('./package.json').packageManager")" \
+    && /opt/pnpm/bin/pnpm install --frozen-lockfile
 
 # The immutable image stamp prevents queued work from silently using different source.
 ARG CODE_REVISION

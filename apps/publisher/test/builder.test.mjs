@@ -84,8 +84,24 @@ test('uses the workspace-installed pnpm CLI without any global Node or Corepack 
   const cli = fixture.calls.find(call => call.args.includes('@yujian/schema')).args[0]
   assert.ok(isAbsolute(cli))
   const installed = createRequire(import.meta.url)
-  assert.equal(cli, resolve(dirname(installed.resolve('pnpm')), installed('pnpm').bin.pnpm))
+  assert.equal(cli, resolve(dirname(installed.resolve('pnpm/package.json')), 'bin/pnpm.mjs'))
   await access(cli)
+})
+
+test('runs the pinned pnpm Node entry offline without global shims or install scripts', async (t) => {
+  const fixture = await setup(t)
+  await createBuilder(fixture.options)(fixture.job)
+  const call = fixture.calls.find(call => call.args.includes('@yujian/schema'))
+  const installed = createRequire(import.meta.url)
+  const result = childProcess.spawnSync(call.command, [call.args[0], '--version'], {
+    cwd: fixture.options.sourceRoot,
+    env: { ...call.env, PATH: '', COREPACK_ENABLE_NETWORK: '0' },
+    encoding: 'utf8',
+    timeout: 15000,
+    windowsHide: true,
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), installed('pnpm/package.json').version)
 })
 
 test('child environments exclude credentials, NODE_OPTIONS and arbitrary inherited values', async (t) => {
@@ -105,6 +121,7 @@ test('child environments exclude credentials, NODE_OPTIONS and arbitrary inherit
     assert.equal(env.NODE_ENV, 'production')
     assert.equal(env.CI, 'true')
     assert.equal(env.NUXT_TELEMETRY_DISABLED, '1')
+    assert.equal(env.COREPACK_ENABLE_NETWORK, '0')
   }
 })
 
