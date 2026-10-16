@@ -1,6 +1,8 @@
 # 遇健我
 
-「遇健我」是面向音乐人王子健的粉丝站点，目标域名为 `yujian.me`。公开首页采用 Nuxt 静态生成，内容来自经过审核的不可变快照；管理端与 Go 服务负责内容版本、素材和发布编排。
+「遇健我」是面向音乐人王子健的粉丝站点，网址为 `yujian.me`。访客看到的是提前生成的网页；管理员在后台编辑、审核和发布，服务器自动生成新版网页并上传到腾讯云 EdgeOne Pages。
+
+**准备部署？从 [部署操作指南](docs/DEPLOYMENT.md) 开始。** 它按实际操作顺序说明要开通什么、在哪填配置、怎么启动和首次发布。
 
 项目坚持静态优先、契约优先和服务商可替换。公开站不依赖运行时内容 API，第三方音乐与社交平台只作为跳转目标，不作为浏览器端数据源。
 
@@ -174,45 +176,15 @@ PostgreSQL 集成测试需要显式设置 `YUJIAN_TEST_POSTGRES_URL`，否则会
 
 ## 生产上线
 
-### 公开静态站
+按 [部署操作指南](docs/DEPLOYMENT.md) 从头操作。默认方案是：公开首页放 EdgeOne Pages，管理页面、Go 后端和发布程序放自己的服务器，文件放 COS，数据放 PostgreSQL。
 
-创建 EdgeOne Pages **Direct Upload** 项目，部署独立 `apps/publisher` 容器。管理端发布后，Go 写入 COS 审核快照；发布进程下载并核对 checksum，注入 `CONTENT_SNAPSHOT_PATH`，生成 `apps/web/.output/public`，再通过官方 SDK 上传 Production 部署。
+第一次需要配置云服务和账号登录。配置完成后，日常更新只需在后台编辑、保存、审核、点发布；发布程序通过腾讯云官方接口自动上传网页。
 
-首次配置、项目 ID、Token、数据库迁移、HTTPS 网关和异常恢复见 [Pages 自动发布部署说明](apps/publisher/README.md)。根 [edgeone.json](edgeone.json) 保留 Git 集成构建基线，Direct Upload 不执行其中的命令。缓存策略、响应头和上线后检查见 [apps/web/EDGEONE.md](apps/web/EDGEONE.md)。
-
-### Go 服务
-
-生产环境需要 PostgreSQL、OIDC、S3/COS、稳定媒体域名、EdgeOne 构建接口和管理端 HTTPS Origin。完整变量、启动示例、API 行为和迁移说明见 [apps/server/README.md](apps/server/README.md)。
-
-根 Dockerfile 只封装 Go API。构建并检查开发模式健康端点：
-
-```bash
-docker build --tag yujian-server:local .
-docker run --detach --rm --name yujian-server-local --publish 127.0.0.1:8080:8080 yujian-server:local
-curl --fail http://127.0.0.1:8080/healthz
-docker rm --force yujian-server-local
-```
-
-生产运行时通过平台密钥和环境变量注入真实依赖，不把 `.env`、凭据或公开站静态产物写入镜像。
-
-首次部署包含 `0003_publish_target_freeze.sql` 的版本前，必须确认没有 `pending` 或 `building` 发布任务。升级已有数据库时，`0004_asset_source_url.sql` 会使用当前 `MEDIA_PUBLIC_BASE_URL` 回填旧素材；迁移完成前不得切换公开媒体域名。为兼容滚动升级和旧二进制回滚，本版本暂不把 `source_url` 收紧为 `NOT NULL`；旧实例全部退出并度过回滚窗口后，再由后续迁移完成约束收紧。不要手工修改 checksum，也不要跳过迁移。
-
-`0005_asset_list_indexes.sql` 在启动事务中建立素材分页索引，首次执行会暂时阻塞素材表写入。已有大表应安排维护窗口，并为首次迁移预留启动时间。完整迁移约束见 [服务端安全与运维](apps/server/README.md#安全与运维)。
-
-### 上线检查清单
-
-- 经过 CI 的固定代码提交已构建为发布镜像，Pages 项目类型为 Direct Upload。
-- `master` 工作区干净，提交历史符合原子化约束。
-- 前端、Go、覆盖率、E2E、容器扫描和生产依赖审计通过。
-- 已准备非 fixture 的审核快照；发布进程会从 COS 下载并注入 `CONTENT_SNAPSHOT_PATH`。
-- PostgreSQL、OIDC、COS、媒体域名和 EdgeOne 参数已配置。
-- `MEDIA_PUBLIC_BASE_URL` 指向长期稳定的 EdgeOne 媒体域名；迁移对象存储源站时保持该公开域名不变。
-- COS 直传 CORS 允许管理端 Origin、`PUT`、`HEAD`、`Content-Type` 和 `X-Amz-Checksum-Sha256`。
-- EdgeOne 已配置 `yujian.me`、TLS、`/api/*` 回源和媒体域名。
-- 数据库迁移、`GET /healthz`、首页、素材、发布和回滚已在真实环境冒烟。
+管理页面需要单独打包，Go 镜像不包含它。代码升级和内容更新也是两件事：换程序需要重新打包部署，改内容直接在后台发布。已有数据库的升级注意事项见 [服务端安全与运维](apps/server/README.md#安全与运维)，发布中断后的处理见 [发布恢复步骤](apps/publisher/README.md#超时恢复与升级)。
 
 ## 文档索引
 
+- [部署操作指南：准备、配置、启动和首次发布](docs/DEPLOYMENT.md)
 - [公开站 EdgeOne 部署基线](apps/web/EDGEONE.md)
 - [Go 服务配置、API 与运维](apps/server/README.md)
 - [Pages 自动发布进程部署与恢复](apps/publisher/README.md)

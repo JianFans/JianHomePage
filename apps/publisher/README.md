@@ -1,6 +1,8 @@
 # Pages 自动发布进程
 
-`apps/publisher` 将 Go 内容服务的发布任务转换为腾讯云 EdgeOne Pages Direct Upload。它从 COS/S3 读取不可变快照，在固定代码版本上生成公开站，再使用官方 `@edgeone/makers-sdk` 上传。管理端无需手动打包；原有发布、刷新与回滚按钮沿用 Go API。
+`apps/publisher` 是跑在自己服务器上的发布程序。你在后台点发布后，它从 COS 下载这次审核通过的内容，生成首页，再调用腾讯云官方接口把网页上传到 EdgeOne Pages。日常改内容不用手动打包上传。
+
+第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)。下面保留完整参数、接口和故障处理，供配置时查阅。
 
 ## 部署结构
 
@@ -17,7 +19,7 @@ Pages 官方 SDK 使用 **Pages API Token**，不是腾讯云通用 SecretId/Sec
 ## 首次部署
 
 1. 在 Pages 控制台创建 **Direct Upload** 项目，记录项目 ID、账号地域和 API Token。Git 集成项目不能直接替代 Direct Upload 项目。绑定 `yujian.me`、配置 TLS、关闭 SPA fallback，确认域名已完成服务商要求的接入条件。
-2. 先部署本分支 Go API，让启动迁移创建 `0008_publisher_builds`。该迁移只增加独立任务表，不改已有版本。为发布进程授予该表的查询、插入和更新权限，不需要给它 DDL 权限。
+2. 先启动同一代码版本的 Go 后端，它会自动创建发布程序需要的 `0008_publisher_builds` 数据表。为发布程序的数据库账号授予该表的查询、插入和更新权限，不需要允许它创建或修改表结构。
 3. 为发布进程准备 COS 账号，只允许目标桶 `snapshots/*` 的 `GetObject`。与 Go API 使用相同桶和地域，但可以使用权限更小的独立密钥。
 4. 在经过 CI 的干净提交上构建发布镜像。代码身份写入镜像，不能在运行中修改源码、安装依赖或挂载另一个源码目录。
 

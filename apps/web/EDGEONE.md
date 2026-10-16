@@ -1,10 +1,12 @@
-# EdgeOne Pages 部署基线
+# EdgeOne 域名、缓存和网页检查
 
-公开首页使用 Nuxt 静态生成，不依赖运行时内容 API。生产自动发布使用 [独立发布进程](../publisher/README.md)：读取 COS 审核快照、生成产物，再通过腾讯云官方 SDK 上传 EdgeOne Pages Direct Upload 项目。Go 服务通过独立源站接入 EdgeOne，不与首页静态托管耦合。
+首次部署按 [部署操作指南](../../docs/DEPLOYMENT.md) 操作。公开首页在服务器上提前生成，再由发布程序自动上传 EdgeOne Pages；访客打开首页时不用请求 Go 后端获取内容。本文用于查 Pages 设置、缓存和上线后的检查方法。
 
 ## Git 构建基线与 Direct Upload
 
-下表与根 `edgeone.json` 是 Git 集成构建的基线。采用自动发布进程时，应创建 Direct Upload 项目；构建在自己的服务器完成，Pages 只接收 `apps/web/.output/public`，不执行下表命令，也不上传根构建配置。
+本项目的后台自动发布方案使用 **Direct Upload（直接上传）** 项目：服务器生成网页，Pages 接收 `apps/web/.output/public` 里的文件。按这套方案部署，不需要在 Pages 填安装命令或构建命令，也不要同时启用 Git 自动部署。
+
+下面仅供单独研究 Git 集成构建时参考，与根 `edgeone.json` 对应，不是首次部署的额外步骤：
 
 | 配置项 | 值 |
 | --- | --- |
@@ -12,7 +14,7 @@
 | Install command | `pnpm install --frozen-lockfile` |
 | Build command | `pnpm verify:edgeone` |
 | Output directory | `apps/web/.output/public` |
-| Node.js | `22` |
+| Node.js | 满足根 `package.json` 的 `engines.node` 要求 |
 
 关闭 SPA fallback。首页、`robots.txt` 和 `sitemap.xml` 都是构建时生成的真实文件，不应回退到同一个 HTML。
 
