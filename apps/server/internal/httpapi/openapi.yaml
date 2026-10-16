@@ -9,6 +9,31 @@
     { "url": "https://api.yujian.me" }
   ],
   "paths": {
+    "/api/v1/publisher/builds/{buildId}": {
+      "get": {
+        "operationId": "inspectPublisherBuild",
+        "description": "Administrator-only inspection of a durable cloud deployment task. Never triggers a new deployment.",
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+        "parameters": [{ "name": "buildId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Frozen task and recovery history", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherBuild" } } } },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/v1/publisher/builds/{buildId}/recovery": {
+      "post": {
+        "operationId": "recoverPublisherBuild",
+        "description": "Administrator-only resolution of an uncertain submitting task. Cookie authentication requires exact Origin and X-CSRF-Token. Records the authenticated subject, never a body-supplied identity. Existing cloud deployment IDs are verified against the frozen project and Production environment. Confirmed absence marks failure without resubmitting.",
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+        "parameters": [{ "name": "buildId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherRecovery" } } } },
+        "responses": {
+          "200": { "description": "Recovered durable task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherBuild" } } } },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
     "/api/v1/auth/session": {
       "get": {
         "operationId": "getSession",
@@ -941,6 +966,33 @@
           "uploadUrl": { "type": "string", "format": "uri" },
           "headers": { "type": "object", "additionalProperties": { "type": "string" } },
           "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PublisherRecovery": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["note"],
+        "properties": {
+          "deploymentId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$" },
+          "confirmedAbsent": { "const": true },
+          "note": { "type": "string", "minLength": 1, "maxLength": 500, "description": "Nonblank operator verification note, no control characters; maximum 500 UTF-16 units." }
+        },
+        "oneOf": [{ "required": ["deploymentId"], "not": { "required": ["confirmedAbsent"] } }, { "required": ["confirmedAbsent"], "not": { "required": ["deploymentId"] } }]
+      },
+      "PublisherBuild": {
+        "type": "object",
+        "required": ["id", "idempotencyKey", "request", "target", "phase", "deploymentId", "previewUrl", "error", "reconciliation", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "idempotencyKey": { "type": "string" },
+          "request": { "type": "object", "required": ["releaseId", "snapshotKey", "snapshotChecksum"], "properties": { "releaseId": { "type": "string" }, "snapshotKey": { "type": "string" }, "snapshotChecksum": { "type": "string" } } },
+          "target": { "type": "object", "required": ["projectId", "region", "codeRevision", "publicUrl"], "properties": { "projectId": { "type": "string" }, "region": { "enum": ["china", "global"] }, "codeRevision": { "type": "string" }, "publicUrl": { "type": "string", "format": "uri" } } },
+          "phase": { "enum": ["queued", "building", "submitting", "deployed", "succeeded", "failed"] },
+          "deploymentId": { "type": "string" },
+          "previewUrl": { "type": "string" },
+          "error": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "reconciliation": { "type": ["array", "null"], "items": { "type": "object", "required": ["note", "at"], "properties": { "deploymentId": { "type": "string" }, "confirmedAbsent": { "const": true }, "note": { "type": "string" }, "actorSubject": { "type": "string" }, "at": { "type": "string", "format": "date-time" } } } }
         }
       },
       "PublishRequest": {

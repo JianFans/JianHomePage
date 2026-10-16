@@ -57,25 +57,38 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	if document.OpenAPI != "3.1.0" {
 		t.Fatalf("unexpected OpenAPI version %q", document.OpenAPI)
 	}
+	for path, methods := range document.Paths {
+		for method, operation := range methods {
+			for _, requirement := range operation.Security {
+				for scheme := range requirement {
+					if _, ok := document.Components.SecuritySchemes[scheme]; !ok {
+						t.Fatalf("%s %s references undefined security scheme %q", method, path, scheme)
+					}
+				}
+			}
+		}
+	}
 
 	expected := map[string]string{
-		"GET /healthz":                               "getHealth",
-		"POST /api/v1/versions":                      "createVersion",
-		"GET /api/v1/versions":                       "listVersions",
-		"POST /api/v1/versions/{versionId}/clone":    "cloneVersion",
-		"GET /api/v1/versions/{versionId}":           "getVersion",
-		"PUT /api/v1/versions/{versionId}":           "updateVersion",
-		"POST /api/v1/versions/{versionId}/review":   "submitReview",
-		"POST /api/v1/versions/{versionId}/approve":  "approveReview",
-		"POST /api/v1/versions/{versionId}/reject":   "rejectReview",
-		"GET /api/v1/assets":                         "listAssets",
-		"POST /api/v1/assets/uploads":                "createAssetUpload",
-		"POST /api/v1/assets/{assetId}/complete":     "completeAssetUpload",
-		"DELETE /api/v1/assets/{assetId}":            "deleteAsset",
-		"POST /api/v1/publishes":                     "createPublish",
-		"GET /api/v1/publishes/{publishId}":          "getPublish",
-		"POST /api/v1/publishes/{publishId}/refresh": "refreshPublish",
-		"POST /api/v1/rollbacks":                     "createRollback",
+		"GET /healthz":                                     "getHealth",
+		"POST /api/v1/versions":                            "createVersion",
+		"GET /api/v1/versions":                             "listVersions",
+		"POST /api/v1/versions/{versionId}/clone":          "cloneVersion",
+		"GET /api/v1/versions/{versionId}":                 "getVersion",
+		"PUT /api/v1/versions/{versionId}":                 "updateVersion",
+		"POST /api/v1/versions/{versionId}/review":         "submitReview",
+		"POST /api/v1/versions/{versionId}/approve":        "approveReview",
+		"POST /api/v1/versions/{versionId}/reject":         "rejectReview",
+		"GET /api/v1/assets":                               "listAssets",
+		"POST /api/v1/assets/uploads":                      "createAssetUpload",
+		"POST /api/v1/assets/{assetId}/complete":           "completeAssetUpload",
+		"DELETE /api/v1/assets/{assetId}":                  "deleteAsset",
+		"POST /api/v1/publishes":                           "createPublish",
+		"GET /api/v1/publishes/{publishId}":                "getPublish",
+		"POST /api/v1/publishes/{publishId}/refresh":       "refreshPublish",
+		"POST /api/v1/rollbacks":                           "createRollback",
+		"GET /api/v1/publisher/builds/{buildId}":           "inspectPublisherBuild",
+		"POST /api/v1/publisher/builds/{buildId}/recovery": "recoverPublisherBuild",
 	}
 	for key, operationID := range expected {
 		method, path := splitOperation(t, key)

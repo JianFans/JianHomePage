@@ -19,14 +19,15 @@ const (
 type Permission string
 
 const (
-	PermissionEditDraft    Permission = "edit_draft"
-	PermissionSubmitReview Permission = "submit_review"
-	PermissionReview       Permission = "review"
-	PermissionPublish      Permission = "publish"
-	PermissionRollback     Permission = "rollback"
-	PermissionCreateAsset  Permission = "create_asset"
-	PermissionDeleteAsset  Permission = "delete_asset"
-	PermissionManageUsers  Permission = "manage_users"
+	PermissionEditDraft      Permission = "edit_draft"
+	PermissionSubmitReview   Permission = "submit_review"
+	PermissionReview         Permission = "review"
+	PermissionPublish        Permission = "publish"
+	PermissionRollback       Permission = "rollback"
+	PermissionCreateAsset    Permission = "create_asset"
+	PermissionDeleteAsset    Permission = "delete_asset"
+	PermissionManageUsers    Permission = "manage_users"
+	PermissionRecoverPublish Permission = "recover_publish"
 )
 
 var permissionsByRole = map[Role]map[Permission]struct{}{
@@ -52,6 +53,7 @@ var permissionsByRole = map[Role]map[Permission]struct{}{
 		PermissionCreateAsset,
 		PermissionDeleteAsset,
 		PermissionManageUsers,
+		PermissionRecoverPublish,
 	),
 }
 
