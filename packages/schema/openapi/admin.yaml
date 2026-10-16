@@ -6,7 +6,7 @@
     "description": "内容草稿、素材、审核、发布与回滚接口。管理操作接受 Bearer JWT 或 HttpOnly 会话 Cookie；Cookie 写操作必须携带精确允许的 Origin 和 X-CSRF-Token。"
   },
   "servers": [
-    { "url": "https://api.yujian.me" }
+    { "url": "/" }
   ],
   "paths": {
     "/api/v1/publisher/builds/{buildId}": {

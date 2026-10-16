@@ -16,7 +16,10 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	}
 	var document struct {
 		OpenAPI string `json:"openapi"`
-		Paths   map[string]map[string]struct {
+		Servers []struct {
+			URL string `json:"url"`
+		} `json:"servers"`
+		Paths map[string]map[string]struct {
 			OperationID string                `json:"operationId"`
 			Security    []map[string][]string `json:"security"`
 			RequestBody struct {
@@ -56,6 +59,9 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	}
 	if document.OpenAPI != "3.1.0" {
 		t.Fatalf("unexpected OpenAPI version %q", document.OpenAPI)
+	}
+	if len(document.Servers) != 1 || document.Servers[0].URL != "/" {
+		t.Fatal("management OpenAPI must use the same origin as the embedded application")
 	}
 	for path, methods := range document.Paths {
 		for method, operation := range methods {
