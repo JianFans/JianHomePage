@@ -490,6 +490,49 @@ func TestPublisherConfigurationRejectsPartialDependencies(t *testing.T) {
 	}
 }
 
+// TestPublisherIdentifiersMatchPages checks project configuration and recovery against the same cloud ID boundaries.
+func TestPublisherIdentifiersMatchPages(t *testing.T) {
+	for _, example := range []struct {
+		name  string
+		id    string
+		valid bool
+	}{
+		{"single-letter", "A", true},
+		{"single-digit", "0", true},
+		{"mixed", "A0_b-c", true},
+		{"maximum", "0" + strings.Repeat("a_-", 85), true},
+		{"empty", "", false},
+		{"underscore-prefix", "_project", false},
+		{"hyphen-prefix", "-project", false},
+		{"too-long", strings.Repeat("a", 257), false},
+		{"path", "a/b", false},
+		{"unicode", "项目", false},
+		{"newline", "project\n", false},
+	} {
+		t.Run(example.name, func(t *testing.T) {
+			s, m, p, request := publisherFixture(t)
+			options := s.options
+			options.Target.ProjectID = example.id
+			if _, err := NewService(options); (err == nil) != example.valid {
+				t.Fatalf("project ID validity = %v, want %v: %v", err == nil, example.valid, err)
+			}
+			if _, err := s.Trigger(t.Context(), request); err != nil {
+				t.Fatal(err)
+			}
+			m.task.Phase = "submitting"
+			p.deployment.ID = example.id
+			got, err := s.Recover(t.Context(), m.task.ID, RecoveryInput{DeploymentID: &example.id, Note: "Verified in Pages", ActorSubject: "admin-1"})
+			if example.valid {
+				if err != nil || got.DeploymentID != example.id || got.Phase != "deployed" || p.getCount != 1 {
+					t.Fatalf("valid deployment recovery failed: %#v %v", got, err)
+				}
+			} else if !errors.Is(err, domain.ErrInvalidInput) || p.getCount != 0 {
+				t.Fatalf("invalid deployment ID reached provider: calls=%d error=%v", p.getCount, err)
+			}
+		})
+	}
+}
+
 // TestBuildResponsePreservesGatewayStatus maps every durable phase without exposing a premature URL.
 func TestBuildResponsePreservesGatewayStatus(t *testing.T) {
 	for phase, want := range map[string]domain.PublishStatus{"queued": domain.PublishPending, "building": domain.PublishBuilding, "submitting": domain.PublishBuilding, "deployed": domain.PublishBuilding, "failed": domain.PublishFailed, "succeeded": domain.PublishSucceeded} {
