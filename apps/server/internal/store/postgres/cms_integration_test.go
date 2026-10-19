@@ -58,12 +58,12 @@ func TestPostgresCMSLibraryAndSessions(t *testing.T) {
 		t.Fatalf("source mutated %#v %v", unchanged, err)
 	}
 	sessions := NewSessionStore(db)
-	value := auth.Session{TokenHash: auth.SessionTokenHash("opaque"), Principal: auth.SessionPrincipal{Subject: "editor", Roles: []string{"editor"}}, CSRFToken: "csrf", ExpiresAt: now.Add(time.Hour)}
+	value := auth.Session{TokenHash: auth.SessionTokenHash("opaque"), Principal: auth.SessionPrincipal{Subject: "editor", Name: "编辑者", Picture: "https://media.example/avatar.jpg", Roles: []string{"editor"}}, CSRFToken: "csrf", ExpiresAt: now.Add(time.Hour)}
 	if err := sessions.CreateSession(ctx, value); err != nil {
 		t.Fatal(err)
 	}
 	session, err := sessions.GetSession(ctx, value.TokenHash)
-	if err != nil || session.Principal.Subject != "editor" {
+	if err != nil || session.Principal.Subject != "editor" || session.Principal.Name != value.Principal.Name || session.Principal.Picture != value.Principal.Picture {
 		t.Fatalf("persisted session %#v %v", session, err)
 	}
 	if err := sessions.DeleteSession(ctx, value.TokenHash); err != nil {

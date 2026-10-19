@@ -201,6 +201,19 @@ func (provider *OIDCProvider) Authenticate(ctx context.Context, token string) (d
 	if value, ok := claims["name"].(string); ok {
 		principal.Name = value
 	}
+	// Casdoor's name is often a login identifier; its signed displayName
+	// carries the human-readable label requested by the profile scope.
+	if value, ok := claims["displayName"].(string); ok && strings.TrimSpace(value) != "" {
+		principal.Name = value
+	}
+	pictureValue, hasPicture := claims["picture"]
+	picture, pictureIsString := pictureValue.(string)
+	if !hasPicture || (pictureIsString && picture == "") {
+		picture, _ = claims["avatar"].(string)
+	}
+	if parsed, err := httpurl.ParseAbsolute(picture); err == nil && (!provider.requireHTTPS || parsed.Scheme == "https") {
+		principal.Picture = picture
+	}
 	return principal, nil
 }
 

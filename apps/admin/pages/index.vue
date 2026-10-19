@@ -182,6 +182,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
           :active="studio.module"
           :locale="locale"
           :name="session.principal?.name || session.principal?.subject || ''"
+          :picture="session.principal?.picture"
           :collapsed="collapsed"
           :busy="workspace.busy"
           :logout-busy="studio.assetBusy || session.busy"
@@ -501,6 +502,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
         :active="studio.module"
         :locale="locale"
         :name="session.principal?.name || session.principal?.subject || ''"
+        :picture="session.principal?.picture"
         drawer
         :busy="workspace.busy"
         :logout-busy="studio.assetBusy || session.busy"

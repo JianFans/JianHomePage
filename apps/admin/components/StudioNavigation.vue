@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { CalendarDays, ChevronLeft, ChevronRight, Film, History, Images, LayoutDashboard, LayoutList, LogOut, Music2, FolderOpen } from '@lucide/vue'
-import { computed } from 'vue'
+import { CalendarDays, ChevronLeft, ChevronRight, Film, History, Images, LayoutDashboard, LayoutList, LogOut, Music2, FolderOpen, UserRound } from '@lucide/vue'
+import { computed, ref, watch } from 'vue'
 import type { AdminLocale } from '../utils/admin-locale'
 import { studioCopy, type StudioModule } from '../utils/studio-copy'
 
-const props = defineProps<{ active: StudioModule; locale: AdminLocale; name: string; collapsed?: boolean; drawer?: boolean; busy?: boolean; logoutBusy?: boolean }>()
+const props = defineProps<{ active: StudioModule; locale: AdminLocale; name: string; picture?: string; collapsed?: boolean; drawer?: boolean; busy?: boolean; logoutBusy?: boolean }>()
 const emit = defineEmits<{ navigate: [module: StudioModule]; logout: []; collapse: [] }>()
 const copy = computed(() => studioCopy(props.locale))
+const failedPicture = ref('')
+const pictureURL = computed(() => {
+  try {
+    const url = new URL(props.picture || '')
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''
+  } catch { return '' }
+})
+watch(() => props.picture, () => { failedPicture.value = '' })
 const modules = [
   { id: 'overview', icon: LayoutDashboard, tone: 'sage' }, { id: 'homepage', icon: LayoutList, tone: 'sage' },
   { id: 'music', icon: Music2, tone: 'sage' }, { id: 'video', icon: Film, tone: 'blue' },
@@ -51,10 +59,36 @@ const modules = [
     </nav>
     <footer>
       <div
-        v-if="!collapsed || drawer"
         class="studio-account"
+        :title="name"
       >
-        <span>{{ name }}</span><small>{{ copy.studio }}</small>
+        <span
+          class="studio-avatar"
+          aria-hidden="true"
+        >
+          <img
+            v-if="pictureURL && failedPicture !== pictureURL"
+            :src="pictureURL"
+            alt=""
+            width="32"
+            height="32"
+            referrerpolicy="no-referrer"
+            decoding="async"
+            data-testid="studio-avatar"
+            @error="failedPicture = pictureURL"
+          >
+          <UserRound
+            v-else
+            :size="18"
+            data-testid="studio-avatar-fallback"
+          />
+        </span>
+        <div
+          v-if="!collapsed || drawer"
+          class="studio-account-info"
+        >
+          <span data-testid="studio-account-name">{{ name }}</span><small>{{ copy.studio }}</small>
+        </div>
       </div>
       <button
         type="button"

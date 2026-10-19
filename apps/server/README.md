@@ -66,6 +66,8 @@ ID token 和 API Bearer token 共用 `OIDC_ROLE_*` 映射：外部名称精确�
 
 `GET /api/v1/auth/session` 无需登录，返回 `authenticated` 和 `loginAvailable`。已认证时另含 `principal`、`csrfToken`、`expiresAt`；登录未配置时返回两个 `false`，不会生成开发身份或演示会话。`GET /api/v1/auth/login` 跳转至身份提供商；回调校验一次性 state、nonce、签名、issuer、client audience、有效期和授权方后设置会话。回调只跳转至配置的固定 URL，忽略用户提供的返回目标。
 
+`principal.name` 和可选 `principal.picture` 取自已验证 ID token 的显示名称与头像声明。标准字段为 `name`、`picture`；兼容 Casdoor 的 `displayName`（优先于登录名）和 `avatar`。头像须为无凭据的绝对 HTTP(S) URL，生产仅接受 HTTPS。缺少资料时显示账号标识和占位头像，不额外调用 UserInfo；身份服务须将资料声明加入 ID token。既有会话需退出并重新登录才能更新资料。
+
 会话 Cookie 为不透明随机值，设置 `HttpOnly`、`SameSite=Lax`、主机作用域和 `/api/` 路径，生产环境还设置 `Secure`。PostgreSQL 仅保存 bearer 的 SHA-256 摘要；会话在 ID token 过期或 8 小时后失效（取较早值），每次请求都检查有效期。生产环境使用迁移 `0006_admin_sessions.sql` 创建持久会话及已消费 state 表，服务重启和多实例不会恢复已撤销会话。开发模式显式选择内存依赖，会话随进程消失。
 
 管理 API 同时支持既有 Bearer JWT 和会话 Cookie。Cookie 写操作必须发送允许列表中的精确 `Origin` 和当前会话的 `X-CSRF-Token`；CORS 只对允许来源启用 credentials。`POST /api/v1/auth/logout` 使用同样校验，成功后撤销数据库会话并清除 Cookie，旧 Cookie 不能再次访问。所有认证响应禁止缓存。签名素材 URL 上传独立于会话认证，浏览器直传必须使用 `credentials: 'omit'`。

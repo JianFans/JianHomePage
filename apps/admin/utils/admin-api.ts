@@ -17,7 +17,7 @@ export interface AdminVersion {
 
 export type AdminVersionSummary = Omit<AdminVersion, 'snapshot'>
 export interface AdminVersionPage { items: AdminVersionSummary[]; nextCursor?: string }
-export interface AdminPrincipal { subject: string; name?: string; email?: string; roles: string[] }
+export interface AdminPrincipal { subject: string; name?: string; picture?: string; email?: string; roles: string[] }
 export interface AdminSession {
   authenticated: boolean
   loginAvailable: boolean

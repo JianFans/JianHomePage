@@ -98,6 +98,8 @@ Casdoor 普通、非共享应用可按以下方式配置，其他 OIDC 服务遵
 
 此映射要求 Casdoor 版本提供 `Existing Field` 类别及 `Roles` 字段；缺少时先升级，不能用静态 `admin` 代替。配置参考：[OIDC 客户端](https://casdoor.org/docs/how-to-connect/oidc-client/)、[自定义令牌属性](https://casdoor.org/docs/token/overview/#custom-token-attributes)、[用户角色](https://casdoor.org/docs/user/roles/)。
 
+侧栏资料来自已验证 ID token：显示名使用非空 `displayName`，否则 `name`；头像使用 `picture`，缺失时使用 `avatar`。身份服务需签发这些字段，生产头像必须是无凭据的 HTTPS 地址。修改资料声明后重新登录；没有资料时显示账号标识及占位头像。
+
 ## 接入要求
 
 - 管理域名使用 HTTPS，所有路径回源同一 Go 服务，包括 `/`、`/preview`、`/_nuxt/*`、`/api/*`；HTML、认证和 API 禁止缓存，哈希静态资源可长期缓存。

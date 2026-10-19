@@ -67,7 +67,7 @@ func TestAuthorizationCodePKCESessionLogoutAndExpiry(t *testing.T) {
 				t.Error("invalid code exchange")
 			}
 			exchanges++
-			json.NewEncoder(w).Encode(map[string]string{"id_token": signJWT(t, key, map[string]any{"iss": issuer, "aud": "https://admin.example.com", "sub": "editor-1", "roles": []string{"other-app-admin", "site-editor", "site-editor"}, "nonce": nonce, "exp": now.Add(time.Hour).Unix()})})
+			json.NewEncoder(w).Encode(map[string]string{"id_token": signJWT(t, key, map[string]any{"iss": issuer, "aud": "https://admin.example.com", "sub": "editor-1", "name": "editor-login", "displayName": "编辑者", "avatar": "https://media.example/avatar.jpg", "roles": []string{"other-app-admin", "site-editor", "site-editor"}, "nonce": nonce, "exp": now.Add(time.Hour).Unix()})})
 		default:
 			http.NotFound(w, r)
 		}
@@ -118,8 +118,17 @@ func TestAuthorizationCodePKCESessionLogoutAndExpiry(t *testing.T) {
 	if !body.Authenticated || body.CSRF == "" || len(body.Principal.Roles) != 1 || body.Principal.Roles[0] != "editor" {
 		t.Fatalf("session %s", session.Body.String())
 	}
+	if body.Principal.Name != "编辑者" || !strings.Contains(session.Body.String(), `"picture":"https://media.example/avatar.jpg"`) {
+		t.Fatalf("session lost verified display profile: %s", session.Body.String())
+	}
 	middleware, _ := auth.NewMiddleware(auth.MiddlewareOptions{Sessions: manager})
-	protected := middleware.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	protected := middleware.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := auth.PrincipalFromContext(r.Context())
+		if !ok || principal.Name != "编辑者" || principal.Picture != "https://media.example/avatar.jpg" {
+			t.Error("cookie authentication lost verified profile")
+		}
+		w.WriteHeader(204)
+	}))
 	write := httptest.NewRequest("POST", "/api/v1/versions", nil)
 	write.AddCookie(cookie)
 	rejected := httptest.NewRecorder()

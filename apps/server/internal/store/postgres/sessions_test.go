@@ -17,16 +17,20 @@ func TestSessionRepositoryPersistsHashAndRevokes(t *testing.T) {
 	expiry := time.Now().Add(time.Hour)
 	exec := &recordingExecutor{result: recordingResult{affected: 1}}
 	repo := NewSessionStore(exec)
-	session := auth.Session{TokenHash: "hashed-bearer", Principal: auth.SessionPrincipal{Subject: "editor", Roles: []string{"editor"}}, CSRFToken: "csrf", ExpiresAt: expiry}
+	session := auth.Session{TokenHash: "hashed-bearer", Principal: auth.SessionPrincipal{Subject: "editor", Name: "编辑者", Picture: "https://media.example/avatar.jpg", Roles: []string{"editor"}}, CSRFToken: "csrf", ExpiresAt: expiry}
 	if err := repo.CreateSession(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(exec.execQueries[0], "admin_sessions") || exec.execArgs[0][0] != "hashed-bearer" {
 		t.Fatal("session not persisted by hash")
 	}
-	exec.row = recordingRow{values: []any{"hashed-bearer", []byte(`{"subject":"editor","roles":["editor"]}`), "csrf", expiry}}
+	principalJSON, ok := exec.execArgs[0][1].([]byte)
+	if !ok || !strings.Contains(string(principalJSON), `"picture":"https://media.example/avatar.jpg"`) || !strings.Contains(string(principalJSON), `"name":"编辑者"`) {
+		t.Fatal("verified profile was not persisted")
+	}
+	exec.row = recordingRow{values: []any{"hashed-bearer", principalJSON, "csrf", expiry}}
 	got, err := repo.GetSession(context.Background(), "hashed-bearer")
-	if err != nil || got.Principal.Subject != "editor" {
+	if err != nil || got.Principal.Subject != "editor" || got.Principal.Name != session.Principal.Name || got.Principal.Picture != session.Principal.Picture {
 		t.Fatalf("session scan: %#v %v", got, err)
 	}
 	if err := repo.DeleteSession(context.Background(), "hashed-bearer"); err != nil {

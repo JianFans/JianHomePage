@@ -31,6 +31,7 @@ type Principal struct {
 	Subject string
 	Email   string
 	Name    string
+	Picture string
 	Roles   []Role
 }
 

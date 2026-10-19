@@ -64,14 +64,18 @@
 .studio-navigation nav button:nth-child(2), .studio-navigation nav button:nth-child(7) { margin-top: 1.25rem; }
 .studio-navigation footer { margin-top: auto; padding-top: 1.5rem; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; border-top: 1px solid #29313c; }
 .studio-navigation footer .icon-tool { background: transparent; border-color: transparent; }
-.studio-account { flex: 1 1 auto; min-width: 0; }
-.studio-account span { display: block; font-size: .8rem; max-width: 8.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studio-account { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: .65rem; margin-bottom: .35rem; }
+.studio-account-info { min-width: 0; }
+.studio-account-info > span { display: block; font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studio-avatar { flex: 0 0 2rem; width: 2rem; height: 2rem; border-radius: 50%; background: var(--surface-raised); color: var(--accent); display: grid; place-items: center; overflow: hidden; }
+.studio-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .studio-account small { display: block; font-size: .65rem; color: var(--muted); margin-top: .2rem; }
 .studio-collapse { margin-left: auto; }
 .studio-navigation--collapsed { padding-inline: .65rem; }
 .studio-navigation--collapsed .studio-brand { padding-inline: .75rem; }
 .studio-navigation--collapsed nav button { justify-content: center; padding-inline: .5rem; }
 .studio-navigation--collapsed footer { justify-content: center; }
+.studio-navigation--collapsed .studio-account { justify-content: center; }
 .studio-navigation--collapsed .studio-collapse { margin: 0; }
 .studio-navigation--drawer { position: static; width: 100%; min-height: min(32rem, 65dvh); padding: 0; background: transparent; border: 0; }
 .studio-navigation--drawer .studio-brand { display: none; }

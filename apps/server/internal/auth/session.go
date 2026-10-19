@@ -29,6 +29,7 @@ const flowCookieName = "yujian_login"
 type SessionPrincipal struct {
 	Subject string   `json:"subject"`
 	Name    string   `json:"name,omitempty"`
+	Picture string   `json:"picture,omitempty"`
 	Email   string   `json:"email,omitempty"`
 	Roles   []string `json:"roles"`
 }
@@ -209,7 +210,7 @@ func (manager *Sessions) authenticateCookie(r *http.Request) (domain.Principal, 
 	if err != nil || len(roles) == 0 || session.Principal.Subject == "" {
 		return domain.Principal{}, domain.ErrForbidden
 	}
-	return domain.Principal{Subject: session.Principal.Subject, Email: session.Principal.Email, Name: session.Principal.Name, Roles: roles}, nil
+	return domain.Principal{Subject: session.Principal.Subject, Email: session.Principal.Email, Name: session.Principal.Name, Picture: session.Principal.Picture, Roles: roles}, nil
 }
 
 var errCSRF = errors.New("invalid cookie request verification")
@@ -389,7 +390,7 @@ func (manager *Sessions) callback(w http.ResponseWriter, r *http.Request) {
 	for i, role := range principal.Roles {
 		roles[i] = string(role)
 	}
-	session := Session{TokenHash: SessionTokenHash(token), Principal: SessionPrincipal{Subject: principal.Subject, Name: principal.Name, Email: principal.Email, Roles: roles}, CSRFToken: csrf, ExpiresAt: expires}
+	session := Session{TokenHash: SessionTokenHash(token), Principal: SessionPrincipal{Subject: principal.Subject, Name: principal.Name, Picture: principal.Picture, Email: principal.Email, Roles: roles}, CSRFToken: csrf, ExpiresAt: expires}
 	// Replace an existing browser session so previously copied cookies are revoked.
 	if old, err := r.Cookie(sessionCookieName); err == nil {
 		if manager.options.Store.DeleteSession(r.Context(), SessionTokenHash(old.Value)) != nil {

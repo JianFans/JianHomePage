@@ -669,6 +669,11 @@
           "name": {
             "type": "string"
           },
+          "picture": {
+            "type": "string",
+            "format": "uri",
+            "description": "已验证 OIDC 身份中的头像地址，仅接受无凭据的绝对 HTTP(S) URL，生产环境必须为 HTTPS。"
+          },
           "email": {
             "type": "string"
           },
