@@ -118,6 +118,9 @@ func TestMigrateLocksTransactionAndRunsInitialSchema(t *testing.T) {
 		!strings.Contains(statements, "RAISE EXCEPTION") {
 		t.Fatal("active publish jobs are not safely upgraded or rejected")
 	}
+	if !strings.Contains(statements, "CREATE TABLE IF NOT EXISTS publish_snapshots") || !strings.Contains(statements, "octet_length(content) BETWEEN 1 AND 8388608") {
+		t.Fatal("immutable PostgreSQL publish snapshots are not part of the schema")
+	}
 	if !fake.tx.committed || fake.tx.rolledBack {
 		t.Fatalf("expected committed transaction, got %#v", fake.tx)
 	}

@@ -312,7 +312,7 @@ func (s *Service) Recover(ctx context.Context, id string, input RecoveryInput) (
 }
 
 const uncertainMessage = "Deployment outcome unknown; reconciliation required"
-const maxSnapshotBytes = 8 * 1024 * 1024
+const maxSnapshotBytes = ports.MaxPublishSnapshotBytes
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$`)
 var revision = regexp.MustCompile(`^(?:[a-f0-9]{40}|[a-f0-9]{64})$`)

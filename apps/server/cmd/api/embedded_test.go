@@ -89,16 +89,3 @@ type reconcilerFunc func(context.Context) error
 
 // Reconcile invokes one lifecycle callback.
 func (f reconcilerFunc) Reconcile(ctx context.Context) error { return f(ctx) }
-
-// TestDefaultSnapshotReaderRefusesUnsupportedStores avoids hidden HTTP fallbacks.
-func TestDefaultSnapshotReaderRefusesUnsupportedStores(t *testing.T) {
-	store := local.NewBlobStore()
-	t.Cleanup(func() { _ = store.Close() })
-	reader, err := defaultProductionFactory().readSnapshot(t.Context(), store, "snapshots/file.json")
-	if reader != nil {
-		_ = reader.Close()
-	}
-	if err == nil {
-		t.Fatal("accepted object store without direct snapshot reads")
-	}
-}

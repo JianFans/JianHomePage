@@ -91,24 +91,24 @@ func TestBlobStoreSupportsSignedAndServerSideObjectOperations(t *testing.T) {
 	}
 
 	metadata := ports.BlobMetadata{ContentType: "application/json", Size: 7, Checksum: checksum}
-	if err := store.Put(context.Background(), "snapshots/release.json", bytes.NewReader([]byte("payload")), metadata); err != nil {
+	if err := store.Put(context.Background(), "assets/asset_test/source.json", bytes.NewReader([]byte("payload")), metadata); err != nil {
 		t.Fatalf("put object: %v", err)
 	}
 	if putBody != "payload" || putChecksum != providerChecksum {
 		t.Fatalf("unexpected put body=%q checksum=%q", putBody, putChecksum)
 	}
 
-	actual, err := store.Stat(context.Background(), "snapshots/release.json")
+	actual, err := store.Stat(context.Background(), "assets/asset_test/source.json")
 	if err != nil {
 		t.Fatalf("stat object: %v", err)
 	}
 	if actual.Size != 7 || actual.ContentType != "application/json" || actual.Checksum != checksum {
 		t.Fatalf("unexpected metadata %#v", actual)
 	}
-	if err := store.Delete(context.Background(), "snapshots/release.json"); err != nil {
+	if err := store.Delete(context.Background(), "assets/asset_test/source.json"); err != nil {
 		t.Fatalf("delete object: %v", err)
 	}
-	readURL, err := store.SignedReadURL(context.Background(), "snapshots/release.json", 5*time.Minute)
+	readURL, err := store.SignedReadURL(context.Background(), "assets/asset_test/source.json", 5*time.Minute)
 	if err != nil || !strings.Contains(readURL, "X-Amz-Signature=") {
 		t.Fatalf("unexpected read URL %q err=%v", readURL, err)
 	}
@@ -134,7 +134,7 @@ func TestBlobStoreMapsMissingObject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new blob store: %v", err)
 	}
-	if _, err := store.Stat(context.Background(), "missing"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := store.Stat(context.Background(), "assets/asset_missing/source.webp"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected not found, got %v", err)
 	}
 }

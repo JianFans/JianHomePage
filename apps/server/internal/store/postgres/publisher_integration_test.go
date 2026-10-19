@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -43,11 +42,13 @@ func TestPostgresPublisherRestartAndRecovery(t *testing.T) {
 	request.SnapshotKey = "snapshots/" + request.ReleaseID + "/" + request.SnapshotChecksum + ".json"
 	target := publisher.Target{ProjectID: "project", Region: "global", CodeRevision: strings.Repeat("a", 64), PublicURL: "https://site.example/"}
 	cloud := &publisherIntegrationPages{}
+	snapshots := NewSnapshotStore(db)
+	if err := snapshots.PutSnapshot(ctx, request.SnapshotKey, raw); err != nil {
+		t.Fatalf("persist immutable build input: %v", err)
+	}
 	options := publisher.Options{Repository: repo, Target: target, Pages: cloud, Generate: func(context.Context, []byte) (map[string][]byte, error) {
 		return map[string][]byte{"index.html": []byte("rendered")}, nil
-	}, ReadSnapshot: func(context.Context, string) (io.ReadCloser, error) {
-		return io.NopCloser(strings.NewReader(string(raw))), nil
-	}}
+	}, ReadSnapshot: snapshots.ReadSnapshot}
 	service, err := publisher.NewService(options)
 	if err != nil {
 		t.Fatal(err)

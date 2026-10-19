@@ -28,6 +28,7 @@ type memoryRepository struct {
 	beforeUpdate        func(*memoryRepository, domain.PublishJob)
 	lockCalls           int
 	lockHook            func(*memoryRepository)
+	snapshotStore       *snapshotStoreFake
 }
 
 func newMemoryRepository() *memoryRepository {
@@ -38,6 +39,7 @@ func newMemoryRepository() *memoryRepository {
 		idempotency:         make(map[string]string),
 		pointers:            make(map[string]domain.PublishPointer),
 		successfulByVersion: make(map[string]string),
+		snapshotStore:       newSnapshotStoreFake(),
 	}
 }
 
@@ -199,6 +201,39 @@ type blobStoreFake struct {
 	publicCalls int
 }
 
+type snapshotStoreFake struct {
+	objects  map[string][]byte
+	putCalls int
+	putErr   error
+}
+
+func newSnapshotStoreFake() *snapshotStoreFake {
+	return &snapshotStoreFake{objects: make(map[string][]byte)}
+}
+
+func (store *snapshotStoreFake) PutSnapshot(_ context.Context, key string, content []byte) error {
+	if store.putErr != nil {
+		return store.putErr
+	}
+	if existing, exists := store.objects[key]; exists {
+		if !bytes.Equal(existing, content) {
+			return domain.ErrConflict
+		}
+		return nil
+	}
+	store.objects[key] = append([]byte(nil), content...)
+	store.putCalls++
+	return nil
+}
+
+func (store *snapshotStoreFake) ReadSnapshot(_ context.Context, key string) (io.ReadCloser, error) {
+	content, exists := store.objects[key]
+	if !exists {
+		return nil, domain.ErrNotFound
+	}
+	return io.NopCloser(bytes.NewReader(append([]byte(nil), content...))), nil
+}
+
 func newBlobStoreFake() *blobStoreFake {
 	return &blobStoreFake{objects: make(map[string]ports.BlobMetadata)}
 }
@@ -279,10 +314,11 @@ func publishServiceForTest(
 ) *Service {
 	ids := []string{"pub_1", "pub_2", "pub_3"}
 	return NewService(ServiceOptions{
-		Repository:   repository,
-		BlobStore:    blobs,
-		BuildTrigger: trigger,
-		Validator:    validatorStub{},
+		Repository:    repository,
+		BlobStore:     blobs,
+		SnapshotStore: repository.snapshotStore,
+		BuildTrigger:  trigger,
+		Validator:     validatorStub{},
 		Now: func() time.Time {
 			return time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
 		},
@@ -668,11 +704,14 @@ func TestPublishIsIdempotentAndWritesImmutableSnapshotOnce(t *testing.T) {
 	if first.ID != second.ID {
 		t.Fatalf("expected same job, got %q and %q", first.ID, second.ID)
 	}
-	if blobs.putCalls != 1 || trigger.triggerCalls != 1 {
-		t.Fatalf("unexpected calls put=%d trigger=%d", blobs.putCalls, trigger.triggerCalls)
+	if blobs.putCalls != 0 || repository.snapshotStore.putCalls != 1 || trigger.triggerCalls != 1 {
+		t.Fatalf("publish snapshot must use its immutable database store: media puts=%d snapshot saves=%d triggers=%d", blobs.putCalls, repository.snapshotStore.putCalls, trigger.triggerCalls)
 	}
 	if first.SnapshotKey == "" || first.SnapshotChecksum == "" {
 		t.Fatalf("missing immutable snapshot data %#v", first)
+	}
+	if string(repository.snapshotStore.objects[first.SnapshotKey]) != string(repository.versions["ver_new"].Snapshot) {
+		t.Fatal("database snapshot store did not retain the canonical version bytes")
 	}
 }
 
@@ -977,8 +1016,9 @@ func TestRollbackReusesHistoricalSnapshotWithoutBlobRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rollback: %v", err)
 	}
-	if job.SnapshotKey != historical.SnapshotKey || blobs.putCalls != 0 {
-		t.Fatalf("rollback rewrote snapshot job=%#v puts=%d", job, blobs.putCalls)
+	wantedKey := "snapshots/rel_old/" + target.Checksum + ".json"
+	if job.SnapshotKey != wantedKey || blobs.putCalls != 0 || repository.snapshotStore.putCalls != 1 {
+		t.Fatalf("rollback did not restore immutable snapshot from version: job=%#v media puts=%d snapshot saves=%d", job, blobs.putCalls, repository.snapshotStore.putCalls)
 	}
 	if trigger.triggerCalls != 1 {
 		t.Fatalf("expected one build trigger, got %d", trigger.triggerCalls)
@@ -1018,8 +1058,8 @@ func TestRollbackRewritesLegacySnapshotWhenCanonicalChecksumChanged(t *testing.T
 	if job.SnapshotKey != wantedKey || job.SnapshotChecksum != canonical.Checksum {
 		t.Fatalf("rollback did not use current canonical snapshot: %#v", job)
 	}
-	if blobs.putCalls != 1 || blobs.objects[wantedKey].Checksum != canonical.Checksum {
-		t.Fatalf("canonical snapshot was not persisted: calls=%d objects=%#v", blobs.putCalls, blobs.objects)
+	if blobs.putCalls != 0 || repository.snapshotStore.putCalls != 1 || string(repository.snapshotStore.objects[wantedKey]) != string(canonical.JSON) {
+		t.Fatalf("canonical snapshot was not persisted outside media storage: media puts=%d snapshot saves=%d", blobs.putCalls, repository.snapshotStore.putCalls)
 	}
 	if len(trigger.requests) != 1 || trigger.requests[0].SnapshotChecksum != canonical.Checksum {
 		t.Fatalf("build trigger received stale checksum: %#v", trigger.requests)

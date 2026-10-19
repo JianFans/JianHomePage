@@ -154,7 +154,6 @@ type productionFactory struct {
 	newPages     func(pages.Config) (publisher.Pages, error)
 	newGenerator func() (siteGenerator, error)
 	newAdmin     func() (fs.FS, error)
-	readSnapshot func(context.Context, ports.BlobStore, string) (io.ReadCloser, error)
 }
 
 // siteGenerator freezes compiled renderer identity alongside its build operation.
@@ -177,7 +176,6 @@ func defaultProductionFactory() productionFactory {
 		},
 		newGenerator: embeddedGenerator,
 		newAdmin:     webassets.Admin,
-		readSnapshot: readStoredSnapshot,
 	}
 }
 
@@ -196,17 +194,6 @@ func embeddedGenerator() (siteGenerator, error) {
 		return nil, err
 	}
 	return freezeExecutableIdentity(generator)
-}
-
-// readStoredSnapshot uses authenticated object reads without browser signed URLs.
-func readStoredSnapshot(ctx context.Context, blobs ports.BlobStore, key string) (io.ReadCloser, error) {
-	reader, ok := blobs.(interface {
-		ReadSnapshot(context.Context, string) (io.ReadCloser, error)
-	})
-	if !ok {
-		return nil, errors.New("object storage cannot read publish snapshots")
-	}
-	return reader.ReadSnapshot(ctx, key)
 }
 
 // buildProductionDependencies migrates PostgreSQL and assembles production
@@ -264,13 +251,11 @@ func buildProductionDependencies(
 	if err := repository.Health(ctx); err != nil {
 		return ServiceDependencies{}, nil, fmt.Errorf("verify publisher storage: %w", err)
 	}
-	if factory.readSnapshot == nil {
-		return ServiceDependencies{}, nil, errors.New("snapshot reader is required")
-	}
+	snapshotStore := postgres.NewSnapshotStore(database)
 	worker, err := publisher.NewService(publisher.Options{
 		Repository: repository, Pages: pagesClient, Generate: generator.Generate,
 		ReadSnapshot: func(ctx context.Context, key string) (io.ReadCloser, error) {
-			return factory.readSnapshot(ctx, blobs, key)
+			return snapshotStore.ReadSnapshot(ctx, key)
 		},
 		Target: publisher.Target{ProjectID: settings.PagesProjectID, Region: settings.PagesRegion, PublicURL: settings.PagesPublicURL, CodeRevision: generator.Identity()},
 	})
@@ -279,7 +264,7 @@ func buildProductionDependencies(
 	}
 	validator := contract.NewValidator()
 	publishService := publish.NewService(publish.ServiceOptions{
-		Repository: postgres.NewPublishRepository(database), BlobStore: blobs,
+		Repository: postgres.NewPublishRepository(database), BlobStore: blobs, SnapshotStore: snapshotStore,
 		BuildTrigger: worker, Validator: validator,
 	})
 	dependencies := ServiceDependencies{
@@ -375,10 +360,11 @@ func developmentDependencies() ServiceDependencies {
 	blobs := local.NewBlobStore()
 	trigger := local.NewBuildTrigger()
 	publishService := publish.NewService(publish.ServiceOptions{
-		Repository:   memory.NewPublishRepository(state),
-		BlobStore:    blobs,
-		BuildTrigger: trigger,
-		Validator:    validator,
+		Repository:    memory.NewPublishRepository(state),
+		BlobStore:     blobs,
+		SnapshotStore: local.NewSnapshotStore(),
+		BuildTrigger:  trigger,
+		Validator:     validator,
 	})
 	return ServiceDependencies{
 		Sessions: memory.NewSessionStore(),

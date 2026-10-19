@@ -1,5 +1,7 @@
 # Go 单程序部署实现计划
 
+> 后续架构更新（2026-10-19）：本计划早期发布器从 COS 读取构建快照。现行实现已改为 PostgreSQL `publish_snapshots`；S3/COS 仅供媒体文件使用。请以 [`apps/server/README.md`](../../../apps/server/README.md) 和 [`2026-10-16-go-all-in-one-design.md`](../specs/2026-10-16-go-all-in-one-design.md) 为准。
+
 **目标：** 服务器只运行一个 Go 二进制，包含管理页面、API、首页生成和腾讯云发布，无 Node 运行依赖。
 
 **架构：** 编译时生成并嵌入 Vue 浏览器资源和封闭的服务端渲染程序；Go 内执行静态渲染并直接上传 Pages。复用现有 PostgreSQL 任务表与发布领域服务。

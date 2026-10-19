@@ -363,9 +363,6 @@ func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.
 		},
 		newGenerator: func() (siteGenerator, error) { return generatorFake{}, nil },
 		newAdmin:     func() (fs.FS, error) { return managementFiles(), nil },
-		readSnapshot: func(context.Context, ports.BlobStore, string) (io.ReadCloser, error) {
-			return io.NopCloser(strings.NewReader("snapshot")), nil
-		},
 	}
 	settings := productionSettings()
 	dependencies, closeResources, err := buildProductionDependencies(context.Background(), settings, factory)
@@ -546,7 +543,7 @@ func TestRunProductionReturnsDatabaseConfigurationError(t *testing.T) {
 
 func TestDefaultProductionFactoryReturnsAdapterConfigurationErrors(t *testing.T) {
 	factory := defaultProductionFactory()
-	if factory.openDatabase == nil || factory.newBlobStore == nil || factory.newPages == nil || factory.newGenerator == nil || factory.newAdmin == nil || factory.readSnapshot == nil {
+	if factory.openDatabase == nil || factory.newBlobStore == nil || factory.newPages == nil || factory.newGenerator == nil || factory.newAdmin == nil {
 		t.Fatalf("incomplete default production factory %#v", factory)
 	}
 	if _, err := factory.openDatabase(context.Background(), ""); err == nil {
