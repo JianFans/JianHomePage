@@ -2,6 +2,18 @@ name: Check Code
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to build and validate
+        type: string
+        required: false
+        default: ''
+      version:
+        description: Release version for archive names; otherwise use the commit SHA
+        type: string
+        required: false
+        default: ''
   push:
     branches:
       - master
@@ -13,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: code-check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: code-check-${{ github.workflow }}-${{ inputs.ref && github.run_id || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,6 +37,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
       - name: Set up Node.js
@@ -50,6 +63,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -73,6 +87,17 @@ jobs:
       - name: Run Go race tests
         working-directory: apps/server
         run: go test -race ./... -count=1
+      - name: Archive validated embedded assets
+        run: |
+          mkdir -p dist
+          tar -czf dist/embedded-assets.tar.gz -C apps/server/internal/webassets/bundle .
+      - name: Upload embedded assets for binary builds
+        uses: actions/upload-artifact@v7
+        with:
+          name: embedded-assets
+          path: dist/embedded-assets.tar.gz
+          if-no-files-found: error
+          retention-days: 7
 
   frontend-coverage:
     name: Frontend Coverage
@@ -82,6 +107,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
       - name: Set up Node.js
@@ -110,6 +136,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -144,6 +171,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
@@ -208,6 +236,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Build single-program image
         run: docker build --tag yujian-server:ci .
       - name: Verify development mode starts without network or Node
@@ -286,6 +315,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
       - name: Set up Go
@@ -307,3 +337,82 @@ jobs:
       - name: Verify Go publisher and PostgreSQL integration
         working-directory: apps/server
         run: go test -race ./internal/publisher ./internal/store/postgres -count=1
+
+  binaries:
+    name: Build Linux ${{ matrix.goarch }} single executable
+    needs: [frontend, go]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+    env:
+      CGO_ENABLED: '0'
+      GOOS: linux
+      GOARCH: ${{ matrix.goarch }}
+      BUILD_LABEL: ${{ inputs.version || github.sha }}
+    steps:
+      - name: Checkout validated source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/server/go.mod
+          cache: true
+          cache-dependency-path: apps/server/go.sum
+      - name: Download validated embedded assets
+        uses: actions/download-artifact@v8
+        with:
+          name: embedded-assets
+          path: dist
+      - name: Restore embedded assets
+        run: tar -xzf dist/embedded-assets.tar.gz -C apps/server/internal/webassets/bundle
+      - name: Compile standalone Go program
+        working-directory: apps/server
+        run: go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/dist/yujian-server" ./cmd/api
+      - name: Smoke test Linux amd64 executable
+        if: matrix.goarch == 'amd64'
+        shell: bash
+        run: |
+          # Development startup only: no production database, identity or cloud secrets.
+          APP_ENV=development HTTP_ADDRESS=127.0.0.1:18080 ./dist/yujian-server > dist/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if ! kill -0 "$server_pid" 2>/dev/null; then cat dist/server.log; exit 1; fi
+            if curl --fail --silent --connect-timeout 2 --max-time 3 http://127.0.0.1:18080/healthz; then
+              curl --fail --silent --max-time 5 http://127.0.0.1:18080/ | grep -q '<!DOCTYPE html>'
+              curl --fail --silent --max-time 5 http://127.0.0.1:18080/preview | grep -q '<!DOCTYPE html>'
+              exit 0
+            fi
+            sleep 1
+          done
+          cat dist/server.log
+          exit 1
+      - name: Package executable and source identity
+        shell: bash
+        run: |
+          if [[ ! "$BUILD_LABEL" =~ ^([0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{40})$ ]]; then
+            echo 'Invalid archive version or commit SHA.' >&2
+            exit 1
+          fi
+          printf 'commit=%s\nplatform=linux/%s\n' "$(git rev-parse HEAD)" "$GOARCH" > dist/BUILD-INFO.txt
+          tar -czf "dist/yujian-server-$BUILD_LABEL-linux-$GOARCH.tar.gz" -C dist yujian-server BUILD-INFO.txt
+      - name: Upload standalone program
+        uses: actions/upload-artifact@v7
+        with:
+          name: yujian-server-linux-${{ matrix.goarch }}
+          path: dist/yujian-server-*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload startup failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-startup-log-${{ matrix.goarch }}
+          path: dist/server.log
+          if-no-files-found: ignore

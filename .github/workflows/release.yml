@@ -1,0 +1,201 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump (first release can use minor for v0.1.0)
+        type: choice
+        required: true
+        default: patch
+        options: [patch, minor, major]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Freeze release source and calculate version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+      image: ${{ steps.version.outputs.image }}
+    steps:
+      - name: Checkout dispatch commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+      - name: Require latest default branch and calculate version
+        id: version
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BUMP: ${{ inputs.bump }}
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo 'Release must run on the default branch.' >&2
+            exit 1
+          fi
+          git fetch origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" --tags
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$DEFAULT_BRANCH")" ]; then
+            echo 'Default branch changed; start a new release run.' >&2
+            exit 1
+          fi
+          version=$(node scripts/release-version.mjs "$BUMP")
+          printf 'version=%s\ntag=v%s\nsha=%s\nimage=ghcr.io/%s\n' "$version" "$version" "$(git rev-parse HEAD)" "${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: Validate and build release source
+    needs: prepare
+    uses: ./.github/workflows/code-check.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+      version: ${{ needs.prepare.outputs.version }}
+
+  tag:
+    name: Tag validated commit
+    needs: [prepare, checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Create immutable release tag
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+        shell: bash
+        run: |
+          git fetch origin --tags
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            if [ "$(git rev-parse "refs/tags/$RELEASE_TAG")" = "$RELEASE_SHA" ]; then
+              echo 'Release tag already points to the validated commit.'
+              exit 0
+            fi
+            echo 'Release tag points to another commit; refusing to replace it.' >&2
+            exit 1
+          fi
+          git tag "$RELEASE_TAG" "$RELEASE_SHA"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+  image:
+    name: Publish release image
+    needs: [prepare, tag]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare.outputs.sha }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.tag }}
+            ${{ needs.prepare.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,mode=max,scope=release
+
+  publish:
+    name: Publish GitHub Release and checksums
+    needs: [prepare, tag, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download this run's standalone programs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: yujian-server-linux-*
+          merge-multiple: true
+          path: release-assets
+      - name: Check source tag and publish assets
+        working-directory: release-assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+          RELEASE_IMAGE: ${{ needs.prepare.outputs.image }}
+        shell: bash
+        run: |
+          for arch in amd64 arm64; do
+            test -s "yujian-server-$RELEASE_VERSION-linux-$arch.tar.gz"
+          done
+          sha256sum --binary yujian-server-*.tar.gz > SHA256SUMS.txt
+          existing_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')
+          if [ "$existing_sha" != "$RELEASE_SHA" ]; then
+            echo 'Release tag does not point to the validated commit.' >&2
+            exit 1
+          fi
+          if release_is_draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft'); then
+            case "$release_is_draft" in true|false) ;; *) echo 'Invalid release state.' >&2; exit 1 ;; esac
+          else
+            gh release create "$RELEASE_TAG" --draft --verify-tag --target "$RELEASE_SHA" --title "$RELEASE_TAG" --generate-notes --notes "Single Go program; no Node.js runtime required. Docker (linux/amd64): $RELEASE_IMAGE:$RELEASE_TAG."
+            release_is_draft=true
+          fi
+          existing_assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+          existing_directory=$(mktemp -d)
+          trap 'rm -rf "$existing_directory"' EXIT
+          for path in ./*.tar.gz SHA256SUMS.txt; do
+            asset=${path#./}
+            if printf '%s\n' "$existing_assets" | grep -Fxq "$asset"; then
+              gh release download "$RELEASE_TAG" --pattern "$asset" --dir "$existing_directory"
+              if ! cmp --silent "$path" "$existing_directory/$asset"; then
+                echo "Existing release asset differs: $asset; refusing to overwrite it." >&2
+                exit 1
+              fi
+            else
+              if [ "$release_is_draft" != true ]; then
+                echo 'Published release is incomplete; refusing to modify it.' >&2
+                exit 1
+              fi
+              gh release upload "$RELEASE_TAG" "$path"
+            fi
+          done
+          if [ "$release_is_draft" = true ]; then
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          else
+            echo 'Release already published; all expected files match.'
+          fi
