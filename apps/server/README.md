@@ -16,7 +16,7 @@
 - `internal/sitegen`：Goja 执行内嵌 Vue SSR，生成 HTML、robots 和 sitemap。
 - `internal/webassets`：内嵌管理端、渲染器和带内容哈希的公开浏览器资源。
 - `internal/adminweb`：同源管理端 `/`、隔离预览 `/preview` 与静态资源服务。
-- `internal/providers/s3`：只处理 `assets/` 媒体键的 S3 兼容存储适配器，可配置腾讯云 COS 端点。
+- `internal/providers/s3`：S3 兼容媒体存储适配器，可配置腾讯云 COS 端点；兼容安全的历史媒体键，不要求 `assets/` 前缀，拒绝路径穿越和 `snapshots`／`snapshots/` 快照键。
 
 公开首页不依赖该服务在线。发布时只读取已经审核的不可变快照；服务停止时，已上传 Pages 的 HTML 和浏览器资源仍可独立分发。
 
