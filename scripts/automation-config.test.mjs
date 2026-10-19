@@ -16,7 +16,7 @@ async function readYaml(path) {
 test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', async () => {
   const workflow = await readYaml('.github/workflows/code-check.yml')
 
-  assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push', 'workflow_dispatch'])
+  assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push', 'workflow_call', 'workflow_dispatch'])
   assert.deepEqual(workflow.permissions, { contents: 'read' })
   assert.equal(workflow.concurrency['cancel-in-progress'], true)
 
@@ -28,6 +28,7 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
     'e2e',
     'container',
     'publisher-integration',
+    'binaries',
   ]
   assert.deepEqual(Object.keys(workflow.jobs).sort(), requiredJobs.sort())
 
@@ -100,6 +101,65 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
   assert.equal(adminPackage.scripts['test:e2e'], 'playwright test')
   assert.equal(adminPackage.devDependencies['@playwright/test'], webPackage.devDependencies['@playwright/test'])
   assert.ok(workflow.jobs.e2e.steps.some(step => step.uses?.startsWith('actions/upload-artifact@') && step.with?.path === 'apps/admin/test-results'))
+})
+
+test('复用验证工作流固定代码身份，复用完整内嵌资源并打包双架构单程序', async () => {
+  const workflow = await readYaml('.github/workflows/code-check.yml')
+  assert.equal(workflow.on.workflow_call.inputs.ref.type, 'string')
+  assert.equal(workflow.on.workflow_call.inputs.version.type, 'string')
+  for (const job of Object.values(workflow.jobs)) {
+    const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'))
+    assert.equal(checkout.with.ref, '${{ inputs.ref || github.sha }}')
+    assert.equal(checkout.with['persist-credentials'], false)
+  }
+  assert.match(workflow.concurrency.group, /github\.run_id/, '发布调用与普通 push 不得相互取消')
+  const upload = workflow.jobs.go.steps.find(step => step.with?.name === 'embedded-assets')
+  assert.equal(upload.with['if-no-files-found'], 'error')
+  assert.equal(upload.with.path, 'dist/embedded-assets.tar.gz', 'tar 必须保留隐藏 manifest 和文件权限')
+  const binary = workflow.jobs.binaries
+  assert.deepEqual(binary.needs, ['frontend', 'go'])
+  assert.deepEqual(binary.strategy.matrix.goarch, ['amd64', 'arm64'])
+  assert.equal(binary.env.CGO_ENABLED, '0')
+  assert.equal(binary.env.GOOS, 'linux')
+  assert.ok(binary.steps.some(step => step.with?.name === 'embedded-assets' && step.uses?.startsWith('actions/download-artifact@')))
+  const commands = binary.steps.map(step => step.run || '').join('\n')
+  assert.match(commands, /go build/)
+  assert.match(commands, /tar -xzf/)
+  assert.match(commands, /tar -czf/)
+  assert.match(commands, /healthz/)
+  assert.match(commands, /\/preview/)
+  assert.ok(binary.steps.some(step => step.with?.['if-no-files-found'] === 'error' && step.with.path === 'dist/yujian-server-*.tar.gz'))
+})
+
+test('程序发布只允许手动触发，全部门禁成功后才写标签和发布产物', async () => {
+  const workflow = await readYaml('.github/workflows/release.yml')
+  assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch'])
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.bump.options, ['patch', 'minor', 'major'])
+  assert.deepEqual(workflow.permissions, { contents: 'read' })
+  assert.equal(workflow.concurrency['cancel-in-progress'], false)
+  const { prepare, checks, tag, image, publish } = workflow.jobs
+  assert.equal(checks.uses, './.github/workflows/code-check.yml')
+  assert.equal(checks.with.ref, '${{ needs.prepare.outputs.sha }}')
+  assert.equal(checks.with.version, '${{ needs.prepare.outputs.version }}')
+  assert.deepEqual(tag.needs, ['prepare', 'checks'])
+  assert.equal(tag.permissions.contents, 'write')
+  const preparation = prepare.steps.map(step => step.run || '').join('\n')
+  assert.match(preparation, /refs\/heads\/\$DEFAULT_BRANCH/)
+  assert.match(preparation, /origin\/\$DEFAULT_BRANCH/)
+  assert.doesNotMatch(preparation, /git push|gh release/)
+  assert.deepEqual(image.needs, ['prepare', 'tag'])
+  assert.equal(image.permissions.packages, 'write')
+  assert.ok(image.steps.some(step => step.uses?.startsWith('docker/build-push-action@') && step.with.push === true))
+  assert.deepEqual(publish.needs, ['prepare', 'tag', 'image'])
+  assert.equal(publish.permissions.contents, 'write')
+  const download = publish.steps.find(step => step.uses?.startsWith('actions/download-artifact@'))
+  assert.equal(download.with.pattern, 'yujian-server-linux-*')
+  const commands = publish.steps.map(step => step.run || '').join('\n')
+  assert.match(commands, /sha256sum.*yujian-server-.*SHA256SUMS\.txt/)
+  assert.match(commands, /RELEASE_SHA/)
+  assert.match(commands, /--verify-tag/)
+  assert.doesNotMatch(commands, /--clobber/)
+  assert.ok(!JSON.stringify(workflow).includes('PAGES_API_TOKEN'), '构建发布不使用生产云密钥')
 })
 
 test('Dependabot 覆盖所有依赖生态并按周执行', async () => {

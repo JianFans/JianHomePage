@@ -2,7 +2,7 @@
 
 该 Go 服务内嵌「遇健我」管理端，并提供内容版本、审核、素材、Vue 静态生成和 Pages 自动发布。业务层通过明确接口接入 PostgreSQL、对象存储、身份提供器和 Pages，运行时不需要 Node.js 或外部构建进程。
 
-第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)，按顺序配置账号登录、数据库和一个 Go 程序。本文用于查完整参数及 API 行为。
+第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)：在 GitHub Actions 手动运行 `Release`，从 Releases 下载编译好的单程序包，再配置账号登录、数据库和云服务。本地电脑与服务器都无需编译。本文用于查完整参数及 API 行为。
 
 ## 当前边界
 
@@ -87,7 +87,9 @@ go run ./cmd/api
 
 服务入口提供管理页面 `/`、隔离预览 `/preview` 和 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 SHA-256；上传成功后可通过与内容契约一致的 `/media/*` 路径读取，便于本地 API 调试和内容快照引用。生产环境不会自动降级到内存仓储；启动时加载配置、探测 PostgreSQL、校验 S3、事务执行迁移，并校验 Pages、发布仓储和内嵌资源后注册路由。任一步失败都会关闭已打开的数据库并拒绝启动。
 
-在仓库根目录运行 `pnpm build:server`，输出 `dist/yujian-server`，Windows 为 `dist/yujian-server.exe`。此命令生成前端资源并编译 Go，不自动运行测试。交付二进制已包含管理端、SSR 渲染器和公开浏览器资源，目标机器无需安装 Node.js。`GOOS`、`GOARCH` 可用于指定编译目标。
+日常部署从 GitHub Releases 下载 Linux amd64 或 arm64 的 `.tar.gz`，并用同一 Release 的 `SHA256SUMS.txt` 校验。Actions 的 `Check Code` 也会生成同名架构的临时下载包，保留 7 天；正式版本通过手动 `Release` 运行完整门禁后发布。包内只有 `yujian-server` 和记录代码提交及架构的 `BUILD-INFO.txt`，运行时不依赖它旁边的源码或资源文件。
+
+仅开发时需要自行编译：在仓库根目录运行 `pnpm build:server`，输出 `dist/yujian-server`，Windows 为 `dist/yujian-server.exe`。此命令生成前端资源并编译 Go，不自动运行测试。交付二进制已包含管理端、SSR 渲染器和公开浏览器资源，目标机器无需安装 Node.js。`GOOS`、`GOARCH` 可用于指定编译目标。
 
 仅导出本地预览时可使用以下命令，输出目录必须为空：
 
@@ -103,7 +105,9 @@ go run ./cmd/api
 
 Go 标准库会编入 API 二进制。修复标准库漏洞时，需要更新 `Dockerfile` 构建阶段的 Go 补丁版本并重新构建；仅更新 distroless 运行镜像不能替换二进制中的标准库。CI 会扫描最终镜像，并阻止包含 HIGH 或 CRITICAL 漏洞的镜像通过。
 
-在仓库根目录构建并执行开发模式健康检查：
+生产部署优先使用 Actions 已发布的 `ghcr.io/jianfans/jianhomepage:vX.Y.Z`，将标签换成实际 Release 版本。当前镜像支持 Linux amd64，ARM64 服务器使用 Releases 中的单程序包。镜像可见性及拉取要求见 [部署操作指南](../../docs/DEPLOYMENT.md)。不要在生产使用浮动的 `latest` 标签。
+
+以下命令仅用于开发时自行构建镜像并执行开发模式健康检查：
 
 ```bash
 docker build --tag yujian-server:local .
