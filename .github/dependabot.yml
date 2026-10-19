@@ -13,13 +13,23 @@ updates:
       prefix: "chore(依赖)"
       prefix-development: "chore(开发依赖)"
     groups:
+      vue-core:
+        patterns:
+          - vue
+          - "@vue/*"
       npm-production:
         dependency-type: production
+        exclude-patterns:
+          - vue
+          - "@vue/*"
         update-types:
           - minor
           - patch
       npm-development:
         dependency-type: development
+        exclude-patterns:
+          - vue
+          - "@vue/*"
         update-types:
           - minor
           - patch

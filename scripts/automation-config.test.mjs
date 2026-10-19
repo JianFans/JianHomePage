@@ -119,6 +119,27 @@ test('Dependabot 覆盖所有依赖生态并按周执行', async () => {
   assert.ok(!updates.has('docker:/apps/publisher'), '独立 Node 发布镜像已停用')
 })
 
+test('Vue 运行库和服务端渲染器使用同一版本', async () => {
+  const admin = JSON.parse(await readText('apps/admin/package.json'))
+  const web = JSON.parse(await readText('apps/web/package.json'))
+  assert.equal(admin.dependencies.vue, web.dependencies.vue)
+  assert.equal(web.devDependencies['@vue/server-renderer'], web.dependencies.vue,
+    '内嵌 SSR 必须使用与客户端相同版本的 Vue 运行库和渲染器')
+})
+
+test('Dependabot 跨生产和开发依赖同步更新 Vue 核心包', async () => {
+  const config = await readYaml('.github/dependabot.yml')
+  const npm = config.updates.find(update => update['package-ecosystem'] === 'npm')
+  const vue = npm.groups['vue-core']
+  assert.ok(vue, 'Vue 核心包必须在同一 PR 中更新')
+  assert.deepEqual(vue.patterns, ['vue', '@vue/*'])
+  assert.equal(vue['dependency-type'], undefined, '不能拆开运行库与开发依赖中的渲染器')
+  assert.equal(vue['update-types'], undefined, '主版本升级也应保持 Vue 核心包同步')
+  for (const name of ['npm-production', 'npm-development']) {
+    assert.deepEqual(npm.groups[name]['exclude-patterns'], vue.patterns)
+  }
+})
+
 test('单程序镜像只在编译阶段使用 Node 并嵌入管理页面和渲染程序', async () => {
   const dockerfile = await readText('Dockerfile')
   const rootPackage = JSON.parse(await readText('package.json'))
