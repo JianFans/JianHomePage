@@ -392,7 +392,7 @@ func TestCreateVersionReturnsCreatedETagAndRequestID(t *testing.T) {
 	router := testRouter(t, content, &publishServiceStub{})
 	recorder := httptest.NewRecorder()
 	request := authenticatedRequest(http.MethodPost, "/api/v1/versions", `{"snapshot":{"schemaVersion":"1.0.0"}}`, "editor")
-	request.Header.Set("X-Request-ID", "req-create")
+	request.Header.Set("X-Request-ID", "91d89027-62a8-4ba3-92d6-850a25468f1b")
 	router.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusCreated {
@@ -401,7 +401,7 @@ func TestCreateVersionReturnsCreatedETagAndRequestID(t *testing.T) {
 	if recorder.Header().Get("ETag") != `"1"` {
 		t.Fatalf("expected ETag \"1\", got %q", recorder.Header().Get("ETag"))
 	}
-	if recorder.Header().Get("X-Request-ID") != "req-create" {
+	if recorder.Header().Get("X-Request-ID") != "91d89027-62a8-4ba3-92d6-850a25468f1b" {
 		t.Fatalf("expected request id header, got %q", recorder.Header().Get("X-Request-ID"))
 	}
 }

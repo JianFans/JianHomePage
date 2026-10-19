@@ -38,7 +38,7 @@ func LoggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		id := strings.TrimSpace(request.Header.Get("X-Request-ID"))
-		generatedByLogging := !validRequestID(id)
+		generatedByLogging := !validExternalRequestID(id)
 		if generatedByLogging {
 			id = fmt.Sprintf("req-%s", rand.Text())
 		}
@@ -113,13 +113,33 @@ func isStaticRoute(path string) bool {
 	return strings.HasPrefix(path, "/_nuxt/") || strings.HasPrefix(path, "/site/")
 }
 
-// validRequestID bounds caller identifiers while rejecting control characters and log injection.
+// validRequestID bounds trusted identifiers while rejecting control characters and log injection.
 func validRequestID(id string) bool {
 	if id == "" || len(id) > 128 {
 		return false
 	}
 	for _, r := range id {
 		if r < 33 || r > 126 {
+			return false
+		}
+	}
+	return true
+}
+
+// validExternalRequestID only accepts UUIDs as caller-supplied request IDs.
+func validExternalRequestID(id string) bool {
+	if len(id) != 36 {
+		return false
+	}
+	for index := range id {
+		if index == 8 || index == 13 || index == 18 || index == 23 {
+			if id[index] != '-' {
+				return false
+			}
+			continue
+		}
+		value := id[index]
+		if !((value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') || (value >= 'A' && value <= 'F')) {
 			return false
 		}
 	}

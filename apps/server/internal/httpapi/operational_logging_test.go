@@ -73,6 +73,31 @@ func TestRequestLogsClassifyStatusAndSuppressProbeNoise(t *testing.T) {
 	}
 }
 
+func TestRequestLogsReplaceCookieShapedRequestIDs(t *testing.T) {
+	cookie := strings.Repeat("a", 43)
+	var output bytes.Buffer
+	inner := requestIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), func(*http.Request) string { return "req-generated" })
+	handler := LoggingMiddleware(inner, slog.New(slog.NewJSONHandler(&output, nil)))
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	request.Header.Set("X-Request-ID", cookie)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, request)
+
+	if got := w.Header().Get("X-Request-ID"); got != "req-generated" {
+		t.Fatalf("response request ID = %q", got)
+	}
+	entries := logEntries(t, &output)
+	if len(entries) != 1 || entries[0]["request_id"] != "req-generated" {
+		t.Fatalf("unexpected request diagnostics: %s", output.String())
+	}
+	if strings.Contains(output.String(), cookie) {
+		t.Fatalf("cookie-shaped request ID leaked to logs: %s", output.String())
+	}
+}
+
 // TestInternalFailureLogsRetainCauseAndResource keeps public errors generic while recording the failed domain lookup.
 func TestInternalFailureLogsRetainCauseAndResource(t *testing.T) {
 	var output bytes.Buffer

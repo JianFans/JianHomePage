@@ -228,7 +228,7 @@ func requestIDMiddleware(next http.Handler, generator func(*http.Request) string
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requestID := strings.TrimSpace(request.Header.Get("X-Request-ID"))
 		state, _ := request.Context().Value(requestLogKey{}).(*requestLog)
-		if !validRequestID(requestID) || (state != nil && state.generatedByLogging) {
+		if !validExternalRequestID(requestID) || (state != nil && state.generatedByLogging) {
 			requestID = strings.TrimSpace(generator(request))
 		}
 		if !validRequestID(requestID) {
