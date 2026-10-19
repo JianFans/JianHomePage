@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"yujian.me/server/internal/config"
 	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/httpurl"
 )
@@ -61,6 +62,7 @@ type SessionOptions struct {
 	Secure         bool
 	HTTPClient     *http.Client
 	Now            func() time.Time
+	RoleNames      config.OIDCRoleNames
 }
 
 // Sessions owns authorization-code authentication and opaque browser sessions.
@@ -99,7 +101,7 @@ func NewSessions(options SessionOptions) (*Sessions, error) {
 	if !slices.Contains(options.AllowedOrigins, returned.Scheme+"://"+returned.Host) {
 		return nil, errors.New("admin return URL origin is not allowed")
 	}
-	verifier, err := NewOIDCProvider(OIDCConfig{Issuer: options.Issuer, Audience: options.ClientID, RequireHTTPS: options.Secure, HTTPClient: options.HTTPClient, Now: options.Now})
+	verifier, err := NewOIDCProvider(OIDCConfig{Issuer: options.Issuer, Audience: options.ClientID, RequireHTTPS: options.Secure, HTTPClient: options.HTTPClient, Now: options.Now, RoleNames: options.RoleNames})
 	if err != nil {
 		return nil, err
 	}

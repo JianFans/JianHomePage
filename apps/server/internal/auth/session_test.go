@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"yujian.me/server/internal/auth"
+	"yujian.me/server/internal/config"
 	"yujian.me/server/internal/store/memory"
 )
 
@@ -66,7 +67,7 @@ func TestAuthorizationCodePKCESessionLogoutAndExpiry(t *testing.T) {
 				t.Error("invalid code exchange")
 			}
 			exchanges++
-			json.NewEncoder(w).Encode(map[string]string{"id_token": signJWT(t, key, map[string]any{"iss": issuer, "aud": "https://admin.example.com", "sub": "editor-1", "roles": []string{"editor"}, "nonce": nonce, "exp": now.Add(time.Hour).Unix()})})
+			json.NewEncoder(w).Encode(map[string]string{"id_token": signJWT(t, key, map[string]any{"iss": issuer, "aud": "https://admin.example.com", "sub": "editor-1", "roles": []string{"other-app-admin", "site-editor", "site-editor"}, "nonce": nonce, "exp": now.Add(time.Hour).Unix()})})
 		default:
 			http.NotFound(w, r)
 		}
@@ -74,7 +75,7 @@ func TestAuthorizationCodePKCESessionLogoutAndExpiry(t *testing.T) {
 	defer server.Close()
 	issuer = server.URL
 	store := memory.NewSessionStore()
-	manager, err := auth.NewSessions(auth.SessionOptions{Issuer: issuer, ClientID: clientID, ClientSecret: clientSecret, RedirectURL: "http://api.local/api/v1/auth/callback", ReturnURL: "http://admin.local/", Key: make([]byte, 32), Store: store, AllowedOrigins: []string{"http://admin.local"}, Now: func() time.Time { return now }})
+	manager, err := auth.NewSessions(auth.SessionOptions{Issuer: issuer, ClientID: clientID, ClientSecret: clientSecret, RedirectURL: "http://api.local/api/v1/auth/callback", ReturnURL: "http://admin.local/", Key: make([]byte, 32), Store: store, AllowedOrigins: []string{"http://admin.local"}, Now: func() time.Time { return now }, RoleNames: config.OIDCRoleNames{Editor: "site-editor"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,11 +110,12 @@ func TestAuthorizationCodePKCESessionLogoutAndExpiry(t *testing.T) {
 	session := httptest.NewRecorder()
 	manager.ServeHTTP(session, sessionRequest)
 	var body struct {
-		Authenticated bool   `json:"authenticated"`
-		CSRF          string `json:"csrfToken"`
+		Authenticated bool                  `json:"authenticated"`
+		CSRF          string                `json:"csrfToken"`
+		Principal     auth.SessionPrincipal `json:"principal"`
 	}
 	json.Unmarshal(session.Body.Bytes(), &body)
-	if !body.Authenticated || body.CSRF == "" {
+	if !body.Authenticated || body.CSRF == "" || len(body.Principal.Roles) != 1 || body.Principal.Roles[0] != "editor" {
 		t.Fatalf("session %s", session.Body.String())
 	}
 	middleware, _ := auth.NewMiddleware(auth.MiddlewareOptions{Sessions: manager})

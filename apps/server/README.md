@@ -31,6 +31,10 @@
 | `DATABASE_URL` | 空 | 生产环境必填；不得写入日志。 |
 | `OIDC_ISSUER` | 空 | 生产环境必填。 |
 | `OIDC_AUDIENCE` | 空 | 生产环境必填。 |
+| `OIDC_ROLE_EDITOR` | `editor` | 身份服务中的内容编辑角色名。 |
+| `OIDC_ROLE_REVIEWER` | `reviewer` | 身份服务中的内容审核角色名。 |
+| `OIDC_ROLE_PUBLISHER` | `publisher` | 身份服务中的发布与回滚角色名。 |
+| `OIDC_ROLE_ADMIN` | `admin` | 身份服务中的管理员角色名。 |
 | `ADMIN_OIDC_CLIENT_ID` | 空 | 浏览器授权码登录的 OIDC client ID；ID token 的 audience 使用该值。 |
 | `ADMIN_OIDC_CLIENT_SECRET` | 空 | 可选 confidential client 密钥，通过 token endpoint 的 HTTP Basic 发送。 |
 | `ADMIN_OIDC_REDIRECT_URL` | 空 | 身份提供商注册的固定回调 URL，路径为 `/api/v1/auth/callback`。 |
@@ -56,7 +60,9 @@
 
 ### 浏览器登录与会话
 
-浏览器登录使用身份提供商托管的标准登录页、授权码和 S256 PKCE。管理端不接收密码，也不使用 password grant。配置 `ADMIN_OIDC_CLIENT_ID`、`ADMIN_OIDC_REDIRECT_URL`、`ADMIN_RETURN_URL`、`ADMIN_SESSION_KEY` 时须同时配置 `OIDC_ISSUER` 和 `ADMIN_ALLOWED_ORIGINS`；任何部分配置都会阻止启动。生产环境的 issuer、回调和返回 URL 必须为 HTTPS。`ADMIN_OIDC_CLIENT_SECRET` 按身份提供商的客户端类型选填；需为 ID token 配置顶层 `roles` 声明，值只允许 `editor`、`reviewer`、`publisher`、`admin`。
+浏览器登录使用身份提供商托管的标准登录页、授权码和 S256 PKCE。管理端不接收密码，也不使用 password grant。配置 `ADMIN_OIDC_CLIENT_ID`、`ADMIN_OIDC_REDIRECT_URL`、`ADMIN_RETURN_URL`、`ADMIN_SESSION_KEY` 时须同时配置 `OIDC_ISSUER` 和 `ADMIN_ALLOWED_ORIGINS`；任何部分配置都会阻止启动。生产环境的 issuer、回调和返回 URL 必须为 HTTPS。`ADMIN_OIDC_CLIENT_SECRET` 按身份提供商的客户端类型选填；需为 ID token 配置顶层 `roles` 声明。
+
+ID token 和 API Bearer token 共用 `OIDC_ROLE_*` 映射：外部名称精确匹配后转为内部 `editor`、`reviewer`、`publisher`、`admin`，合并权限并去重。默认使用标准名称；自定义值替换默认名，空值回退默认。角色名区分大小写，不能含空白、控制字符或与其他映射重复。`roles` 支持字符串数组或空白分隔的字符串，忽略无关角色；无匹配角色、缺失声明或数组含非字符串项时拒绝认证。持久会话和开发身份仍严格校验内部标准角色。更改映射需重启服务，已有会话保持原权限至退出或过期，重新登录后应用新映射。
 
 `GET /api/v1/auth/session` 无需登录，返回 `authenticated` 和 `loginAvailable`。已认证时另含 `principal`、`csrfToken`、`expiresAt`；登录未配置时返回两个 `false`，不会生成开发身份或演示会话。`GET /api/v1/auth/login` 跳转至身份提供商；回调校验一次性 state、nonce、签名、issuer、client audience、有效期和授权方后设置会话。回调只跳转至配置的固定 URL，忽略用户提供的返回目标。
 

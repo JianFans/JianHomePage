@@ -24,6 +24,7 @@ type Config struct {
 	DatabaseURL           string
 	OIDCIssuer            string
 	OIDCAudience          string
+	OIDCRoleNames         OIDCRoleNames
 	AdminOIDCClientID     string
 	AdminOIDCClientSecret string
 	AdminOIDCRedirectURL  string
@@ -49,11 +50,15 @@ type Config struct {
 // Load validates explicit deployment dependencies before creating services.
 func Load(getenv func(string) string) (Config, error) {
 	config := Config{
-		Environment:           valueOrDefault(strings.TrimSpace(getenv("APP_ENV")), "development"),
-		Address:               valueOrDefault(strings.TrimSpace(getenv("HTTP_ADDRESS")), "127.0.0.1:8080"),
-		DatabaseURL:           strings.TrimSpace(getenv("DATABASE_URL")),
-		OIDCIssuer:            strings.TrimSpace(getenv("OIDC_ISSUER")),
-		OIDCAudience:          strings.TrimSpace(getenv("OIDC_AUDIENCE")),
+		Environment:  valueOrDefault(strings.TrimSpace(getenv("APP_ENV")), "development"),
+		Address:      valueOrDefault(strings.TrimSpace(getenv("HTTP_ADDRESS")), "127.0.0.1:8080"),
+		DatabaseURL:  strings.TrimSpace(getenv("DATABASE_URL")),
+		OIDCIssuer:   strings.TrimSpace(getenv("OIDC_ISSUER")),
+		OIDCAudience: strings.TrimSpace(getenv("OIDC_AUDIENCE")),
+		OIDCRoleNames: OIDCRoleNames{
+			Editor: getenv("OIDC_ROLE_EDITOR"), Reviewer: getenv("OIDC_ROLE_REVIEWER"),
+			Publisher: getenv("OIDC_ROLE_PUBLISHER"), Admin: getenv("OIDC_ROLE_ADMIN"),
+		},
 		AdminOIDCClientID:     strings.TrimSpace(getenv("ADMIN_OIDC_CLIENT_ID")),
 		AdminOIDCClientSecret: strings.TrimSpace(getenv("ADMIN_OIDC_CLIENT_SECRET")),
 		AdminOIDCRedirectURL:  strings.TrimSpace(getenv("ADMIN_OIDC_REDIRECT_URL")),
@@ -74,6 +79,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if !isEnvironment(config.Environment) {
 		return Config{}, fmt.Errorf("%w: APP_ENV must be development, test, or production", ErrInvalidConfig)
 	}
+	roleNames, err := config.OIDCRoleNames.WithDefaults()
+	if err != nil {
+		return Config{}, err
+	}
+	config.OIDCRoleNames = roleNames
 
 	origins, err := parseOrigins(getenv("ADMIN_ALLOWED_ORIGINS"), config.Environment == "production")
 	if err != nil {

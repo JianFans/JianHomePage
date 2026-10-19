@@ -315,6 +315,7 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 			Issuer:       settings.OIDCIssuer,
 			Audience:     settings.OIDCAudience,
 			RequireHTTPS: settings.Environment == "production",
+			RoleNames:    settings.OIDCRoleNames,
 		})
 		if err != nil {
 			return nil, err
@@ -325,6 +326,7 @@ func buildHandler(settings config.Config, dependencies ServiceDependencies) (htt
 		Issuer: settings.OIDCIssuer, ClientID: settings.AdminOIDCClientID, ClientSecret: settings.AdminOIDCClientSecret,
 		RedirectURL: settings.AdminOIDCRedirectURL, ReturnURL: settings.AdminReturnURL, Key: settings.AdminSessionKey,
 		Store: dependencies.Sessions, AllowedOrigins: settings.AllowedAdminOrigins, Secure: settings.Environment == "production",
+		RoleNames: settings.OIDCRoleNames,
 	})
 	if err != nil {
 		return nil, err

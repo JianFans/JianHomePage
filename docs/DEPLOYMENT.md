@@ -32,6 +32,10 @@ install -m 755 yujian-server-0.1.0-linux-amd64 ./yujian-server
 | `DATABASE_URL` | 必填 | PostgreSQL 连接串，由数据库服务提供；密码中的保留字符需 URL 编码；使用直连或会话级连接池 |
 | `OIDC_ISSUER` | 必填 | OIDC 服务的 issuer，须与 discovery 文档一致 |
 | `OIDC_AUDIENCE` | 必填 | 身份服务为本 API 配置的 access token audience |
+| `OIDC_ROLE_EDITOR` | 默认 `editor` | 身份服务中对应本站内容编辑权限的角色名 |
+| `OIDC_ROLE_REVIEWER` | 默认 `reviewer` | 身份服务中对应本站审核权限的角色名 |
+| `OIDC_ROLE_PUBLISHER` | 默认 `publisher` | 身份服务中对应本站发布与回滚权限的角色名 |
+| `OIDC_ROLE_ADMIN` | 默认 `admin` | 身份服务中对应本站管理员权限的角色名 |
 | `ADMIN_OIDC_CLIENT_ID` | 必填 | 身份服务中新建 OIDC 客户端的 Client ID，启用授权码流程和 S256 PKCE |
 | `ADMIN_OIDC_CLIENT_SECRET` | 按客户端类型 | confidential client 的 Client Secret，从身份服务客户端配置获取；public client 留空 |
 | `ADMIN_OIDC_REDIRECT_URL` | 必填 | `https://admin.yujian.me/api/v1/auth/callback`，同时注册到 OIDC 回调白名单 |
@@ -65,15 +69,17 @@ COS 的 SecretId／SecretKey 从 [CAM](https://console.cloud.tencent.com/cam/cap
 | --- | --- |
 | 后台网页登录 | ID token 的 `aud` 包含 `ADMIN_OIDC_CLIENT_ID`；验证后创建 Cookie 会话，之后无需手动提供令牌 |
 | 程序直接调用 API | `Authorization: Bearer <access_token>` 中令牌的 `aud` 包含 `OIDC_AUDIENCE` |
-| 两种方式的权限 | 顶层 `roles` 提供本站角色，例如 `roles: ["admin"]`；只有管理员需要 `admin`，其他人员可按职责使用 `editor`、`reviewer`、`publisher` |
+| 两种方式的权限 | 顶层 `roles` 至少包含一个配置的角色名，例如默认配置下的 `roles: ["admin"]`；其他角色名忽略，多个匹配角色的权限合并 |
 
-`aud` 不是密码，不需要手动修改令牌。两种方式都校验签名、issuer 和有效期；本站角色区分大小写，出现其他角色名也会拒绝认证。Casdoor 的 `isAdmin` 或角色显示名称不替代本站 `roles`。
+`aud` 不是密码，不需要手动修改令牌。两种方式都校验签名、issuer 和有效期。`roles` 支持字符串数组或空白分隔的字符串；完全无匹配角色、声明缺失或数组含非字符串项时拒绝认证。Casdoor 的 `isAdmin` 或角色显示名称不替代本站 `roles`。
+
+角色名区分大小写，可用上表四个 `OIDC_ROLE_*` 变量配置。留空或未设置时使用默认名；自定义后只匹配新名称，不再接受原默认名。名称不能包含空白或控制字符，四个名称不能重复。例如 `OIDC_ROLE_ADMIN=yujian-admin` 时，`roles: ["other-app-user", "yujian-admin"]` 可获得本站管理员权限，只有 `roles: ["admin"]` 则不能。修改后重启服务；已有会话保留原权限至退出或过期，需重新登录使新映射生效。API 和管理端会话内仍使用标准角色名。
 
 Casdoor 普通、非共享应用可按以下方式配置，其他 OIDC 服务遵循相同令牌契约：
 
 1. 在应用详情复制 **Client ID**、**Client Secret**，分别填写 `ADMIN_OIDC_CLIENT_ID`、`ADMIN_OIDC_CLIENT_SECRET`。`OIDC_ISSUER` 填 Casdoor 服务根地址，例如 `https://auth.example.com`，须与 `/.well-known/openid-configuration` 返回的 issuer 一致。此示例中 `OIDC_AUDIENCE` 填同一 Client ID；共享应用或另设 API audience 时须按实际 `aud` 调整，ID token 仍须匹配后台 Client ID。
 2. **Redirect URLs** 添加 `https://admin.yujian.me/api/v1/auth/callback`，与 `ADMIN_OIDC_REDIRECT_URL` 完全一致。应用需支持授权码和 S256 PKCE。**Token signing method** 使用 `RS256`，签名证书的公钥须出现在根 discovery 返回的 `jwks_uri` 中；仅应用专属 JWKS 可见的证书不适用于本站当前配置。
-3. 在 Casdoor **Roles** 中创建名称为 `admin` 的角色，启用并在 **Users** 中加入实际管理员账号。其他人员按需分配 `editor`、`reviewer`、`publisher`；不要给所有登录用户统一授予管理员权限。
+3. 在 Casdoor **Roles** 中创建名称为 `admin` 的角色，启用并在 **Users** 中加入实际管理员账号。其他人员按需分配 `editor`、`reviewer`、`publisher`；已有角色名称不同时配置对应的 `OIDC_ROLE_*`。用户可以同时持有其他应用的角色；不要给所有登录用户统一授予管理员权限。
 4. 应用的 **Token format** 选择 `JWT-Custom`，在 **Token attributes** 新增以下映射。它提取用户已分配角色的名称，而非输出默认角色对象；仅在 **Token fields** 勾选 `Roles` 不等价于此映射。
 
    | Name | Category | Value | Type |

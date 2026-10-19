@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"yujian.me/server/internal/config"
 	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/httpurl"
 )
@@ -35,6 +36,7 @@ type OIDCConfig struct {
 	ClockSkew    time.Duration
 	MaxTokenSize int
 	RequireHTTPS bool
+	RoleNames    config.OIDCRoleNames
 }
 
 type OIDCProvider struct {
@@ -45,6 +47,7 @@ type OIDCProvider struct {
 	clockSkew    time.Duration
 	maxTokenSize int
 	requireHTTPS bool
+	rolesByName  map[string]domain.Role
 
 	mu                 sync.Mutex
 	jwksURL            string
@@ -71,6 +74,8 @@ type jwk struct {
 	E   string `json:"e"`
 }
 
+// NewOIDCProvider validates issuer, audience and role names, freezing the
+// external-to-internal role mapping before any signed token is accepted.
 func NewOIDCProvider(config OIDCConfig) (*OIDCProvider, error) {
 	issuer := strings.TrimRight(strings.TrimSpace(config.Issuer), "/")
 	parsed, err := httpurl.ParseAbsolute(issuer)
@@ -82,6 +87,10 @@ func NewOIDCProvider(config OIDCConfig) (*OIDCProvider, error) {
 	}
 	if strings.TrimSpace(config.Audience) == "" {
 		return nil, errors.New("OIDC audience is required")
+	}
+	roleNames, err := config.RoleNames.WithDefaults()
+	if err != nil {
+		return nil, err
 	}
 	httpClient := config.HTTPClient
 	if httpClient == nil {
@@ -111,7 +120,11 @@ func NewOIDCProvider(config OIDCConfig) (*OIDCProvider, error) {
 		clockSkew:    clockSkew,
 		maxTokenSize: maxTokenSize,
 		requireHTTPS: config.RequireHTTPS,
-		keys:         make(map[string]*rsa.PublicKey),
+		rolesByName: map[string]domain.Role{
+			roleNames.Editor: domain.RoleEditor, roleNames.Reviewer: domain.RoleReviewer,
+			roleNames.Publisher: domain.RolePublisher, roleNames.Admin: domain.RoleAdmin,
+		},
+		keys: make(map[string]*rsa.PublicKey),
 	}, nil
 }
 
@@ -176,7 +189,7 @@ func (provider *OIDCProvider) Authenticate(ctx context.Context, token string) (d
 	if err := provider.validateClaims(claims); err != nil {
 		return domain.Principal{}, err
 	}
-	roles, err := rolesFromClaims(claims["roles"])
+	roles, err := provider.rolesFromClaims(claims["roles"])
 	if err != nil {
 		return domain.Principal{}, err
 	}
@@ -320,7 +333,9 @@ func (provider *OIDCProvider) fetch(ctx context.Context, endpoint string) ([]byt
 	return body, nil
 }
 
-func rolesFromClaims(value any) ([]domain.Role, error) {
+// rolesFromClaims filters unrelated identity-provider roles and returns only
+// canonical site roles; a valid token still needs at least one matching role.
+func (provider *OIDCProvider) rolesFromClaims(value any) ([]domain.Role, error) {
 	var values []string
 	switch typed := value.(type) {
 	case []any:
@@ -338,8 +353,16 @@ func rolesFromClaims(value any) ([]domain.Role, error) {
 	default:
 		return nil, errors.New("token roles are required")
 	}
-	roles, err := ParseRoles(values)
-	if err != nil || len(roles) == 0 {
+	roles := make([]domain.Role, 0, len(provider.rolesByName))
+	seen := make(map[domain.Role]bool, len(provider.rolesByName))
+	for _, value := range values {
+		role, known := provider.rolesByName[value]
+		if known && !seen[role] {
+			roles = append(roles, role)
+			seen[role] = true
+		}
+	}
+	if len(roles) == 0 {
 		return nil, errors.New("token roles are invalid")
 	}
 	return roles, nil
