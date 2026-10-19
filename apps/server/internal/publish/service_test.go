@@ -31,6 +31,7 @@ type memoryRepository struct {
 	snapshotStore       *snapshotStoreFake
 }
 
+// newMemoryRepository initializes isolated publish state and its immutable snapshot fake.
 func newMemoryRepository() *memoryRepository {
 	return &memoryRepository{
 		versions:            make(map[string]domain.ContentVersion),
@@ -189,6 +190,7 @@ func (repository *memoryRepository) LockPublishSlot(context.Context, string) err
 	return nil
 }
 
+// AppendAudit records audit entries so publish transitions can be asserted in tests.
 func (repository *memoryRepository) AppendAudit(_ context.Context, entry domain.AuditEntry) error {
 	repository.audits = append(repository.audits, entry)
 	return nil
@@ -207,10 +209,12 @@ type snapshotStoreFake struct {
 	putErr   error
 }
 
+// newSnapshotStoreFake creates the immutable in-memory store used by publish tests.
 func newSnapshotStoreFake() *snapshotStoreFake {
 	return &snapshotStoreFake{objects: make(map[string][]byte)}
 }
 
+// PutSnapshot preserves the first bytes per key and rejects conflicting replacements.
 func (store *snapshotStoreFake) PutSnapshot(_ context.Context, key string, content []byte) error {
 	if store.putErr != nil {
 		return store.putErr
@@ -226,6 +230,7 @@ func (store *snapshotStoreFake) PutSnapshot(_ context.Context, key string, conte
 	return nil
 }
 
+// ReadSnapshot returns a reader over previously persisted fake snapshot bytes.
 func (store *snapshotStoreFake) ReadSnapshot(_ context.Context, key string) (io.ReadCloser, error) {
 	content, exists := store.objects[key]
 	if !exists {
@@ -307,6 +312,7 @@ func (validator validatorStub) Validate([]byte) error {
 	return validator.err
 }
 
+// publishServiceForTest wires deterministic IDs, time, and in-memory publish dependencies.
 func publishServiceForTest(
 	repository *memoryRepository,
 	blobs *blobStoreFake,
@@ -685,6 +691,7 @@ func TestFailedBuildReleasesFrozenPublishTarget(t *testing.T) {
 	}
 }
 
+// TestPublishIsIdempotentAndWritesImmutableSnapshotOnce keeps retries from duplicating writes.
 func TestPublishIsIdempotentAndWritesImmutableSnapshotOnce(t *testing.T) {
 	repository := newMemoryRepository()
 	repository.versions["ver_new"] = approvedVersion("ver_new", "rel_test")
@@ -994,6 +1001,7 @@ func TestRefreshSuccessRechecksJobAfterWaitingForPublishSlotLock(t *testing.T) {
 	}
 }
 
+// TestRollbackReusesHistoricalSnapshotWithoutBlobRewrite rebuilds from retained version data.
 func TestRollbackReusesHistoricalSnapshotWithoutBlobRewrite(t *testing.T) {
 	repository := newMemoryRepository()
 	target := approvedVersion("ver_old", "rel_old")
@@ -1025,6 +1033,7 @@ func TestRollbackReusesHistoricalSnapshotWithoutBlobRewrite(t *testing.T) {
 	}
 }
 
+// TestRollbackRewritesLegacySnapshotWhenCanonicalChecksumChanged uses the current canonical digest.
 func TestRollbackRewritesLegacySnapshotWhenCanonicalChecksumChanged(t *testing.T) {
 	repository := newMemoryRepository()
 	canonical, err := canonicalSnapshot([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_old","value":0.50}`))

@@ -9,6 +9,7 @@ import (
 	"yujian.me/server/internal/domain"
 )
 
+// TestSnapshotStoreCopiesBytesAndRejectsReplacement protects local snapshot immutability.
 func TestSnapshotStoreCopiesBytesAndRejectsReplacement(t *testing.T) {
 	store := NewSnapshotStore()
 	input := []byte("canonical snapshot")

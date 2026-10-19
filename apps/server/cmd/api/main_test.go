@@ -541,6 +541,7 @@ func TestRunProductionReturnsDatabaseConfigurationError(t *testing.T) {
 	}
 }
 
+// TestDefaultProductionFactoryReturnsAdapterConfigurationErrors checks explicit production setup.
 func TestDefaultProductionFactoryReturnsAdapterConfigurationErrors(t *testing.T) {
 	factory := defaultProductionFactory()
 	if factory.openDatabase == nil || factory.newBlobStore == nil || factory.newPages == nil || factory.newGenerator == nil || factory.newAdmin == nil {

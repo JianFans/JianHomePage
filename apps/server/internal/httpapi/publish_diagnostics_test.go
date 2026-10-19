@@ -124,6 +124,7 @@ type diagnosticSnapshotStore struct {
 	contents map[string][]byte
 }
 
+// PutSnapshot captures publish input or injects a storage failure for diagnostics tests.
 func (store *diagnosticSnapshotStore) PutSnapshot(_ context.Context, key string, content []byte) error {
 	store.puts++
 	if store.err != nil {
@@ -136,6 +137,7 @@ func (store *diagnosticSnapshotStore) PutSnapshot(_ context.Context, key string,
 	return nil
 }
 
+// ReadSnapshot returns the captured canonical bytes to the publisher test double.
 func (store *diagnosticSnapshotStore) ReadSnapshot(_ context.Context, key string) (io.ReadCloser, error) {
 	content, ok := store.contents[key]
 	if !ok {

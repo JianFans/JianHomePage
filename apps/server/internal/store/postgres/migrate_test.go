@@ -92,6 +92,7 @@ func (row migrationBoolRow) Scan(dest ...any) error {
 	return nil
 }
 
+// TestMigrateLocksTransactionAndRunsInitialSchema verifies ordered migrations include snapshots.
 func TestMigrateLocksTransactionAndRunsInitialSchema(t *testing.T) {
 	fake := &execFake{}
 	if err := Migrate(context.Background(), fake); err != nil {

@@ -85,6 +85,7 @@ func (store *SnapshotStore) ReadSnapshot(ctx context.Context, key string) (io.Re
 	return io.NopCloser(bytes.NewReader(content)), nil
 }
 
+// validateStoredSnapshot checks key identity, canonical JSON, size, checksum, and release ID.
 func validateStoredSnapshot(key string, content []byte) (string, string, error) {
 	releaseID, checksum, err := parseStoredSnapshotKey(key)
 	if err != nil || len(content) == 0 || len(content) > ports.MaxPublishSnapshotBytes || !utf8.Valid(content) {
@@ -103,6 +104,7 @@ func validateStoredSnapshot(key string, content []byte) (string, string, error) 
 	return releaseID, checksum, nil
 }
 
+// parseStoredSnapshotKey extracts the release ID and digest from a strict snapshot key.
 func parseStoredSnapshotKey(key string) (string, string, error) {
 	if !strings.HasPrefix(key, "snapshots/") {
 		return "", "", domain.ErrInvalidInput

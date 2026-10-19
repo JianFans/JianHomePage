@@ -81,6 +81,7 @@ type snapshotAsset struct {
 
 var managedAssetPath = regexp.MustCompile(`(?:^|/)assets/(asset_[A-Za-z0-9_-]+)/((?:source)\.[A-Za-z0-9]+)$`)
 
+// NewService wires publish dependencies and supplies defaults for its clock and ID generator.
 func NewService(options ServiceOptions) *Service {
 	now := options.Now
 	if now == nil {

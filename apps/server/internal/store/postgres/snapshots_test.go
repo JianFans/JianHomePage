@@ -12,6 +12,7 @@ import (
 	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
+// TestSnapshotStoreValidatesKeyAndCanonicalContent rejects mismatched stored identities.
 func TestSnapshotStoreValidatesKeyAndCanonicalContent(t *testing.T) {
 	raw, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_test"}`))
 	if err != nil {
@@ -39,6 +40,7 @@ func TestSnapshotStoreValidatesKeyAndCanonicalContent(t *testing.T) {
 	}
 }
 
+// TestSnapshotStorePersistsAndReadsCanonicalBytes covers immutable writes and verified reads.
 func TestSnapshotStorePersistsAndReadsCanonicalBytes(t *testing.T) {
 	raw, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_test"}`))
 	if err != nil {
