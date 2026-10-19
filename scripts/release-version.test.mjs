@@ -32,3 +32,10 @@ test('拒绝非法版本递增选项', async () => {
     assert.throws(() => nextVersion([], bump), /patch.*minor.*major/)
   }
 })
+
+test('实际文件版本领先标签时继续递增，标签领先时不退回文件版本', async () => {
+  const { nextVersion } = await import('./release-version.mjs')
+  assert.equal(nextVersion(['v0.1.0'], 'patch', '0.2.3'), '0.2.4')
+  assert.equal(nextVersion(['v0.3.0'], 'minor', '0.2.3'), '0.4.0')
+  assert.throws(() => nextVersion([], 'patch', '01.0.0'), /版本/)
+})

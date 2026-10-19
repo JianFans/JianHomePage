@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+// TestVersionCommandReportsCompiledVersion verifies version inspection exits
+// without starting the server or loading production configuration.
+func TestVersionCommandReportsCompiledVersion(t *testing.T) {
+	var output bytes.Buffer
+	handled, err := runCommand([]string{"--version"}, &output)
+	if err != nil || !handled || output.String() != "yujian-server "+Version+"\n" {
+		t.Fatalf("unexpected version output: %q, handled=%v, error=%v", output.String(), handled, err)
+	}
+}
+
 // TestExportSiteRunsFromEmbeddedResources verifies offline HTML generation and
 // refuses to overwrite an existing export directory on a second invocation.
 func TestExportSiteRunsFromEmbeddedResources(t *testing.T) {

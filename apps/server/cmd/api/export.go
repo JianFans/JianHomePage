@@ -12,14 +12,18 @@ import (
 	"yujian.me/server/internal/webassets"
 )
 
-// runCommand exports a local preview using the exact embedded production
-// renderer. An empty output directory prevents accidental replacement of data.
+// runCommand handles informational commands and exports local previews with the
+// embedded renderer. An empty directory prevents accidental replacement of data.
 func runCommand(args []string, output io.Writer) (bool, error) {
 	if len(args) == 0 {
 		return false, nil
 	}
+	if len(args) == 1 && args[0] == "--version" {
+		_, err := fmt.Fprintln(output, "yujian-server "+Version)
+		return true, err
+	}
 	if len(args) == 1 && args[0] == "--help" {
-		_, err := fmt.Fprintln(output, "yujian-server: start the management server using environment configuration\nyujian-server --export-site snapshot.json --output empty-directory: export a local static preview")
+		_, err := fmt.Fprintln(output, "yujian-server: start the management server using environment configuration\nyujian-server --version: show application version\nyujian-server --export-site snapshot.json --output empty-directory: export a local static preview")
 		return true, err
 	}
 	if len(args) != 4 || args[0] != "--export-site" || args[2] != "--output" || args[1] == "" || args[3] == "" {
