@@ -22,7 +22,7 @@ describe('现场应用事务', () => {
   })
   it('创建唯一合法 ID 与空必填值，不设置选填海报', () => {
     const first = createEvent()
-    expect(first).toEqual({ id: expect.stringMatching(/^event_[a-z0-9_]+$/), title: { 'zh-CN': '' }, city: { 'zh-CN': '' }, venue: { 'zh-CN': '' }, dateTime: '', status: 'scheduled', detailUrl: '' })
+    expect(first).toEqual({ id: expect.stringMatching(/^event_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), title: { 'zh-CN': '' }, city: { 'zh-CN': '' }, venue: { 'zh-CN': '' }, dateTime: '', status: 'scheduled', detailUrl: '' })
     expect(createEvent().id).not.toBe(first.id)
     const value = draft()
     value.events.push({ ...value.events[0]!, id: first.id })
@@ -31,7 +31,7 @@ describe('现场应用事务', () => {
   it.each(['remove', 'rename'])('拒绝原记录 %s 并保留原文', (action) => {
     const value = draft()
     if (action === 'remove') value.events.shift()
-    else value.events[0]!.id = 'event_renamed'
+    else value.events[0]!.id = 'event_81259d78-17db-4009-a6fd-bc1412d66fb1'
     expect(applyEventDraft(text, text, value)).toMatchObject({ text, error: 'immutable-event' })
   })
   it('重复 ID 交由完整诊断拒绝', () => {
@@ -50,8 +50,8 @@ describe('现场应用事务', () => {
     ['detailUrl', '', '/events/0/detailUrl'],
     ['detailUrl', 'javascript:alert(1)', '/events/0/detailUrl'],
     ['detailUrl', 'http://example.com/event', '/events/0/detailUrl'],
-    ['posterAssetId', 'asset_preview_sample', '/events/0/posterAssetId'],
-    ['posterAssetId', 'asset_missing', '/events/0/posterAssetId'],
+    ['posterAssetId', 'asset_71734f61-5250-4825-a8b3-0192448be437', '/events/0/posterAssetId'],
+    ['posterAssetId', 'asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c', '/events/0/posterAssetId'],
   ])('拒绝非法 %s，保留输入并返回准确路径', (key, invalid, path) => {
     const value = draft()
     Object.assign(value.events[0]!, { [key]: invalid })
@@ -61,10 +61,10 @@ describe('现场应用事务', () => {
   })
   it('支持图片、GIF 海报与选填字段删除', () => {
     const source = structuredClone(fixture)
-    source.assets.push({ ...source.assets[0]!, id: 'asset_gif_test', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
+    source.assets.push({ ...source.assets[0]!, id: 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
     const baseline = JSON.stringify(source)
     const value = createEventDraft(analyzeSnapshotText(baseline).snapshot!)
-    for (const id of ['asset_cover_01', 'asset_gif_test']) {
+    for (const id of ['asset_2f183eda-5f01-4c34-93f6-47739c136bb2', 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f']) {
       value.events[0]!.posterAssetId = id
       expect(applyEventDraft(baseline, baseline, value).error).toBeNull()
     }
@@ -78,7 +78,7 @@ describe('现场应用事务', () => {
   })
   it.each(['cancelled', 'past'])('拒绝 %s 导致已有内部跳转目标隐藏，不删引用', (change) => {
     const source = structuredClone(fixture)
-    Object.assign(source.heroSlides[0]!, { target: { kind: 'internal', contentId: 'event_01' } })
+    Object.assign(source.heroSlides[0]!, { target: { kind: 'internal', contentId: 'event_dc200c4c-abbb-476e-984d-405470f2dbea' } })
     const baseline = JSON.stringify(source)
     expect(analyzeSnapshotText(baseline).snapshot).not.toBeNull()
     const value = createEventDraft(analyzeSnapshotText(baseline).snapshot!)

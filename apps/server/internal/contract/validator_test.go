@@ -192,14 +192,14 @@ func TestValidatorRejectsInvalidNestedSectionVariant(t *testing.T) {
 }
 
 func TestValidatorRejectsBrokenReleaseTrackReference(t *testing.T) {
-	raw := bytes.Replace(readFixture(t), []byte(`"track_01"`), []byte(`"track_missing"`), 1)
+	raw := bytes.Replace(readFixture(t), []byte(`"track_e60c46c7-28d6-418e-8905-167307dc8354"`), []byte(`"track_fd44d76e-d3d0-4969-86c2-605e9606b85a"`), 1)
 	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/releases/0/trackIds/0") {
 		t.Fatalf("expected broken track reference pointer, got %v", err)
 	}
 }
 
 func TestValidatorRejectsBrokenAssetReference(t *testing.T) {
-	raw := bytes.Replace(readFixture(t), []byte(`"ogAssetId": "asset_hero_studio"`), []byte(`"ogAssetId": "asset_missing"`), 1)
+	raw := bytes.Replace(readFixture(t), []byte(`"ogAssetId": "asset_e020cc5b-3c4e-4779-803e-8ccd74d7c0ad"`), []byte(`"ogAssetId": "asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c"`), 1)
 	if err := NewValidator().Validate(raw); err == nil || !strings.Contains(err.Error(), "/site/seo/ogAssetId") {
 		t.Fatalf("expected broken asset reference pointer, got %v", err)
 	}
@@ -211,7 +211,7 @@ func TestValidatorRejectsBrokenMomentTargetReference(t *testing.T) {
 		t.Fatalf("decode fixture: %v", err)
 	}
 	moments := fixture["moments"].([]any)
-	moments[0].(map[string]any)["target"] = map[string]any{"kind": "internal", "contentId": "video_missing"}
+	moments[0].(map[string]any)["target"] = map[string]any{"kind": "internal", "contentId": "video_b2c95663-9e0f-4947-8325-365131897183"}
 	raw, err := json.Marshal(fixture)
 	if err != nil {
 		t.Fatalf("encode fixture: %v", err)
@@ -227,7 +227,7 @@ func TestValidatorRejectsInternalTargetHiddenBySectionLimit(t *testing.T) {
 		t.Fatalf("decode fixture: %v", err)
 	}
 	heroes := fixture["heroSlides"].([]any)
-	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "release_02"
+	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "release_f9462a63-70d9-40b3-a0cc-a792f1b5499e"
 	sections := fixture["homepage"].(map[string]any)["sections"].([]any)
 	sections[1].(map[string]any)["limit"] = float64(1)
 	raw, err := json.Marshal(fixture)
@@ -245,7 +245,7 @@ func TestValidatorRejectsInternalTargetInDisabledSection(t *testing.T) {
 		t.Fatalf("decode fixture: %v", err)
 	}
 	heroes := fixture["heroSlides"].([]any)
-	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "artist_primary"
+	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "artist_eb908750-faf8-418f-94c6-97f769c1cf31"
 	sections := fixture["homepage"].(map[string]any)["sections"].([]any)
 	sections[5].(map[string]any)["enabled"] = false
 	raw, err := json.Marshal(fixture)
@@ -280,7 +280,7 @@ func TestValidatorRejectsInternalTargetPastDisplayWindow(t *testing.T) {
 		t.Fatalf("decode fixture: %v", err)
 	}
 	heroes := fixture["heroSlides"].([]any)
-	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "event_01"
+	heroes[2].(map[string]any)["target"].(map[string]any)["contentId"] = "event_dc200c4c-abbb-476e-984d-405470f2dbea"
 	events := fixture["events"].([]any)
 	events[0].(map[string]any)["dateTime"] = fixture["generatedAt"]
 	raw, err := json.Marshal(fixture)

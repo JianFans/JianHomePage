@@ -12,6 +12,7 @@ import (
 	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 )
 
 func testRouterWithAssets(t *testing.T, content ContentService, assetService AssetService, publish PublishService) http.Handler {
@@ -26,19 +27,19 @@ func testRouterWithAssets(t *testing.T, content ContentService, assetService Ass
 		Publish:      publish,
 		Middleware:   middleware,
 		MaxBodyBytes: 1024,
-		RequestID:    func(*http.Request) string { return "req-routes" },
+		RequestID:    func(*http.Request) string { return "req_6ba7b810-9dad-41d1-80b4-00c04fd430c8" },
 	})
 }
 
 func TestGetVersionReturnsVersionAndETag(t *testing.T) {
 	content := &contentServiceStub{getFn: func(_ context.Context, actor domain.Principal, id string) (domain.ContentVersion, error) {
-		if actor.Subject != "editor-1" || id != "ver_1" {
+		if actor.Subject != "editor-1" || id != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" {
 			t.Fatalf("unexpected service input: actor=%q id=%q", actor.Subject, id)
 		}
 		return testVersion(), nil
 	}}
 	recorder := httptest.NewRecorder()
-	request := authenticatedRequest(http.MethodGet, "/api/v1/versions/ver_1", "", "editor")
+	request := authenticatedRequest(http.MethodGet, "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", "", "editor")
 
 	testRouter(t, content, &publishServiceStub{}).ServeHTTP(recorder, request)
 
@@ -52,7 +53,7 @@ func TestGetVersionReturnsVersionAndETag(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode version response: %v", err)
 	}
-	if response.ID != "ver_1" || response.Revision != 1 || response.Checksum != "sha256:test" {
+	if response.ID != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || response.Revision != 1 || response.Checksum != "sha256:test" {
 		t.Fatalf("unexpected version response %#v", response)
 	}
 }
@@ -67,11 +68,11 @@ func TestReviewRoutesForwardRevisionAndReason(t *testing.T) {
 	}{
 		{
 			name: "submit",
-			path: "/api/v1/versions/ver_1/review",
+			path: "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d/review",
 			body: `{"revision":7}`,
 			role: "editor",
 			content: &contentServiceStub{submitFn: func(_ context.Context, actor domain.Principal, id string, revision int64) (domain.ContentVersion, error) {
-				if actor.Subject != "editor-1" || id != "ver_1" || revision != 7 {
+				if actor.Subject != "editor-1" || id != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || revision != 7 {
 					t.Fatalf("unexpected submit input: actor=%q id=%q revision=%d", actor.Subject, id, revision)
 				}
 				version := testVersion()
@@ -82,11 +83,11 @@ func TestReviewRoutesForwardRevisionAndReason(t *testing.T) {
 		},
 		{
 			name: "approve",
-			path: "/api/v1/versions/ver_1/approve",
+			path: "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d/approve",
 			body: `{"revision":8}`,
 			role: "reviewer",
 			content: &contentServiceStub{approveFn: func(_ context.Context, actor domain.Principal, id string, revision int64) (domain.ContentVersion, error) {
-				if actor.Subject != "editor-1" || id != "ver_1" || revision != 8 {
+				if actor.Subject != "editor-1" || id != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || revision != 8 {
 					t.Fatalf("unexpected approve input: actor=%q id=%q revision=%d", actor.Subject, id, revision)
 				}
 				version := testVersion()
@@ -97,11 +98,11 @@ func TestReviewRoutesForwardRevisionAndReason(t *testing.T) {
 		},
 		{
 			name: "reject",
-			path: "/api/v1/versions/ver_1/reject",
+			path: "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d/reject",
 			body: `{"revision":8,"reason":"missing rights evidence"}`,
 			role: "reviewer",
 			content: &contentServiceStub{rejectFn: func(_ context.Context, actor domain.Principal, id string, revision int64, reason string) (domain.ContentVersion, error) {
-				if actor.Subject != "editor-1" || id != "ver_1" || revision != 8 || reason != "missing rights evidence" {
+				if actor.Subject != "editor-1" || id != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || revision != 8 || reason != "missing rights evidence" {
 					t.Fatalf("unexpected reject input: actor=%q id=%q revision=%d reason=%q", actor.Subject, id, revision, reason)
 				}
 				version := testVersion()
@@ -133,8 +134,8 @@ func TestReviewRoutesForwardRevisionAndReason(t *testing.T) {
 func TestAssetLifecycleRoutesReturnStableRepresentations(t *testing.T) {
 	deletedAt := time.Date(2026, 8, 30, 2, 0, 0, 0, time.UTC)
 	asset := domain.AssetRecord{
-		ID:        "asset_1",
-		SourceURL: "https://media.yujian.me/assets/asset_1/source.webp",
+		ID:        "asset_551aed01-404d-4e4b-b2d3-0974f521eab8",
+		SourceURL: "https://media.yujian.me/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp",
 		Status:    domain.AssetReady,
 		Metadata:  json.RawMessage(`{"width":1200}`),
 		Rights:    json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
@@ -142,13 +143,13 @@ func TestAssetLifecycleRoutesReturnStableRepresentations(t *testing.T) {
 	}
 	assetService := &assetServiceStub{
 		completeFn: func(_ context.Context, actor domain.Principal, id string) (domain.AssetRecord, error) {
-			if actor.Subject != "editor-1" || id != "asset_1" {
+			if actor.Subject != "editor-1" || id != "asset_551aed01-404d-4e4b-b2d3-0974f521eab8" {
 				t.Fatalf("unexpected complete input: actor=%q id=%q", actor.Subject, id)
 			}
 			return asset, nil
 		},
 		deleteFn: func(_ context.Context, actor domain.Principal, id string) error {
-			if actor.Subject != "editor-1" || id != "asset_1" {
+			if actor.Subject != "editor-1" || id != "asset_551aed01-404d-4e4b-b2d3-0974f521eab8" {
 				t.Fatalf("unexpected delete input: actor=%q id=%q", actor.Subject, id)
 			}
 			return nil
@@ -157,7 +158,7 @@ func TestAssetLifecycleRoutesReturnStableRepresentations(t *testing.T) {
 	router := testRouterWithAssets(t, &contentServiceStub{}, assetService, &publishServiceStub{})
 
 	completeRecorder := httptest.NewRecorder()
-	completeRequest := authenticatedRequest(http.MethodPost, "/api/v1/assets/asset_1/complete", "", "editor")
+	completeRequest := authenticatedRequest(http.MethodPost, "/api/v1/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/complete", "", "editor")
 	router.ServeHTTP(completeRecorder, completeRequest)
 	if completeRecorder.Code != http.StatusOK {
 		t.Fatalf("expected complete status 200, got %d body=%s", completeRecorder.Code, completeRecorder.Body.String())
@@ -171,7 +172,7 @@ func TestAssetLifecycleRoutesReturnStableRepresentations(t *testing.T) {
 	}
 
 	deleteRecorder := httptest.NewRecorder()
-	deleteRequest := authenticatedRequest(http.MethodDelete, "/api/v1/assets/asset_1", "", "admin")
+	deleteRequest := authenticatedRequest(http.MethodDelete, "/api/v1/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8", "", "admin")
 	router.ServeHTTP(deleteRecorder, deleteRequest)
 	if deleteRecorder.Code != http.StatusNoContent || deleteRecorder.Body.Len() != 0 {
 		t.Fatalf("expected empty 204 response, got %d body=%q", deleteRecorder.Code, deleteRecorder.Body.String())
@@ -188,7 +189,7 @@ func TestListAssetsForwardsFiltersAndReturnsPage(t *testing.T) {
 		}
 		return assets.ListPage{
 			Items: []domain.AssetRecord{{
-				ID: "asset_1", SourceURL: "https://media.yujian.me/assets/asset_1/source.webp",
+				ID: "asset_551aed01-404d-4e4b-b2d3-0974f521eab8", SourceURL: "https://media.yujian.me/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp",
 				Status: domain.AssetReady, Metadata: json.RawMessage(`{"fileName":"cover.webp"}`),
 				Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`), CreatedAt: createdAt,
 			}},
@@ -207,7 +208,7 @@ func TestListAssetsForwardsFiltersAndReturnsPage(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode asset list response: %v", err)
 	}
-	if len(response.Items) != 1 || response.Items[0].ID != "asset_1" || response.NextCursor != "next-cursor" {
+	if len(response.Items) != 1 || response.Items[0].ID != "asset_551aed01-404d-4e4b-b2d3-0974f521eab8" || response.NextCursor != "next-cursor" {
 		t.Fatalf("unexpected asset list response %#v", response)
 	}
 }
@@ -267,12 +268,12 @@ func TestPublishRoutesForwardIdentifiersAndReturnJob(t *testing.T) {
 			name:       "create",
 			method:     http.MethodPost,
 			path:       "/api/v1/publishes",
-			body:       `{"versionId":"ver_1"}`,
+			body:       `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`,
 			role:       "publisher",
 			wantStatus: http.StatusAccepted,
 			configure: func(stub *publishServiceStub) {
 				stub.publishFn = func(_ context.Context, actor domain.Principal, versionID, key string) (domain.PublishJob, error) {
-					if actor.Subject != "editor-1" || versionID != "ver_1" || key != "idem-1234" {
+					if actor.Subject != "editor-1" || versionID != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || key != "idem-1234" {
 						t.Fatalf("unexpected publish input: actor=%q version=%q key=%q", actor.Subject, versionID, key)
 					}
 					return testJob(), nil
@@ -282,12 +283,12 @@ func TestPublishRoutesForwardIdentifiersAndReturnJob(t *testing.T) {
 		{
 			name:       "get",
 			method:     http.MethodGet,
-			path:       "/api/v1/publishes/pub_1",
+			path:       "/api/v1/publishes/pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a",
 			role:       "publisher",
 			wantStatus: http.StatusOK,
 			configure: func(stub *publishServiceStub) {
 				stub.getFn = func(_ context.Context, actor domain.Principal, id string) (domain.PublishJob, error) {
-					if actor.Subject != "editor-1" || id != "pub_1" {
+					if actor.Subject != "editor-1" || id != "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a" {
 						t.Fatalf("unexpected get input: actor=%q id=%q", actor.Subject, id)
 					}
 					return testJob(), nil
@@ -297,12 +298,12 @@ func TestPublishRoutesForwardIdentifiersAndReturnJob(t *testing.T) {
 		{
 			name:       "refresh",
 			method:     http.MethodPost,
-			path:       "/api/v1/publishes/pub_1/refresh",
+			path:       "/api/v1/publishes/pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a/refresh",
 			role:       "publisher",
 			wantStatus: http.StatusOK,
 			configure: func(stub *publishServiceStub) {
 				stub.refreshFn = func(_ context.Context, actor domain.Principal, id string) (domain.PublishJob, error) {
-					if actor.Subject != "editor-1" || id != "pub_1" {
+					if actor.Subject != "editor-1" || id != "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a" {
 						t.Fatalf("unexpected refresh input: actor=%q id=%q", actor.Subject, id)
 					}
 					return testJob(), nil
@@ -313,12 +314,12 @@ func TestPublishRoutesForwardIdentifiersAndReturnJob(t *testing.T) {
 			name:       "rollback",
 			method:     http.MethodPost,
 			path:       "/api/v1/rollbacks",
-			body:       `{"versionId":"ver_1"}`,
+			body:       `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`,
 			role:       "publisher",
 			wantStatus: http.StatusAccepted,
 			configure: func(stub *publishServiceStub) {
 				stub.rollbackFn = func(_ context.Context, actor domain.Principal, versionID, key string) (domain.PublishJob, error) {
-					if actor.Subject != "editor-1" || versionID != "ver_1" || key != "idem-1234" {
+					if actor.Subject != "editor-1" || versionID != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || key != "idem-1234" {
 						t.Fatalf("unexpected rollback input: actor=%q version=%q key=%q", actor.Subject, versionID, key)
 					}
 					return testJob(), nil
@@ -346,7 +347,7 @@ func TestPublishRoutesForwardIdentifiersAndReturnJob(t *testing.T) {
 			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 				t.Fatalf("decode publish response: %v", err)
 			}
-			if response.ID != "pub_1" || response.VersionID != "ver_1" || response.SnapshotChecksum != "sha256:test" {
+			if response.ID != "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a" || response.VersionID != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || response.SnapshotChecksum != "sha256:test" {
 				t.Fatalf("unexpected publish response %#v", response)
 			}
 		})
@@ -374,7 +375,7 @@ func TestDomainErrorsUseStableHTTPContract(t *testing.T) {
 				return domain.ContentVersion{}, test.err
 			}}
 			recorder := httptest.NewRecorder()
-			request := authenticatedRequest(http.MethodGet, "/api/v1/versions/ver_missing", "", "editor")
+			request := authenticatedRequest(http.MethodGet, "/api/v1/versions/ver_b800ce46-7ebb-4761-b375-0183724ddd3f", "", "editor")
 
 			testRouter(t, content, &publishServiceStub{}).ServeHTTP(recorder, request)
 
@@ -382,7 +383,7 @@ func TestDomainErrorsUseStableHTTPContract(t *testing.T) {
 				t.Fatalf("expected %d, got %d body=%s", test.wantStatus, recorder.Code, recorder.Body.String())
 			}
 			response := decodeError(t, recorder)
-			if response["code"] != test.wantCode || response["requestId"] != "req-test" {
+			if response["code"] != test.wantCode || response["requestId"] != "req_550e8400-e29b-41d4-a716-446655440000" {
 				t.Fatalf("unexpected error response %#v", response)
 			}
 		})
@@ -404,21 +405,21 @@ func TestMutationRoutesPropagateServiceErrors(t *testing.T) {
 		wantCode   string
 	}{
 		{
-			name: "submit review invalid transition", method: http.MethodPost, path: "/api/v1/versions/ver_1/review",
+			name: "submit review invalid transition", method: http.MethodPost, path: "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d/review",
 			body: `{"revision":2}`, role: "editor", wantStatus: http.StatusConflict, wantCode: "invalid_state",
 			content: &contentServiceStub{submitFn: func(context.Context, domain.Principal, string, int64) (domain.ContentVersion, error) {
 				return domain.ContentVersion{}, domain.ErrInvalidTransition
 			}},
 		},
 		{
-			name: "approve stale revision", method: http.MethodPost, path: "/api/v1/versions/ver_1/approve",
+			name: "approve stale revision", method: http.MethodPost, path: "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d/approve",
 			body: `{"revision":2}`, role: "reviewer", wantStatus: http.StatusConflict, wantCode: "conflict",
 			content: &contentServiceStub{approveFn: func(context.Context, domain.Principal, string, int64) (domain.ContentVersion, error) {
 				return domain.ContentVersion{}, domain.ErrConflict
 			}},
 		},
 		{
-			name: "reject invalid reason", method: http.MethodPost, path: "/api/v1/versions/ver_1/reject",
+			name: "reject invalid reason", method: http.MethodPost, path: "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d/reject",
 			body: `{"revision":2,"reason":""}`, role: "reviewer", wantStatus: http.StatusBadRequest, wantCode: "invalid_request",
 			content: &contentServiceStub{rejectFn: func(context.Context, domain.Principal, string, int64, string) (domain.ContentVersion, error) {
 				return domain.ContentVersion{}, domain.ErrInvalidInput
@@ -433,14 +434,14 @@ func TestMutationRoutesPropagateServiceErrors(t *testing.T) {
 			}},
 		},
 		{
-			name: "complete missing asset", method: http.MethodPost, path: "/api/v1/assets/asset_missing/complete",
+			name: "complete missing asset", method: http.MethodPost, path: "/api/v1/assets/asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c/complete",
 			role: "editor", wantStatus: http.StatusNotFound, wantCode: "not_found",
 			assets: &assetServiceStub{completeFn: func(context.Context, domain.Principal, string) (domain.AssetRecord, error) {
 				return domain.AssetRecord{}, domain.ErrNotFound
 			}},
 		},
 		{
-			name: "delete active asset", method: http.MethodDelete, path: "/api/v1/assets/asset_1",
+			name: "delete active asset", method: http.MethodDelete, path: "/api/v1/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8",
 			role: "admin", wantStatus: http.StatusConflict, wantCode: "conflict",
 			assets: &assetServiceStub{deleteFn: func(context.Context, domain.Principal, string) error {
 				return domain.ErrConflict
@@ -448,14 +449,14 @@ func TestMutationRoutesPropagateServiceErrors(t *testing.T) {
 		},
 		{
 			name: "create publish invalid transition", method: http.MethodPost, path: "/api/v1/publishes",
-			body: `{"versionId":"ver_1"}`, role: "publisher", headers: map[string]string{"Idempotency-Key": "idem-1234"},
+			body: `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`, role: "publisher", headers: map[string]string{"Idempotency-Key": "idem-1234"},
 			wantStatus: http.StatusConflict, wantCode: "invalid_state",
 			publish: &publishServiceStub{publishFn: func(context.Context, domain.Principal, string, string) (domain.PublishJob, error) {
 				return domain.PublishJob{}, domain.ErrInvalidTransition
 			}},
 		},
 		{
-			name: "refresh missing publish", method: http.MethodPost, path: "/api/v1/publishes/pub_missing/refresh",
+			name: "refresh missing publish", method: http.MethodPost, path: "/api/v1/publishes/pub_61d12420-dee9-4201-be57-f9c1157ca836/refresh",
 			role: "publisher", wantStatus: http.StatusNotFound, wantCode: "not_found",
 			publish: &publishServiceStub{refreshFn: func(context.Context, domain.Principal, string) (domain.PublishJob, error) {
 				return domain.PublishJob{}, domain.ErrNotFound
@@ -463,7 +464,7 @@ func TestMutationRoutesPropagateServiceErrors(t *testing.T) {
 		},
 		{
 			name: "rollback forbidden", method: http.MethodPost, path: "/api/v1/rollbacks",
-			body: `{"versionId":"ver_1"}`, role: "publisher", headers: map[string]string{"Idempotency-Key": "idem-1234"},
+			body: `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`, role: "publisher", headers: map[string]string{"Idempotency-Key": "idem-1234"},
 			wantStatus: http.StatusForbidden, wantCode: "forbidden",
 			publish: &publishServiceStub{rollbackFn: func(context.Context, domain.Principal, string, string) (domain.PublishJob, error) {
 				return domain.PublishJob{}, domain.ErrForbidden
@@ -484,7 +485,7 @@ func TestMutationRoutesPropagateServiceErrors(t *testing.T) {
 			if recorder.Code != test.wantStatus {
 				t.Fatalf("expected %d, got %d body=%s", test.wantStatus, recorder.Code, recorder.Body.String())
 			}
-			if response := decodeError(t, recorder); response["code"] != test.wantCode || response["requestId"] != "req-routes" {
+			if response := decodeError(t, recorder); response["code"] != test.wantCode || response["requestId"] != "req_6ba7b810-9dad-41d1-80b4-00c04fd430c8" {
 				t.Fatalf("unexpected error response %#v", response)
 			}
 		})
@@ -520,9 +521,9 @@ func TestConfiguredRouteWithoutServiceReturns500(t *testing.T) {
 		headers map[string]string
 	}{
 		{name: "create version", method: http.MethodPost, path: "/api/v1/versions", body: `{"snapshot":{}}`, role: "editor"},
-		{name: "complete asset", method: http.MethodPost, path: "/api/v1/assets/asset_1/complete", role: "editor"},
-		{name: "get publish", method: http.MethodGet, path: "/api/v1/publishes/pub_1", role: "publisher"},
-		{name: "rollback", method: http.MethodPost, path: "/api/v1/rollbacks", body: `{"versionId":"ver_1"}`, role: "publisher", headers: map[string]string{"Idempotency-Key": "idem-1234"}},
+		{name: "complete asset", method: http.MethodPost, path: "/api/v1/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/complete", role: "editor"},
+		{name: "get publish", method: http.MethodGet, path: "/api/v1/publishes/pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a", role: "publisher"},
+		{name: "rollback", method: http.MethodPost, path: "/api/v1/rollbacks", body: `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`, role: "publisher", headers: map[string]string{"Idempotency-Key": "idem-1234"}},
 	}
 
 	router := testRouterWithAssets(t, nil, nil, nil)
@@ -546,12 +547,12 @@ func TestConfiguredRouteWithoutServiceReturns500(t *testing.T) {
 	}
 }
 
-func TestRequestIDMiddlewareFallsBackWhenGeneratorReturnsBlank(t *testing.T) {
+func TestRequestIDMiddlewareReplacesInvalidHeaderWithUUIDv4(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("X-Request-ID", "  ")
+	request.Header.Set("X-Request-ID", "req-42")
 	handler := requestIDMiddleware(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("X-Request-ID") != "req-unknown" {
+		if !identity.Valid(request.Header.Get("X-Request-ID"), "req_") {
 			t.Fatalf("unexpected request ID in downstream handler %q", request.Header.Get("X-Request-ID"))
 		}
 		writer.WriteHeader(http.StatusNoContent)
@@ -559,8 +560,24 @@ func TestRequestIDMiddlewareFallsBackWhenGeneratorReturnsBlank(t *testing.T) {
 
 	handler.ServeHTTP(recorder, request)
 
-	if recorder.Header().Get("X-Request-ID") != "req-unknown" {
-		t.Fatalf("unexpected response request ID %q", recorder.Header().Get("X-Request-ID"))
+	if recorder.Code != http.StatusNoContent || !identity.Valid(recorder.Header().Get("X-Request-ID"), "req_") {
+		t.Fatalf("unexpected response status or request ID: %d %q", recorder.Code, recorder.Header().Get("X-Request-ID"))
+	}
+}
+
+func TestRequestIDMiddlewarePreservesValidUUIDv4Header(t *testing.T) {
+	const requestID = "req_550e8400-e29b-41d4-a716-446655440000"
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("X-Request-ID", requestID)
+	handler := requestIDMiddleware(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}), func(*http.Request) string { return "req_6ba7b810-9dad-41d1-80b4-00c04fd430c8" })
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Header().Get("X-Request-ID") != requestID {
+		t.Fatalf("valid request ID was not preserved: %q", recorder.Header().Get("X-Request-ID"))
 	}
 }
 

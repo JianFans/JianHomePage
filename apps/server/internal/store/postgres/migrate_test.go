@@ -118,8 +118,46 @@ func TestMigrateLocksTransactionAndRunsInitialSchema(t *testing.T) {
 		!strings.Contains(statements, "RAISE EXCEPTION") {
 		t.Fatal("active publish jobs are not safely upgraded or rejected")
 	}
+	if !strings.Contains(statements, "0009_uuid_ids requires empty content, asset, publish, and publisher tables") ||
+		!strings.Contains(statements, "ALTER TABLE audit_log ALTER COLUMN id TYPE uuid USING gen_random_uuid()") ||
+		!strings.Contains(statements, "ALTER TABLE audit_log ALTER COLUMN id SET DEFAULT gen_random_uuid()") {
+		t.Fatal("UUID migration does not guard legacy business records and upgrade audit IDs")
+	}
 	if !fake.tx.committed || fake.tx.rolledBack {
 		t.Fatalf("expected committed transaction, got %#v", fake.tx)
+	}
+}
+
+func TestMigrateSkipsUUIDMigrationAfterItWasApplied(t *testing.T) {
+	fake := &execFake{tx: &migrationTxFake{applied: true}}
+	if err := Migrate(context.Background(), fake); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	statements := strings.Join(fake.tx.calls, "\n")
+	if strings.Contains(statements, "0009_uuid_ids requires empty content") ||
+		strings.Contains(statements, "ALTER TABLE audit_log ALTER COLUMN id TYPE uuid") {
+		t.Fatal("already-applied UUID migration ran again")
+	}
+}
+
+func TestUUIDMigrationPreservesAuditRowsAndNeverDeletesBusinessData(t *testing.T) {
+	statement, err := migrationFiles.ReadFile("migrations/0009_uuid_ids.sql")
+	if err != nil {
+		t.Fatalf("read UUID migration: %v", err)
+	}
+	source := strings.ToLower(string(statement))
+	for _, table := range []string{"content_versions", "assets", "publish_jobs", "publish_pointer", "publisher_builds"} {
+		if !strings.Contains(source, "from "+table) {
+			t.Errorf("UUID migration does not guard %s", table)
+		}
+	}
+	for _, forbidden := range []string{"delete from", "truncate ", "drop table"} {
+		if strings.Contains(source, forbidden) {
+			t.Errorf("UUID migration contains destructive statement %q", forbidden)
+		}
+	}
+	if !strings.Contains(source, "alter column id type uuid using gen_random_uuid()") {
+		t.Fatal("audit IDs are not converted to PostgreSQL uuid values")
 	}
 }
 
@@ -130,7 +168,7 @@ func TestMigrateCanonicalizesLegacyContentChecksumsBeforePublishFreeze(t *testin
 		t.Fatalf("canonicalize fixture: %v", err)
 	}
 	tx := &migrationTxFake{rows: &recordingRows{rows: []recordingRow{{values: []any{
-		"ver_legacy", jsonbReadback, "sha256:legacy-raw-json",
+		"ver_daf2a7f0-0912-4a1d-a5b3-e8aa5525734b", jsonbReadback, "sha256:legacy-raw-json",
 	}}}}}
 	fake := &execFake{tx: tx}
 
@@ -154,14 +192,14 @@ func TestMigrateCanonicalizesLegacyContentChecksumsBeforePublishFreeze(t *testin
 	if freezeIndex < 0 || updateIndex >= freezeIndex {
 		t.Fatalf("checksum upgrade must run before publish freeze migration: %#v", tx.calls)
 	}
-	if got := tx.args[updateIndex]; len(got) != 4 || got[0] != snapshotdata.Checksum(canonical) || got[1] != "ver_legacy" {
+	if got := tx.args[updateIndex]; len(got) != 4 || got[0] != snapshotdata.Checksum(canonical) || got[1] != "ver_daf2a7f0-0912-4a1d-a5b3-e8aa5525734b" {
 		t.Fatalf("unexpected checksum update args %#v", got)
 	}
 }
 
 func TestMigrateBackfillsStableAssetURLsWithoutBlockingOldWriters(t *testing.T) {
 	tx := &migrationTxFake{assetRows: &recordingRows{rows: []recordingRow{{values: []any{
-		"asset_legacy", "assets/asset_legacy/source.webp",
+		"asset_58d6e938-5806-4086-8a5d-f3908326255e", "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp",
 	}}}}}
 	fake := &execFake{tx: tx}
 	resolvedKeys := make([]string, 0, 1)
@@ -175,7 +213,7 @@ func TestMigrateBackfillsStableAssetURLsWithoutBlockingOldWriters(t *testing.T) 
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if len(resolvedKeys) != 1 || resolvedKeys[0] != "assets/asset_legacy/source.webp" {
+	if len(resolvedKeys) != 1 || resolvedKeys[0] != "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp" {
 		t.Fatalf("unexpected URL resolution keys %#v", resolvedKeys)
 	}
 
@@ -188,7 +226,7 @@ func TestMigrateBackfillsStableAssetURLsWithoutBlockingOldWriters(t *testing.T) 
 			addColumnIndex = index
 		case strings.Contains(statement, "UPDATE assets") && strings.Contains(statement, "source_url"):
 			backfillIndex = index
-			if args := tx.args[index]; len(args) != 2 || args[0] != "https://media.yujian.me/assets/asset_legacy/source.webp" || args[1] != "asset_legacy" {
+			if args := tx.args[index]; len(args) != 2 || args[0] != "https://media.yujian.me/assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp" || args[1] != "asset_58d6e938-5806-4086-8a5d-f3908326255e" {
 				t.Fatalf("unexpected asset URL backfill args %#v", args)
 			}
 		case strings.Contains(statement, "ALTER COLUMN source_url SET NOT NULL"):
@@ -208,7 +246,7 @@ func TestMigrateBackfillsStableAssetURLsWithoutBlockingOldWriters(t *testing.T) 
 func TestMigrateRollsBackWhenLegacyAssetURLCannotBeResolved(t *testing.T) {
 	sentinel := errors.New("media URL unavailable")
 	tx := &migrationTxFake{assetRows: &recordingRows{rows: []recordingRow{{values: []any{
-		"asset_legacy", "assets/asset_legacy/source.webp",
+		"asset_58d6e938-5806-4086-8a5d-f3908326255e", "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp",
 	}}}}}
 	fake := &execFake{tx: tx}
 

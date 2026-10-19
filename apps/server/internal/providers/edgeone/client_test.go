@@ -52,7 +52,7 @@ func TestClientRejectsHTTPSDowngradeRedirectBeforeSendingToken(t *testing.T) {
 		t.Fatalf("new client: %v", err)
 	}
 
-	if _, err := client.Trigger(context.Background(), ports.BuildRequest{ReleaseID: "rel_1"}); err == nil {
+	if _, err := client.Trigger(context.Background(), ports.BuildRequest{ReleaseID: "rel_b73feb78-c751-4ccb-be54-8a8039247ca0"}); err == nil {
 		t.Fatal("expected HTTPS downgrade rejection")
 	}
 	if insecureCalls.Load() != 0 {
@@ -102,8 +102,8 @@ func TestTriggerSendsReleaseAndBearerToken(t *testing.T) {
 	}
 	run, err := client.Trigger(context.Background(), ports.BuildRequest{
 		IdempotencyKey:   "publish-key-1",
-		ReleaseID:        "rel_1",
-		SnapshotKey:      "snapshots/rel_1/sha256:test.json",
+		ReleaseID:        "rel_b73feb78-c751-4ccb-be54-8a8039247ca0",
+		SnapshotKey:      "snapshots/rel_b73feb78-c751-4ccb-be54-8a8039247ca0/sha256:test.json",
 		SnapshotChecksum: "sha256:test",
 	})
 	if err != nil {
@@ -112,7 +112,7 @@ func TestTriggerSendsReleaseAndBearerToken(t *testing.T) {
 	if run.ID != "build-1" || run.Status != domain.PublishBuilding || run.PreviewURL == "" {
 		t.Fatalf("unexpected build run %#v", run)
 	}
-	if received.ReleaseID != "rel_1" || received.SnapshotKey == "" || received.SnapshotChecksum != "sha256:test" {
+	if received.ReleaseID != "rel_b73feb78-c751-4ccb-be54-8a8039247ca0" || received.SnapshotKey == "" || received.SnapshotChecksum != "sha256:test" {
 		t.Fatalf("unexpected request %#v", received)
 	}
 }
@@ -167,7 +167,7 @@ func TestNonSuccessResponseDoesNotExposeProviderBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
-	_, err = client.Trigger(context.Background(), ports.BuildRequest{ReleaseID: "rel_1"})
+	_, err = client.Trigger(context.Background(), ports.BuildRequest{ReleaseID: "rel_b73feb78-c751-4ccb-be54-8a8039247ca0"})
 	if err == nil || strings.Contains(err.Error(), "provider secret token") {
 		t.Fatalf("unexpected provider error %v", err)
 	}

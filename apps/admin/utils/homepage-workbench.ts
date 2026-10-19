@@ -1,5 +1,6 @@
 import type { HeroSlide, LocalizedText, YujianContentSnapshot } from '@yujian/schema'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from './snapshot-workbench'
+import { createEntityId } from './identity'
 
 export interface HomepageDraft {
   heroSlides: HeroSlide[]
@@ -29,7 +30,7 @@ export function createHomepageDraft(snapshot: YujianContentSnapshot): HomepageDr
 /** 生成空宣传位供填写；不编造标题或素材，也不自动加入板块。 */
 export function createHeroSlide(): HeroSlide {
   return {
-    id: `hero_${crypto.randomUUID().replaceAll('-', '_')}`,
+    id: createEntityId('hero_'),
     mediaKind: 'image', assetId: '', headline: { 'zh-CN': '' },
     focalPoint: { x: 50, y: 50 }, autoplay: false,
   }

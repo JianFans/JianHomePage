@@ -79,7 +79,7 @@ func newServiceForTest(store *memoryStore, validator SnapshotValidator) *Service
 		Now: func() time.Time {
 			return time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
 		},
-		NewID: func(prefix string) string { return prefix + "fixed" },
+		NewID: func(prefix string) string { return prefix + "550e8400-e29b-41d4-a716-446655440000" },
 	})
 }
 
@@ -233,7 +233,7 @@ func TestRejectReviewEnforcesReasonContract(t *testing.T) {
 func TestRejectReviewCannotMutatePublishingVersion(t *testing.T) {
 	store := newMemoryStore()
 	version := domain.ContentVersion{
-		ID: "ver_publishing", Status: domain.StatusPublishing, Revision: 4,
+		ID: "ver_74b66c49-da7e-437c-b626-5fbc4a9d26d5", Status: domain.StatusPublishing, Revision: 4,
 		Snapshot: validSnapshot(), ReviewApproved: true,
 	}
 	store.versions[version.ID] = version

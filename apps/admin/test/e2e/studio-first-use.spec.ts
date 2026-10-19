@@ -12,7 +12,7 @@ test('空库直接提供有效初始内容，预览与手动保存无需导入�
     const body = route.request().postDataJSON()
     saved = body.snapshot
     await route.fulfill({ json: {
-      id: 'ver_initial', name: '初始版本', status: 'draft', revision: 1,
+      id: 'ver_66d6fa96-4b9c-4a0f-9d8a-5cbd7fed12c9', name: '初始版本', status: 'draft', revision: 1,
       checksum: 'sha256:initial', snapshot: body.snapshot,
     } })
   })

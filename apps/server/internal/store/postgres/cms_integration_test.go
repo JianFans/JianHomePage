@@ -28,7 +28,7 @@ func TestPostgresCMSLibraryAndSessions(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	repo := NewContentRepository(db)
 	raw := []byte(`{"schemaVersion":"1.0.0"}`)
-	source := domain.ContentVersion{ID: "ver_source", Status: domain.StatusPublished, Revision: 4, Snapshot: raw, Checksum: snapshotdata.Checksum(raw), ReviewApproved: true, CreatedBy: "editor", UpdatedBy: "editor", CreatedAt: now.Add(-time.Second), UpdatedAt: now}
+	source := domain.ContentVersion{ID: "ver_4a1d69cc-c429-4747-bd2e-db2cf11cc6b3", Status: domain.StatusPublished, Revision: 4, Snapshot: raw, Checksum: snapshotdata.Checksum(raw), ReviewApproved: true, CreatedBy: "editor", UpdatedBy: "editor", CreatedAt: now.Add(-time.Second), UpdatedAt: now}
 	if err := repo.CreateVersion(ctx, source); err != nil {
 		t.Fatal(err)
 	}

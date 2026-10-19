@@ -15,7 +15,7 @@ describe('快照工作台工具', () => {
     const result = analyzeSnapshotText(JSON.stringify(fixture))
 
     expect(result.issues).toHaveLength(0)
-    expect(result.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(result.snapshot?.releaseId).toBe('rel_14c9e5f2-718a-4271-b3e1-643f1a1d6ccc')
     expect(result.summary).toEqual({
       sections: 6,
       releases: 5,
@@ -72,7 +72,7 @@ describe('快照工作台工具', () => {
     const exported = createSnapshotExport(fixture)
 
     expect(exported).toMatchObject({
-      filename: 'rel_fixture_20260829.json',
+      filename: 'rel_14c9e5f2-718a-4271-b3e1-643f1a1d6ccc.json',
       mimeType: 'application/json',
     })
     expect(exported.contents.endsWith('\n')).toBe(true)

@@ -103,8 +103,8 @@ func (p *testPages) Get(context.Context, string, string) (pages.Deployment, erro
 // publisherFixture provides deterministic bytes and observable cloud operations.
 func publisherFixture(t *testing.T) (*Service, *taskMemory, *testPages, ports.BuildRequest) {
 	t.Helper()
-	raw := `{"releaseId":"rel_test","site":{"canonicalUrl":"https://site.example/"},"assets":[{"src":"https://media.example/image.webp"}]}`
-	r := ports.BuildRequest{IdempotencyKey: "opaque-key", ReleaseID: "rel_test", SnapshotChecksum: fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(raw)))}
+	raw := `{"releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f","site":{"canonicalUrl":"https://site.example/"},"assets":[{"src":"https://media.example/image.webp"}]}`
+	r := ports.BuildRequest{IdempotencyKey: "opaque-key", ReleaseID: "rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f", SnapshotChecksum: fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(raw)))}
 	r.SnapshotKey = "snapshots/" + r.ReleaseID + "/" + r.SnapshotChecksum + ".json"
 	m := &taskMemory{}
 	p := &testPages{memory: m, deployment: pages.Deployment{ID: "deploy-1", ProjectID: "project", Environment: "Production", Status: "succeeded"}}
@@ -217,7 +217,7 @@ func TestTriggerValidatesImmutableIdentity(t *testing.T) {
 			case "control":
 				request.IdempotencyKey = "opaque-\x00key"
 			case "release":
-				request.ReleaseID = "../rel_test"
+				request.ReleaseID = "../rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f"
 			case "checksum":
 				request.SnapshotChecksum = "wrong"
 			case "path":
@@ -331,14 +331,14 @@ func TestSnapshotValidationPrecedesGeneration(t *testing.T) {
 	for _, name := range []string{"checksum", "release", "json", "utf8", "oversize", "read", "generator", "empty"} {
 		t.Run(name, func(t *testing.T) {
 			s, m, p, r := publisherFixture(t)
-			raw := []byte(`{"releaseId":"rel_test","site":{"canonicalUrl":"https://site.example/"},"assets":[{"src":"https://media.example/image.webp"}]}`)
+			raw := []byte(`{"releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f","site":{"canonicalUrl":"https://site.example/"},"assets":[{"src":"https://media.example/image.webp"}]}`)
 			switch name {
 			case "release":
-				raw = []byte(`{"releaseId":"rel_other"}`)
+				raw = []byte(`{"releaseId":"rel_c086a69b-712e-4d40-b3bf-3a050273ce67"}`)
 			case "json":
 				raw = []byte(`{"releaseId":`)
 			case "utf8":
-				raw = []byte("{\"releaseId\":\"rel_test\",\"value\":\"\xff\"}")
+				raw = []byte("{\"releaseId\":\"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f\",\"value\":\"\xff\"}")
 			case "oversize":
 				raw = []byte(strings.Repeat(" ", maxSnapshotBytes+1))
 			}
@@ -536,8 +536,8 @@ func TestPublisherIdentifiersMatchPages(t *testing.T) {
 // TestBuildResponsePreservesGatewayStatus maps every durable phase without exposing a premature URL.
 func TestBuildResponsePreservesGatewayStatus(t *testing.T) {
 	for phase, want := range map[string]domain.PublishStatus{"queued": domain.PublishPending, "building": domain.PublishBuilding, "submitting": domain.PublishBuilding, "deployed": domain.PublishBuilding, "failed": domain.PublishFailed, "succeeded": domain.PublishSucceeded} {
-		got := response(Task{ID: "build_id", Phase: phase, Error: "safe diagnostic"})
-		if got.Status != want || got.ID != "build_id" || got.Error != "safe diagnostic" || got.PreviewURL != "" {
+		got := response(Task{ID: "build_dd68ba69-dfaf-41c4-81e6-dc530d65e810", Phase: phase, Error: "safe diagnostic"})
+		if got.Status != want || got.ID != "build_dd68ba69-dfaf-41c4-81e6-dc530d65e810" || got.Error != "safe diagnostic" || got.PreviewURL != "" {
 			t.Fatalf("response %s %#v", phase, got)
 		}
 	}
@@ -675,7 +675,7 @@ func TestProductionSnapshotMatchesFrozenPublicTarget(t *testing.T) {
 			case "missing-site":
 				canonical = ""
 			}
-			raw := []byte(fmt.Sprintf(`{"releaseId":"rel_test","site":{"canonicalUrl":%q},"assets":[{"src":%q}]}`, canonical, src))
+			raw := []byte(fmt.Sprintf(`{"releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f","site":{"canonicalUrl":%q},"assets":[{"src":%q}]}`, canonical, src))
 			r.SnapshotChecksum = fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
 			r.SnapshotKey = "snapshots/" + r.ReleaseID + "/" + r.SnapshotChecksum + ".json"
 			s.options.ReadSnapshot = func(context.Context, string) (io.ReadCloser, error) {

@@ -172,7 +172,7 @@ func (stub *publishServiceStub) Rollback(ctx context.Context, actor domain.Princ
 func testVersion() domain.ContentVersion {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
 	return domain.ContentVersion{
-		ID:        "ver_1",
+		ID:        "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d",
 		Status:    domain.StatusDraft,
 		Revision:  1,
 		Snapshot:  json.RawMessage(`{"schemaVersion":"1.0.0"}`),
@@ -186,9 +186,9 @@ func testVersion() domain.ContentVersion {
 
 func testJob() domain.PublishJob {
 	return domain.PublishJob{
-		ID:               "pub_1",
-		VersionID:        "ver_1",
-		SnapshotKey:      "snapshots/rel_1/sha256-test.json",
+		ID:               "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a",
+		VersionID:        "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d",
+		SnapshotKey:      "snapshots/rel_b73feb78-c751-4ccb-be54-8a8039247ca0/sha256-test.json",
 		SnapshotChecksum: "sha256:test",
 		Status:           domain.PublishBuilding,
 	}
@@ -205,7 +205,7 @@ func testRouter(t *testing.T, content ContentService, publish PublishService) ht
 		Publish:      publish,
 		Middleware:   middleware,
 		MaxBodyBytes: 1024,
-		RequestID:    func(*http.Request) string { return "req-test" },
+		RequestID:    func(*http.Request) string { return "req_550e8400-e29b-41d4-a716-446655440000" },
 	})
 }
 
@@ -347,7 +347,7 @@ func TestCreateAssetUploadReturnsStableSourceURL(t *testing.T) {
 		Assets: &assetServiceStub{createFn: func(context.Context, domain.Principal, assets.CreateUploadInput) (assets.CreateUploadResult, error) {
 			return assets.CreateUploadResult{
 				Asset: domain.AssetRecord{
-					ID: "asset_1", SourceURL: "https://media.yujian.me/assets/asset_1/source.webp",
+					ID: "asset_551aed01-404d-4e4b-b2d3-0974f521eab8", SourceURL: "https://media.yujian.me/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp",
 					Status: domain.AssetPending, Metadata: json.RawMessage(`{}`), Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 				},
 				Upload: ports.SignedUpload{URL: "https://upload.example.test/signed", ExpiresAt: time.Now().UTC().Add(time.Minute)},
@@ -375,7 +375,7 @@ func TestCreateAssetUploadReturnsStableSourceURL(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if response.Asset.Src != "https://media.yujian.me/assets/asset_1/source.webp" {
+	if response.Asset.Src != "https://media.yujian.me/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp" {
 		t.Fatalf("unexpected asset source %q", response.Asset.Src)
 	}
 }
@@ -392,7 +392,7 @@ func TestCreateVersionReturnsCreatedETagAndRequestID(t *testing.T) {
 	router := testRouter(t, content, &publishServiceStub{})
 	recorder := httptest.NewRecorder()
 	request := authenticatedRequest(http.MethodPost, "/api/v1/versions", `{"snapshot":{"schemaVersion":"1.0.0"}}`, "editor")
-	request.Header.Set("X-Request-ID", "req-create")
+	request.Header.Set("X-Request-ID", "req_6ba7b810-9dad-41d1-80b4-00c04fd430c8")
 	router.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusCreated {
@@ -401,7 +401,7 @@ func TestCreateVersionReturnsCreatedETagAndRequestID(t *testing.T) {
 	if recorder.Header().Get("ETag") != `"1"` {
 		t.Fatalf("expected ETag \"1\", got %q", recorder.Header().Get("ETag"))
 	}
-	if recorder.Header().Get("X-Request-ID") != "req-create" {
+	if recorder.Header().Get("X-Request-ID") != "req_6ba7b810-9dad-41d1-80b4-00c04fd430c8" {
 		t.Fatalf("expected request id header, got %q", recorder.Header().Get("X-Request-ID"))
 	}
 }
@@ -414,7 +414,7 @@ func TestUpdateVersionRequiresIfMatch(t *testing.T) {
 	}}
 	router := testRouter(t, content, &publishServiceStub{})
 	recorder := httptest.NewRecorder()
-	request := authenticatedRequest(http.MethodPut, "/api/v1/versions/ver_1", `{"snapshot":{"schemaVersion":"1.0.0"}}`, "editor")
+	request := authenticatedRequest(http.MethodPut, "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", `{"snapshot":{"schemaVersion":"1.0.0"}}`, "editor")
 	router.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusPreconditionRequired {
@@ -434,7 +434,7 @@ func TestUpdateVersionMapsRevisionConflictTo409(t *testing.T) {
 	}}
 	router := testRouter(t, content, &publishServiceStub{})
 	recorder := httptest.NewRecorder()
-	request := authenticatedRequest(http.MethodPut, "/api/v1/versions/ver_1", `{"snapshot":{"schemaVersion":"1.0.0"}}`, "editor")
+	request := authenticatedRequest(http.MethodPut, "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", `{"snapshot":{"schemaVersion":"1.0.0"}}`, "editor")
 	request.Header.Set("If-Match", `"1"`)
 	router.ServeHTTP(recorder, request)
 
@@ -454,7 +454,7 @@ func TestPublishRequiresIdempotencyKey(t *testing.T) {
 	}}
 	router := testRouter(t, &contentServiceStub{}, publish)
 	recorder := httptest.NewRecorder()
-	request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_1"}`, "publisher")
+	request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`, "publisher")
 	router.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -478,7 +478,7 @@ func TestPublishRejectsIdempotencyKeyOutsideContractLength(t *testing.T) {
 			}}
 			router := testRouter(t, &contentServiceStub{}, publish)
 			recorder := httptest.NewRecorder()
-			request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_1"}`, "publisher")
+			request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`, "publisher")
 			request.Header.Set("Idempotency-Key", key)
 
 			router.ServeHTTP(recorder, request)
@@ -499,7 +499,7 @@ func TestPublishMapsForbiddenRoleTo403(t *testing.T) {
 	}}
 	router := testRouter(t, &contentServiceStub{}, publish)
 	recorder := httptest.NewRecorder()
-	request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_1"}`, "editor")
+	request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`, "editor")
 	request.Header.Set("Idempotency-Key", "idem-1234")
 	router.ServeHTTP(recorder, request)
 
@@ -516,7 +516,7 @@ func TestPublishRouteRejectsEditorBeforeCallingService(t *testing.T) {
 	}}
 	router := testRouter(t, &contentServiceStub{}, publish)
 	recorder := httptest.NewRecorder()
-	request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_1"}`, "editor")
+	request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d"}`, "editor")
 	request.Header.Set("Idempotency-Key", "idem-1234")
 	router.ServeHTTP(recorder, request)
 

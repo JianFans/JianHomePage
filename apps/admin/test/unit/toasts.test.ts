@@ -10,6 +10,8 @@ describe('右下角提示生命周期', () => {
     const scope = effectScope()
     const toasts = scope.run(() => useToasts())!
     const ids = ['甲', '乙', '丙', '丁'].map(message => toasts.notify(message))
+    expect(ids.every(id => /^toast_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id))).toBe(true)
+    expect(new Set(ids).size).toBe(ids.length)
     expect(toasts.items.value.map(item => item.message)).toEqual(['甲', '乙', '丙'])
     toasts.dismiss(ids[1]!)
     expect(toasts.items.value.map(item => item.message)).toEqual(['甲', '丙', '丁'])

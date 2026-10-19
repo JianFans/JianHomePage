@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -31,8 +30,20 @@ func TestVersionListAndClonePreserveSource(t *testing.T) {
 	state := memory.NewState()
 	repo := memory.NewContentRepository(state)
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	sequence := 0
-	service := content.NewService(content.ServiceOptions{Store: repo, Validator: acceptingValidator{}, Now: func() time.Time { return now }, NewID: func(prefix string) string { sequence++; return fmt.Sprintf("%s%03d", prefix, sequence) }})
+	ids := []string{
+		"ver_550e8400-e29b-41d4-a716-446655440001",
+		"ver_550e8400-e29b-41d4-a716-446655440002",
+	}
+	service := content.NewService(content.ServiceOptions{
+		Store:     repo,
+		Validator: acceptingValidator{},
+		Now:       func() time.Time { return now },
+		NewID: func(prefix string) string {
+			id := ids[0]
+			ids = ids[1:]
+			return prefix + strings.TrimPrefix(id, "ver_")
+		},
+	})
 	editor := domain.Principal{Subject: "editor", Roles: []domain.Role{domain.RoleEditor}}
 	source, err := service.CreateNamedDraft(ctx, editor, " 首个版本 ", json.RawMessage(`{"schemaVersion":"1.0.0"}`))
 	if err != nil {

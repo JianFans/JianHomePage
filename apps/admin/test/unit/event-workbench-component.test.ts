@@ -9,7 +9,7 @@ import { analyzeSnapshotText } from '../../utils/snapshot-workbench'
 /** 挂载真实状态机和表单，使用完整 canonical 应用事务。 */
 function mountEvent() {
   const source = structuredClone(fixture)
-  source.assets.push({ ...source.assets[0]!, id: 'asset_gif_test', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
+  source.assets.push({ ...source.assets[0]!, id: 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
   const editorText = ref(JSON.stringify(source))
   const snapshot = computed(() => analyzeSnapshotText(editorText.value).snapshot)
   const busy = ref(false)
@@ -50,8 +50,8 @@ describe('现场工作台组件', () => {
     await wrapper.get('[data-testid="event-datetime"]').setValue('2030-01-02T20:00:00+08:00')
     await wrapper.get('[data-testid="event-status"]').setValue('sold-out')
     await wrapper.get('[data-testid="event-detail-url"]').setValue('https://example.com/event')
-    await wrapper.get('[data-testid="event-poster"]').setValue('asset_gif_test')
-    expect(event.draft!.events[0]).toMatchObject({ title: { en: 'English' }, city: { en: 'English' }, venue: { en: 'English' }, dateTime: '2030-01-02T20:00:00+08:00', status: 'sold-out', detailUrl: 'https://example.com/event', posterAssetId: 'asset_gif_test' })
+    await wrapper.get('[data-testid="event-poster"]').setValue('asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f')
+    expect(event.draft!.events[0]).toMatchObject({ title: { en: 'English' }, city: { en: 'English' }, venue: { en: 'English' }, dateTime: '2030-01-02T20:00:00+08:00', status: 'sold-out', detailUrl: 'https://example.com/event', posterAssetId: 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f' })
     for (const name of ['title', 'city', 'venue']) await wrapper.get(`[data-testid="event-${name}-en"]`).setValue('')
     await wrapper.get('[data-testid="event-poster"]').setValue('')
     expect(event.draft!.events[0]).not.toHaveProperty('posterAssetId')
@@ -70,7 +70,7 @@ describe('现场工作台组件', () => {
     await wrapper.get('[data-testid="event-open"]').trigger('click')
     const ids = wrapper.get('[data-testid="event-poster"]').findAll('option').map(option => option.attributes('value'))
     for (const asset of fixture.assets) expect(ids.includes(asset.id)).toBe(['image', 'gif'].includes(asset.kind))
-    expect(ids).toContain('asset_gif_test')
+    expect(ids).toContain('asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f')
     expect(wrapper.find('img, video, audio').exists()).toBe(false)
     await wrapper.get('[data-testid="event-title-zh"]').setValue('保留')
     editorText.value = '{'
@@ -88,7 +88,7 @@ describe('现场工作台组件', () => {
   it('诊断最多八条并本地化剩余数量，busy 锁定 fieldset 与全部按钮', async () => {
     const { wrapper, event, busy, locale } = mountEvent()
     await wrapper.get('[data-testid="event-open"]').trigger('click')
-    event.draft!.events[0]!.posterAssetId = 'asset_preview_sample'
+    event.draft!.events[0]!.posterAssetId = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     event.apply()
     await wrapper.vm.$nextTick()
     expect(wrapper.get('[data-testid="event-error"]').text()).toContain('/events/0/posterAssetId')

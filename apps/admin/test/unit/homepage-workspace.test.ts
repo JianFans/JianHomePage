@@ -57,12 +57,12 @@ describe('首页草稿状态', () => {
     const { home, editorText } = workspace()
     const initial = editorText.value
     home.open()
-    home.draft.value!.heroSlides[0]!.assetId = 'asset_preview_sample'
+    home.draft.value!.heroSlides[0]!.assetId = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     expect(home.apply()).toBe(false)
     expect(home.error.value).toBe('invalid-draft')
     expect(home.issues.value).toContainEqual(expect.objectContaining({ path: '/heroSlides/0/assetId', code: 'asset-kind' }))
     expect(editorText.value).toBe(initial)
-    expect(home.draft.value!.heroSlides[0]!.assetId).toBe('asset_preview_sample')
+    expect(home.draft.value!.heroSlides[0]!.assetId).toBe('asset_71734f61-5250-4825-a8b3-0192448be437')
   })
 
   it('busy 阻止打开、应用、关闭与确认，不清除待办', () => {

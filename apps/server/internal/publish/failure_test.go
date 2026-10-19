@@ -15,13 +15,13 @@ import (
 func TestPublishReportsJobPersistenceFailureAtCorrectStage(t *testing.T) {
 	for _, triggerErr := range []error{nil, errors.New("build submission timed out")} {
 		repository := newMemoryRepository()
-		repository.versions["ver_new"] = approvedVersion("ver_new", "rel_new")
+		repository.versions["ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526"] = approvedVersion("ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526", "rel_f91d3d69-e774-4cf1-a493-744009d9aa0d")
 		updateErr := errors.New("job persistence unavailable")
 		repository.updateErr = updateErr
 		repository.updateFailures = 1
 		trigger := &buildTriggerFake{triggerErr: triggerErr}
 		service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
-		_, err := service.Publish(context.Background(), publisher(), "ver_new", "publish-persistence-failure")
+		_, err := service.Publish(context.Background(), publisher(), "ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526", "publish-persistence-failure")
 		var failure *Failure
 		if !errors.As(err, &failure) || failure.Stage() != "job.update" || !errors.Is(err, updateErr) {
 			t.Fatalf("incorrect job-update diagnostics: failure=%v stage=%v", err, failure)

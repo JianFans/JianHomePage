@@ -68,11 +68,11 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 			state := memory.NewState()
 			versions := memory.NewContentRepository(state)
 			if test.versionExists {
-				snapshot, err := snapshotdata.CanonicalJSON([]byte(`{"releaseId":"rel_private"}`))
+				snapshot, err := snapshotdata.CanonicalJSON([]byte(`{"releaseId":"rel_e625589b-8110-4074-8013-11b529bd1e40"}`))
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = versions.CreateVersion(context.Background(), domain.ContentVersion{ID: "ver_private", Status: domain.StatusInReview, Revision: 3, ReviewApproved: true, Snapshot: snapshot, Checksum: snapshotdata.Checksum(snapshot)})
+				err = versions.CreateVersion(context.Background(), domain.ContentVersion{ID: "ver_513db4a6-c494-4b3e-a481-1ac18ea5f3b6", Status: domain.StatusInReview, Revision: 3, ReviewApproved: true, Snapshot: snapshot, Checksum: snapshotdata.Checksum(snapshot)})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -81,7 +81,7 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 			service := publish.NewService(publish.ServiceOptions{Repository: repository, BlobStore: blobs, BuildTrigger: diagnosticBuildTrigger{}, Validator: diagnosticValidator{}})
 			var logs bytes.Buffer
 			router := LoggingMiddleware(testRouter(t, nil, service), slog.New(slog.NewJSONHandler(&logs, nil)))
-			request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_private"}`, "publisher")
+			request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_513db4a6-c494-4b3e-a481-1ac18ea5f3b6"}`, "publisher")
 			request.Header.Set("Idempotency-Key", "private-idempotency")
 			request.Header.Set("Cookie", "private-cookie")
 			recorder := httptest.NewRecorder()
@@ -98,7 +98,7 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 					}
 					if entry["msg"] == "publish request failed" {
 						found = true
-						if entry["request_id"] != "req-test" || entry["stage"] != test.stage || entry["error_kind"] != test.kind || entry["actor_subject"] != "editor-1" {
+						if entry["request_id"] != "req_550e8400-e29b-41d4-a716-446655440000" || entry["stage"] != test.stage || entry["error_kind"] != test.kind || entry["actor_subject"] != "editor-1" {
 							t.Fatalf("incorrect failure diagnostics: %#v", entry)
 						}
 						if test.kind == "external_dependency" {
@@ -116,7 +116,7 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 					t.Fatalf("missing publish failure log: %s", logs.String())
 				}
 			}
-			for _, secret := range []string{"provider-secret", "provider-private-code", "secret.example", "private-bucket", "private-access", "private-secret", "private-cookie", "private-idempotency", "ver_private", "rel_private", provider.URL} {
+			for _, secret := range []string{"provider-secret", "provider-private-code", "secret.example", "private-bucket", "private-access", "private-secret", "private-cookie", "private-idempotency", "ver_513db4a6-c494-4b3e-a481-1ac18ea5f3b6", "rel_e625589b-8110-4074-8013-11b529bd1e40", provider.URL} {
 				if strings.Contains(logs.String()+recorder.Body.String(), secret) && test.status != http.StatusAccepted {
 					t.Fatalf("private detail leaked: %s", secret)
 				}
@@ -125,7 +125,7 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 				if puts != test.writes {
 					t.Fatalf("snapshot writes = %d, expected %d", puts, test.writes)
 				}
-				version, err := versions.GetVersion(context.Background(), "ver_private")
+				version, err := versions.GetVersion(context.Background(), "ver_513db4a6-c494-4b3e-a481-1ac18ea5f3b6")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -153,10 +153,10 @@ type diagnosticBuildTrigger struct{}
 
 // Trigger represents a durable build accepted after the immutable snapshot write.
 func (diagnosticBuildTrigger) Trigger(context.Context, ports.BuildRequest) (ports.BuildRun, error) {
-	return ports.BuildRun{ID: "build_1", Status: domain.PublishBuilding}, nil
+	return ports.BuildRun{ID: "build_12b823dc-69a5-4093-93ed-5a85034ddbea", Status: domain.PublishBuilding}, nil
 }
 
 // Status leaves the accepted build running for the HTTP admission test.
 func (diagnosticBuildTrigger) Status(context.Context, string) (ports.BuildRun, error) {
-	return ports.BuildRun{ID: "build_1", Status: domain.PublishBuilding}, nil
+	return ports.BuildRun{ID: "build_12b823dc-69a5-4093-93ed-5a85034ddbea", Status: domain.PublishBuilding}, nil
 }

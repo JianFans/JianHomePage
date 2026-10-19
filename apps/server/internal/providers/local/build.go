@@ -2,17 +2,16 @@ package local
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	"yujian.me/server/internal/ports"
 )
 
 type BuildTrigger struct {
 	mu   sync.RWMutex
 	runs map[string]ports.BuildRun
-	next int
 }
 
 func NewBuildTrigger() *BuildTrigger { return &BuildTrigger{runs: make(map[string]ports.BuildRun)} }
@@ -20,8 +19,7 @@ func NewBuildTrigger() *BuildTrigger { return &BuildTrigger{runs: make(map[strin
 func (trigger *BuildTrigger) Trigger(_ context.Context, _ ports.BuildRequest) (ports.BuildRun, error) {
 	trigger.mu.Lock()
 	defer trigger.mu.Unlock()
-	trigger.next++
-	id := fmt.Sprintf("local-build-%d", trigger.next)
+	id := identity.MustNew("build_")
 	run := ports.BuildRun{ID: id, Status: domain.PublishSucceeded, PreviewURL: "http://127.0.0.1:8080/local-preview/" + id}
 	trigger.runs[id] = run
 	return run, nil

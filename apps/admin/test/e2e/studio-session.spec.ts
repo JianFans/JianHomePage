@@ -27,7 +27,7 @@ test('干净首页退出等待期间锁定字段和上下文，成功后清理�
     await expect(page.getByTestId('leave-dialog')).toHaveCount(0)
     const selector = page.locator('.studio-version-select')
     if (await selector.isVisible()) await expect(selector).toBeDisabled()
-    else await expect(page.getByTestId('version-ver_history')).toBeDisabled()
+    else await expect(page.getByTestId('version-ver_8bb3a437-061d-4dcd-805e-7d5e6f716921')).toBeDisabled()
     finish()
     await expect(page.getByTestId('studio-login')).toBeVisible()
     expect(await page.evaluate(() => !window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(false)
@@ -49,7 +49,7 @@ for (const module of ['homepage', 'assets'] as const) {
     const response = new Promise<void>((resolve) => { finish = resolve })
     await page.route('**/api/v1/auth/logout', async route => {
       await response
-      await route.fulfill({ status: 500, json: { code: 'unavailable', message: 'Logout failed', requestId: 'req_logout' } })
+      await route.fulfill({ status: 500, json: { code: 'unavailable', message: 'Logout failed', requestId: 'req_1e7e5c55-1d35-4bc3-a16a-b7206ae0a62d' } })
     })
     try {
       await requestLogout(page)

@@ -4,14 +4,14 @@ import { apply, fixtureSnapshot, navigate, roundTrip, snapshot, startStudio } fr
 
 test('新增影像、首页引用、共享预览与导出再导入', async ({ page }) => {
   const source = fixtureSnapshot()
-  source.assets.push({ ...source.assets[0]!, id: 'asset_video_test', kind: 'video', mimeType: 'video/mp4', src: '/media/test.mp4' })
+  source.assets.push({ ...source.assets[0]!, id: 'asset_a0b7ada8-6b3e-452f-bdf3-8fa5bcb0cb6c', kind: 'video', mimeType: 'video/mp4', src: '/media/test.mp4' })
   await startStudio(page, source)
   await navigate(page, 'video')
   await page.getByTestId('video-add').click()
   await page.getByTestId('video-title-zh').fill('浏览器影像')
   await page.getByTestId('video-title-en').fill('Browser video')
-  await page.getByTestId('video-poster').selectOption('asset_cover_01')
-  await page.getByTestId('video-asset').selectOption('asset_video_test')
+  await page.getByTestId('video-poster').selectOption('asset_2f183eda-5f01-4c34-93f6-47739c136bb2')
+  await page.getByTestId('video-asset').selectOption('asset_a0b7ada8-6b3e-452f-bdf3-8fa5bcb0cb6c')
   await page.getByTestId('video-duration').fill('181')
   await page.getByTestId('video-featured').check()
   const links = page.getByTestId('video-fields').locator('details').filter({ has: page.getByTestId('link-url') })
@@ -20,10 +20,10 @@ test('新增影像、首页引用、共享预览与导出再导入', async ({ pa
   await apply(page)
   const applied = await snapshot(page)
   const video = applied.videos.at(-1)!
-  expect(video).toMatchObject({ title: { 'zh-CN': '浏览器影像', en: 'Browser video' }, posterAssetId: 'asset_cover_01', videoAssetId: 'asset_video_test', durationSeconds: 181, featured: true })
+  expect(video).toMatchObject({ title: { 'zh-CN': '浏览器影像', en: 'Browser video' }, posterAssetId: 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2', videoAssetId: 'asset_a0b7ada8-6b3e-452f-bdf3-8fa5bcb0cb6c', durationSeconds: 181, featured: true })
   expect(applied.homepage).toEqual(fixture.homepage)
   await navigate(page, 'homepage')
-  const section = page.getByTestId('homepage-section-section_video')
+  const section = page.getByTestId('homepage-section-section_3acb34b6-b57b-4991-bc64-df9690915edc')
   await section.getByTestId('homepage-item-add-select').selectOption(video.id)
   await section.getByTestId('homepage-item-add').click()
   await section.getByTestId('homepage-section-limit').fill('5')
@@ -74,7 +74,7 @@ test('保存契约：409 保留、保存锁定、成功刷新影像基线', asyn
   api.conflict = true
   await page.getByTestId('video-title-en').fill('Saved video')
   await page.getByTestId('snapshot-save').click()
-  await expect(page.getByTestId('toast-viewport')).toContainText('req_browser')
+  await expect(page.getByTestId('toast-viewport')).toContainText('req_c4464811-558f-4491-b698-2404d74f0167')
   expect((await snapshot(page)).videos[0]!.title.en).toBe('Saved video')
   await page.getByTestId('video-title-en').fill('Retry video')
   api.conflict = false

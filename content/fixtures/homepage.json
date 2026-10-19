@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "releaseId": "rel_fixture_20260829",
+  "releaseId": "rel_14c9e5f2-718a-4271-b3e1-643f1a1d6ccc",
   "generatedAt": "2026-08-29T00:00:00Z",
   "site": {
     "brand": {
@@ -48,34 +48,34 @@
         "zh-CN": "音乐人王子健官方站",
         "en": "The official website of musician Wang Zijian"
       },
-      "ogAssetId": "asset_hero_studio"
+      "ogAssetId": "asset_e020cc5b-3c4e-4779-803e-8ccd74d7c0ad"
     },
     "futureNavigation": []
   },
   "homepage": {
     "sections": [
       {
-        "id": "section_hero",
+        "id": "section_b94a248c-1c93-4f9a-98df-059f4fde1cf5",
         "type": "hero",
         "enabled": true,
         "layoutVariant": "immersive",
         "itemIds": [
-          "hero_studio",
-          "hero_stage",
-          "hero_release"
+          "hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb",
+          "hero_cec07764-0923-4dcc-a57b-a8630ce91f51",
+          "hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c"
         ]
       },
       {
-        "id": "section_music",
+        "id": "section_1941aa2b-341c-471c-9408-760fbd9edcea",
         "type": "music",
         "enabled": true,
         "layoutVariant": "cover-reel",
         "itemIds": [
-          "release_01",
-          "release_02",
-          "release_03",
-          "release_04",
-          "release_05"
+          "release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff",
+          "release_f9462a63-70d9-40b3-a0cc-a792f1b5499e",
+          "release_1cf30b59-7996-4c85-a020-5dedf63339d0",
+          "release_86a979f0-3bdd-4e74-83de-9d2db77de6fa",
+          "release_3033d928-4d31-4601-bb92-ffa2d9e8d54b"
         ],
         "limit": 5,
         "moreLink": {
@@ -84,56 +84,56 @@
         }
       },
       {
-        "id": "section_video",
+        "id": "section_3acb34b6-b57b-4991-bc64-df9690915edc",
         "type": "video",
         "enabled": true,
         "layoutVariant": "asymmetric",
         "itemIds": [
-          "video_01",
-          "video_02",
-          "video_03"
+          "video_b634e94d-b468-4e4b-b784-22eda2c49314",
+          "video_93d8a998-c34b-4aca-80f0-02cb233a4481",
+          "video_8ba6c435-f5b3-4603-a43e-f326ba0a12a5"
         ],
         "limit": 3
       },
       {
-        "id": "section_event",
+        "id": "section_6f69e09d-c025-4920-98dd-f96daa2df153",
         "type": "event",
         "enabled": true,
         "layoutVariant": "timeline",
         "itemIds": [
-          "event_01",
-          "event_02"
+          "event_dc200c4c-abbb-476e-984d-405470f2dbea",
+          "event_b9413813-c666-4987-bb0c-2850fd7fa156"
         ],
         "limit": 2
       },
       {
-        "id": "section_moment",
+        "id": "section_4dc347e2-db34-4763-ab76-7611cd235905",
         "type": "moment",
         "enabled": true,
         "layoutVariant": "mosaic",
         "itemIds": [
-          "moment_01",
-          "moment_02",
-          "moment_03"
+          "moment_c8f0a2c9-7b1f-4bcc-a6c0-e6d5e74538c8",
+          "moment_62c26d1a-0b36-4184-a1d2-c3b92869bd60",
+          "moment_04c78ef0-8069-4b6a-8f23-ffb70d06490e"
         ],
         "limit": 3
       },
       {
-        "id": "section_artist",
+        "id": "section_5258d853-1b97-41b2-b1a8-b67e6163743b",
         "type": "artist",
         "enabled": true,
         "layoutVariant": "split",
         "itemIds": [
-          "artist_primary"
+          "artist_eb908750-faf8-418f-94c6-97f769c1cf31"
         ]
       }
     ]
   },
   "heroSlides": [
     {
-      "id": "hero_studio",
+      "id": "hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb",
       "mediaKind": "image",
-      "assetId": "asset_hero_studio",
+      "assetId": "asset_e020cc5b-3c4e-4779-803e-8ccd74d7c0ad",
       "focalPoint": {
         "x": 50,
         "y": 45
@@ -145,9 +145,9 @@
       "autoplay": false
     },
     {
-      "id": "hero_stage",
+      "id": "hero_cec07764-0923-4dcc-a57b-a8630ce91f51",
       "mediaKind": "image",
-      "assetId": "asset_hero_stage",
+      "assetId": "asset_24dbb73c-be93-4839-813b-f81fd5806009",
       "focalPoint": {
         "x": 62,
         "y": 40
@@ -166,9 +166,9 @@
       "autoplay": false
     },
     {
-      "id": "hero_release",
+      "id": "hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c",
       "mediaKind": "image",
-      "assetId": "asset_hero_stage",
+      "assetId": "asset_24dbb73c-be93-4839-813b-f81fd5806009",
       "focalPoint": {
         "x": 35,
         "y": 55
@@ -177,26 +177,26 @@
         "zh-CN": "示例作品 01",
         "en": "Sample Release 01"
       },
-      "releaseId": "release_01",
+      "releaseId": "release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff",
       "target": {
         "kind": "internal",
-        "contentId": "release_01"
+        "contentId": "release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"
       },
       "autoplay": false
     }
   ],
   "releases": [
     {
-      "id": "release_01",
+      "id": "release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff",
       "kind": "single",
       "title": {
         "zh-CN": "示例作品 01",
         "en": "Sample Release 01"
       },
-      "coverAssetId": "asset_cover_01",
+      "coverAssetId": "asset_2f183eda-5f01-4c34-93f6-47739c136bb2",
       "releaseDate": "2026-08-01",
       "trackIds": [
-        "track_01"
+        "track_e60c46c7-28d6-418e-8905-167307dc8354"
       ],
       "platformLinks": [
         {
@@ -211,16 +211,16 @@
       "featured": true
     },
     {
-      "id": "release_02",
+      "id": "release_f9462a63-70d9-40b3-a0cc-a792f1b5499e",
       "kind": "single",
       "title": {
         "zh-CN": "示例作品 02",
         "en": "Sample Release 02"
       },
-      "coverAssetId": "asset_cover_02",
+      "coverAssetId": "asset_5f8b24c3-04fa-405e-9f16-5c9a434d620e",
       "releaseDate": "2026-07-01",
       "trackIds": [
-        "track_02"
+        "track_ceb1e68b-da25-4104-803e-3af3708b8593"
       ],
       "platformLinks": [
         {
@@ -235,16 +235,16 @@
       "featured": true
     },
     {
-      "id": "release_03",
+      "id": "release_1cf30b59-7996-4c85-a020-5dedf63339d0",
       "kind": "ep",
       "title": {
         "zh-CN": "示例作品 03",
         "en": "Sample Release 03"
       },
-      "coverAssetId": "asset_cover_03",
+      "coverAssetId": "asset_279f5368-5e29-4df6-87db-9cd52db57890",
       "releaseDate": "2026-06-01",
       "trackIds": [
-        "track_03"
+        "track_f7a7ecdc-b37d-428f-ad99-c04243425bf4"
       ],
       "platformLinks": [
         {
@@ -259,16 +259,16 @@
       "featured": false
     },
     {
-      "id": "release_04",
+      "id": "release_86a979f0-3bdd-4e74-83de-9d2db77de6fa",
       "kind": "single",
       "title": {
         "zh-CN": "示例作品 04",
         "en": "Sample Release 04"
       },
-      "coverAssetId": "asset_cover_04",
+      "coverAssetId": "asset_9ba4683d-dec4-4c0a-a1fa-8319694f67ff",
       "releaseDate": "2026-05-01",
       "trackIds": [
-        "track_04"
+        "track_ea036706-61e9-484c-87b7-ce2310e4c604"
       ],
       "platformLinks": [
         {
@@ -283,16 +283,16 @@
       "featured": false
     },
     {
-      "id": "release_05",
+      "id": "release_3033d928-4d31-4601-bb92-ffa2d9e8d54b",
       "kind": "album",
       "title": {
         "zh-CN": "示例作品 05",
         "en": "Sample Release 05"
       },
-      "coverAssetId": "asset_cover_05",
+      "coverAssetId": "asset_86ebdb53-875e-4192-9970-468bc34b1d83",
       "releaseDate": "2026-04-01",
       "trackIds": [
-        "track_05"
+        "track_1765c647-056c-47ac-b130-b738ed8744e1"
       ],
       "platformLinks": [
         {
@@ -309,14 +309,14 @@
   ],
   "tracks": [
     {
-      "id": "track_01",
-      "releaseId": "release_01",
+      "id": "track_e60c46c7-28d6-418e-8905-167307dc8354",
+      "releaseId": "release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff",
       "title": {
         "zh-CN": "示例曲目 01",
         "en": "Sample Track 01"
       },
       "durationSeconds": 180,
-      "previewAssetId": "asset_preview_sample",
+      "previewAssetId": "asset_71734f61-5250-4825-a8b3-0192448be437",
       "previewDurationSeconds": 3,
       "platformLinks": [
         {
@@ -339,8 +339,8 @@
       ]
     },
     {
-      "id": "track_02",
-      "releaseId": "release_02",
+      "id": "track_ceb1e68b-da25-4104-803e-3af3708b8593",
+      "releaseId": "release_f9462a63-70d9-40b3-a0cc-a792f1b5499e",
       "title": {
         "zh-CN": "示例曲目 02",
         "en": "Sample Track 02"
@@ -367,14 +367,14 @@
       ]
     },
     {
-      "id": "track_03",
-      "releaseId": "release_03",
+      "id": "track_f7a7ecdc-b37d-428f-ad99-c04243425bf4",
+      "releaseId": "release_1cf30b59-7996-4c85-a020-5dedf63339d0",
       "title": {
         "zh-CN": "示例曲目 03",
         "en": "Sample Track 03"
       },
       "durationSeconds": 194,
-      "previewAssetId": "asset_preview_sample",
+      "previewAssetId": "asset_71734f61-5250-4825-a8b3-0192448be437",
       "previewDurationSeconds": 3,
       "platformLinks": [
         {
@@ -397,8 +397,8 @@
       ]
     },
     {
-      "id": "track_04",
-      "releaseId": "release_04",
+      "id": "track_ea036706-61e9-484c-87b7-ce2310e4c604",
+      "releaseId": "release_86a979f0-3bdd-4e74-83de-9d2db77de6fa",
       "title": {
         "zh-CN": "示例曲目 04",
         "en": "Sample Track 04"
@@ -425,14 +425,14 @@
       ]
     },
     {
-      "id": "track_05",
-      "releaseId": "release_05",
+      "id": "track_1765c647-056c-47ac-b130-b738ed8744e1",
+      "releaseId": "release_3033d928-4d31-4601-bb92-ffa2d9e8d54b",
       "title": {
         "zh-CN": "示例曲目 05",
         "en": "Sample Track 05"
       },
       "durationSeconds": 231,
-      "previewAssetId": "asset_preview_sample",
+      "previewAssetId": "asset_71734f61-5250-4825-a8b3-0192448be437",
       "previewDurationSeconds": 3,
       "platformLinks": [
         {
@@ -457,12 +457,12 @@
   ],
   "videos": [
     {
-      "id": "video_01",
+      "id": "video_b634e94d-b468-4e4b-b784-22eda2c49314",
       "title": {
         "zh-CN": "示例影像 01",
         "en": "Sample Video 01"
       },
-      "posterAssetId": "asset_video_01",
+      "posterAssetId": "asset_c8f368ec-29be-424b-b852-d24fec8bb567",
       "durationSeconds": 240,
       "platformLinks": [
         {
@@ -473,12 +473,12 @@
       "featured": true
     },
     {
-      "id": "video_02",
+      "id": "video_93d8a998-c34b-4aca-80f0-02cb233a4481",
       "title": {
         "zh-CN": "示例影像 02",
         "en": "Sample Video 02"
       },
-      "posterAssetId": "asset_video_02",
+      "posterAssetId": "asset_6cafd319-b6bf-4780-8926-110407c1ee89",
       "durationSeconds": 180,
       "platformLinks": [
         {
@@ -489,12 +489,12 @@
       "featured": false
     },
     {
-      "id": "video_03",
+      "id": "video_8ba6c435-f5b3-4603-a43e-f326ba0a12a5",
       "title": {
         "zh-CN": "示例影像 03",
         "en": "Sample Video 03"
       },
-      "posterAssetId": "asset_video_03",
+      "posterAssetId": "asset_cf101d92-5180-43f3-aa42-f94da26efcb3",
       "durationSeconds": 150,
       "platformLinks": [
         {
@@ -507,7 +507,7 @@
   ],
   "events": [
     {
-      "id": "event_01",
+      "id": "event_dc200c4c-abbb-476e-984d-405470f2dbea",
       "title": {
         "zh-CN": "示例现场 01",
         "en": "Sample Live Event 01"
@@ -525,7 +525,7 @@
       "detailUrl": "https://weibo.com/u/5693099362"
     },
     {
-      "id": "event_02",
+      "id": "event_b9413813-c666-4987-bb0c-2850fd7fa156",
       "title": {
         "zh-CN": "示例现场 02",
         "en": "Sample Live Event 02"
@@ -545,24 +545,24 @@
   ],
   "moments": [
     {
-      "id": "moment_01",
-      "assetId": "asset_moment_01",
+      "id": "moment_c8f0a2c9-7b1f-4bcc-a6c0-e6d5e74538c8",
+      "assetId": "asset_6d6f2ca1-efe7-4486-a531-0cfa1b6f92ed",
       "caption": {
         "zh-CN": "示例片段 01",
         "en": "Sample Moment 01"
       }
     },
     {
-      "id": "moment_02",
-      "assetId": "asset_moment_02",
+      "id": "moment_62c26d1a-0b36-4184-a1d2-c3b92869bd60",
+      "assetId": "asset_d4f8a911-5fd7-4e70-9845-451480b7c908",
       "caption": {
         "zh-CN": "示例片段 02",
         "en": "Sample Moment 02"
       }
     },
     {
-      "id": "moment_03",
-      "assetId": "asset_moment_03",
+      "id": "moment_04c78ef0-8069-4b6a-8f23-ffb70d06490e",
+      "assetId": "asset_36672f55-0aeb-41af-8de7-346171f12fb7",
       "caption": {
         "zh-CN": "示例片段 03",
         "en": "Sample Moment 03"
@@ -570,7 +570,7 @@
     }
   ],
   "artist": {
-    "id": "artist_primary",
+    "id": "artist_eb908750-faf8-418f-94c6-97f769c1cf31",
     "name": {
       "zh-CN": "王子健",
       "en": "Wang Zijian"
@@ -579,7 +579,7 @@
       "zh-CN": "音乐人。首版内容占位，正式资料将在授权后更新。",
       "en": "Musician. First-release placeholder copy, pending authorized profile content."
     },
-    "portraitAssetId": "asset_artist_texture",
+    "portraitAssetId": "asset_9be14f01-77fd-483a-81b6-a28d1bfc30b4",
     "platformLinks": [
       {
         "provider": "netease-music",
@@ -605,7 +605,7 @@
   },
   "assets": [
     {
-      "id": "asset_hero_studio",
+      "id": "asset_e020cc5b-3c4e-4779-803e-8ccd74d7c0ad",
       "kind": "image",
       "src": "/media/hero-studio.webp",
       "mimeType": "image/webp",
@@ -625,7 +625,7 @@
       "byteSize": 14414
     },
     {
-      "id": "asset_hero_stage",
+      "id": "asset_24dbb73c-be93-4839-813b-f81fd5806009",
       "kind": "image",
       "src": "/media/hero-stage.webp",
       "mimeType": "image/webp",
@@ -645,7 +645,7 @@
       "byteSize": 13200
     },
     {
-      "id": "asset_artist_texture",
+      "id": "asset_9be14f01-77fd-483a-81b6-a28d1bfc30b4",
       "kind": "image",
       "src": "/media/hero-studio.webp",
       "mimeType": "image/webp",
@@ -665,7 +665,7 @@
       "byteSize": 14414
     },
     {
-      "id": "asset_cover_01",
+      "id": "asset_2f183eda-5f01-4c34-93f6-47739c136bb2",
       "kind": "image",
       "src": "/media/cover-01.webp",
       "mimeType": "image/webp",
@@ -685,7 +685,7 @@
       "byteSize": 12710
     },
     {
-      "id": "asset_cover_02",
+      "id": "asset_5f8b24c3-04fa-405e-9f16-5c9a434d620e",
       "kind": "image",
       "src": "/media/cover-02.webp",
       "mimeType": "image/webp",
@@ -705,7 +705,7 @@
       "byteSize": 8514
     },
     {
-      "id": "asset_cover_03",
+      "id": "asset_279f5368-5e29-4df6-87db-9cd52db57890",
       "kind": "image",
       "src": "/media/cover-03.webp",
       "mimeType": "image/webp",
@@ -725,7 +725,7 @@
       "byteSize": 5902
     },
     {
-      "id": "asset_cover_04",
+      "id": "asset_9ba4683d-dec4-4c0a-a1fa-8319694f67ff",
       "kind": "image",
       "src": "/media/cover-04.webp",
       "mimeType": "image/webp",
@@ -745,7 +745,7 @@
       "byteSize": 7058
     },
     {
-      "id": "asset_cover_05",
+      "id": "asset_86ebdb53-875e-4192-9970-468bc34b1d83",
       "kind": "image",
       "src": "/media/cover-05.webp",
       "mimeType": "image/webp",
@@ -765,7 +765,7 @@
       "byteSize": 5694
     },
     {
-      "id": "asset_video_01",
+      "id": "asset_c8f368ec-29be-424b-b852-d24fec8bb567",
       "kind": "image",
       "src": "/media/video-01.webp",
       "mimeType": "image/webp",
@@ -785,7 +785,7 @@
       "byteSize": 6840
     },
     {
-      "id": "asset_video_02",
+      "id": "asset_6cafd319-b6bf-4780-8926-110407c1ee89",
       "kind": "image",
       "src": "/media/video-02.webp",
       "mimeType": "image/webp",
@@ -805,7 +805,7 @@
       "byteSize": 6126
     },
     {
-      "id": "asset_video_03",
+      "id": "asset_cf101d92-5180-43f3-aa42-f94da26efcb3",
       "kind": "image",
       "src": "/media/video-03.webp",
       "mimeType": "image/webp",
@@ -825,7 +825,7 @@
       "byteSize": 6598
     },
     {
-      "id": "asset_moment_01",
+      "id": "asset_6d6f2ca1-efe7-4486-a531-0cfa1b6f92ed",
       "kind": "image",
       "src": "/media/moment-01.webp",
       "mimeType": "image/webp",
@@ -845,7 +845,7 @@
       "byteSize": 9398
     },
     {
-      "id": "asset_moment_02",
+      "id": "asset_d4f8a911-5fd7-4e70-9845-451480b7c908",
       "kind": "image",
       "src": "/media/moment-02.webp",
       "mimeType": "image/webp",
@@ -865,7 +865,7 @@
       "byteSize": 7818
     },
     {
-      "id": "asset_moment_03",
+      "id": "asset_36672f55-0aeb-41af-8de7-346171f12fb7",
       "kind": "image",
       "src": "/media/moment-03.webp",
       "mimeType": "image/webp",
@@ -885,7 +885,7 @@
       "byteSize": 9566
     },
     {
-      "id": "asset_preview_sample",
+      "id": "asset_71734f61-5250-4825-a8b3-0192448be437",
       "kind": "audio",
       "src": "/media/preview-sample.wav",
       "mimeType": "audio/wav",

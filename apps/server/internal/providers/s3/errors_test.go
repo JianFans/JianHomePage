@@ -44,11 +44,11 @@ func TestObjectMissingClassificationDistinguishesBucketAndWriteFailures(t *testi
 			}
 			switch test.method {
 			case http.MethodHead:
-				_, err = store.Stat(context.Background(), "snapshots/rel_1/content.json")
+				_, err = store.Stat(context.Background(), "snapshots/rel_b73feb78-c751-4ccb-be54-8a8039247ca0/content.json")
 			case http.MethodGet:
-				_, err = store.ReadSnapshot(context.Background(), "snapshots/rel_1/content.json")
+				_, err = store.ReadSnapshot(context.Background(), "snapshots/rel_b73feb78-c751-4ccb-be54-8a8039247ca0/content.json")
 			case http.MethodPut:
-				err = store.Put(context.Background(), "snapshots/rel_1/content.json", bytes.NewReader([]byte("{}")), ports.BlobMetadata{ContentType: "application/json", Size: 2, Checksum: "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"})
+				err = store.Put(context.Background(), "snapshots/rel_b73feb78-c751-4ccb-be54-8a8039247ca0/content.json", bytes.NewReader([]byte("{}")), ports.BlobMetadata{ContentType: "application/json", Size: 2, Checksum: "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"})
 			}
 			if err == nil || errors.Is(err, domain.ErrNotFound) != test.missingObject {
 				t.Fatalf("missing-object classification = %v, want %v (error=%v)", errors.Is(err, domain.ErrNotFound), test.missingObject, err)

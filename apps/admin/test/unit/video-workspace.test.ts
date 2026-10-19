@@ -62,10 +62,10 @@ describe('影像草稿状态', () => {
   it('非法字段应用失败保留输入与精确诊断', () => {
     const { video, editorText } = workspace()
     video.open()
-    video.draft.value!.videos[0]!.posterAssetId = 'asset_preview_sample'
+    video.draft.value!.videos[0]!.posterAssetId = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     expect(video.apply()).toBe(false)
     expect(video.issues.value).toContainEqual(expect.objectContaining({ path: '/videos/0/posterAssetId', code: 'asset-kind' }))
-    expect(video.draft.value!.videos[0]!.posterAssetId).toBe('asset_preview_sample')
+    expect(video.draft.value!.videos[0]!.posterAssetId).toBe('asset_71734f61-5250-4825-a8b3-0192448be437')
     expect(editorText.value).toBe(JSON.stringify(fixture))
   })
   it('忙碌锁定所有变更操作且保留待办，reset 清理上下文', () => {

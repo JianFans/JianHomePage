@@ -1,5 +1,6 @@
 import type { Video, YujianContentSnapshot } from '@yujian/schema'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from './snapshot-workbench'
+import { createEntityId } from './identity'
 
 export interface VideoDraft { videos: Video[] }
 export type VideoErrorCode = 'stale-snapshot' | 'invalid-snapshot' | 'immutable-video' | 'invalid-draft'
@@ -13,7 +14,7 @@ export function createVideoDraft(snapshot: YujianContentSnapshot): VideoDraft {
 /** 生成空记录供填写，不编造标题、素材或有效外链。 */
 export function createVideo(): Video {
   return {
-    id: `video_${crypto.randomUUID().replaceAll('-', '_')}`,
+    id: createEntityId('video_'),
     title: { 'zh-CN': '' }, posterAssetId: '', durationSeconds: 1, featured: false,
     platformLinks: [{ provider: 'bilibili', url: '' }],
   }

@@ -19,16 +19,16 @@ describe('片段应用事务', () => {
   })
   it('新增唯一 UUID ID、空素材且不编造选填字段', () => {
     const first = createMoment()
-    expect(first).toEqual({ id: expect.stringMatching(/^moment_[a-z0-9_]+$/), assetId: '' })
+    expect(first).toEqual({ id: expect.stringMatching(/^moment_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), assetId: '' })
     expect(createMoment().id).not.toBe(first.id)
     const value = draft()
-    value.moments.push({ ...first, assetId: 'asset_cover_01' })
+    value.moments.push({ ...first, assetId: 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2' })
     expect(applyMomentDraft(text, text, value).error).toBeNull()
   })
   it.each(['remove', 'rename'])('拒绝已有 ID %s', (action) => {
     const value = draft()
     if (action === 'remove') value.moments.shift()
-    else value.moments[0]!.id = 'moment_renamed'
+    else value.moments[0]!.id = 'moment_10457c3a-6464-4bc3-8a39-86a3b874dac4'
     expect(applyMomentDraft(text, text, value)).toMatchObject({ text, error: 'immutable-moment' })
   })
   it('重复 ID 返回准确 canonical 诊断', () => {
@@ -38,7 +38,7 @@ describe('片段应用事务', () => {
     expect(result).toMatchObject({ text, error: 'invalid-draft' })
     expect(result.issues).toContainEqual(expect.objectContaining({ path: `/moments/${value.moments.length - 1}/id`, code: 'duplicate-id' }))
   })
-  it.each(['', 'asset_missing', 'asset_preview_sample'])('拒绝错误或空素材 %s 并保留原文', (assetId) => {
+  it.each(['', 'asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c', 'asset_71734f61-5250-4825-a8b3-0192448be437'])('拒绝错误或空素材 %s 并保留原文', (assetId) => {
     const value = draft()
     value.moments[0]!.assetId = assetId
     const result = applyMomentDraft(text, text, value)
@@ -47,10 +47,10 @@ describe('片段应用事务', () => {
   })
   it('允许图片/GIF 素材与删除 caption、target、英文', () => {
     const source = structuredClone(fixture)
-    source.assets.push({ ...source.assets[0]!, id: 'asset_gif_test', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
+    source.assets.push({ ...source.assets[0]!, id: 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
     const baseline = JSON.stringify(source)
     const value = createMomentDraft(analyzeSnapshotText(baseline).snapshot!)
-    for (const id of ['asset_cover_01', 'asset_gif_test']) {
+    for (const id of ['asset_2f183eda-5f01-4c34-93f6-47739c136bb2', 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f']) {
       value.moments[0]!.assetId = id
       expect(applyMomentDraft(baseline, baseline, value).error).toBeNull()
     }
@@ -60,7 +60,7 @@ describe('片段应用事务', () => {
     delete value.moments[0]!.target
     const result = applyMomentDraft(baseline, baseline, value)
     expect(result.error).toBeNull()
-    expect(JSON.parse(result.text).moments[0]).toEqual({ id: value.moments[0]!.id, assetId: 'asset_gif_test' })
+    expect(JSON.parse(result.text).moments[0]).toEqual({ id: value.moments[0]!.id, assetId: 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f' })
   })
   it.each(['http://example.com', 'javascript:alert(1)', ''])('拒绝非 HTTPS 外链 %s', (url) => {
     const value = draft()
@@ -69,7 +69,7 @@ describe('片段应用事务', () => {
     expect(result).toMatchObject({ text, error: 'invalid-draft' })
     expect(result.issues.some(issue => issue.path.startsWith('/moments/0/target'))).toBe(true)
   })
-  it.each(['missing_record', 'event_02'])('拒绝缺失或隐藏内部目标 %s', (contentId) => {
+  it.each(['missing_record', 'event_b9413813-c666-4987-bb0c-2850fd7fa156'])('拒绝缺失或隐藏内部目标 %s', (contentId) => {
     const source = structuredClone(fixture)
     source.events[1]!.status = 'cancelled'
     const baseline = JSON.stringify(source)

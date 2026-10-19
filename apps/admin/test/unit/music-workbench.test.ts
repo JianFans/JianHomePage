@@ -43,7 +43,7 @@ describe('音乐快照事务', () => {
     draft.tracks[0]!.credits[0]!.name = '新署名'
     expect(value.releases[0]!.title['zh-CN']).not.toBe('改名')
     expect(value.tracks[0]!.credits[0]!.name).not.toBe('新署名')
-    expect(createMusicDraft(value, 'release_missing')).toBeNull()
+    expect(createMusicDraft(value, 'release_b762069e-c372-46ae-a943-4c2d59fa6d7a')).toBeNull()
   })
 
   it('生成符合前缀的新 ID 且新曲目归属当前作品', () => {
@@ -59,30 +59,30 @@ describe('音乐快照事务', () => {
   it('只提供适合封面和试听的素材', () => {
     const value = snapshot()
     expect(musicAssets(value, 'cover').every(asset => ['image', 'gif'].includes(asset.kind))).toBe(true)
-    expect(musicAssets(value, 'preview').map(asset => asset.id)).toContain('asset_preview_sample')
+    expect(musicAssets(value, 'preview').map(asset => asset.id)).toContain('asset_71734f61-5250-4825-a8b3-0192448be437')
     expect(musicAssets(value, 'preview').every(asset => asset.kind === 'audio')).toBe(true)
   })
 
   it('更新现有作品、重排曲目并保留孤立但合法的曲目记录', () => {
     const value = snapshot()
-    const orphan = { ...structuredClone(value.tracks[0]!), id: 'track_orphan' }
+    const orphan = { ...structuredClone(value.tracks[0]!), id: 'track_da4d7d89-ffff-457f-9c58-322d37c1e9a4' }
     value.tracks.push(orphan)
     const text = JSON.stringify(value)
     const draft = createMusicDraft(value, value.releases[0]!.id)!
-    const second = { ...structuredClone(draft.tracks[0]!), id: 'track_added' }
+    const second = { ...structuredClone(draft.tracks[0]!), id: 'track_7ab9a705-9712-434b-aaa0-65678ded5090' }
     draft.tracks.unshift(second)
     draft.release.title['zh-CN'] = '新标题'
     const result = applyMusicDraft(text, text, draft)
     expect(result.error).toBeNull()
     const next = JSON.parse(result.text) as YujianContentSnapshot
-    expect(next.releases[0]!.trackIds).toEqual(['track_added', 'track_01'])
+    expect(next.releases[0]!.trackIds).toEqual(['track_7ab9a705-9712-434b-aaa0-65678ded5090', 'track_e60c46c7-28d6-418e-8905-167307dc8354'])
     expect(next.tracks.find(track => track.id === orphan.id)).toEqual(orphan)
     expect(next.releases[1]).toEqual(value.releases[1])
   })
 
   it('移除无外部引用的曲目并保留素材', () => {
     const value = snapshot()
-    const extra = { ...structuredClone(value.tracks[0]!), id: 'track_extra' }
+    const extra = { ...structuredClone(value.tracks[0]!), id: 'track_2dee5edf-d865-4f35-9574-cd330ac71123' }
     value.tracks.push(extra)
     value.releases[0]!.trackIds.push(extra.id)
     const text = JSON.stringify(value)
@@ -99,7 +99,7 @@ describe('音乐快照事务', () => {
     value.heroSlides[0]!.target = { kind: 'internal', contentId: value.tracks[0]!.id }
     const text = JSON.stringify(value)
     const draft = createMusicDraft(value, value.releases[0]!.id)!
-    draft.tracks = [{ ...draft.tracks[0]!, id: 'track_replacement' }]
+    draft.tracks = [{ ...draft.tracks[0]!, id: 'track_daf2c8bc-68d4-4f5e-95b9-77416eedfec6' }]
     const result = applyMusicDraft(text, text, draft)
     expect(result).toMatchObject({ text, error: 'invalid-draft' })
     expect(result.issues.some(issue => issue.code === 'missing-reference')).toBe(true)
@@ -157,7 +157,7 @@ describe('音乐快照事务', () => {
 
   it('编辑重复引用的曲目时保留顺序且只更新一条记录', () => {
     const value = snapshot()
-    const extra = { ...structuredClone(value.tracks[0]!), id: 'track_extra' }
+    const extra = { ...structuredClone(value.tracks[0]!), id: 'track_2dee5edf-d865-4f35-9574-cd330ac71123' }
     value.tracks.push(extra)
     value.releases[0]!.trackIds.push(extra.id, value.tracks[0]!.id)
     expect(diagnoseContentSnapshot(value)).toEqual([])
@@ -190,16 +190,16 @@ describe('音乐快照事务', () => {
     const value = snapshot()
     const text = JSON.stringify(value)
     const draft = createMusicDraft(value, value.releases[0]!.id)!
-    draft.release.id = 'release_renamed'
+    draft.release.id = 'release_1a7379ce-842f-4f34-bc6e-f6f6c3d790eb'
     expect(applyMusicDraft(text, text, draft).error).toBe('immutable-id')
-    draft.originalId = 'release_missing'
+    draft.originalId = 'release_b762069e-c372-46ae-a943-4c2d59fa6d7a'
     expect(applyMusicDraft(text, text, draft).error).toBe('missing-release')
   })
 
   it.each(['cover', 'date', 'url', 'duration', 'empty-tracks'])('无效字段 %s 不改写文本', (field) => {
     const text = JSON.stringify(snapshot())
     const draft = newDraft()
-    if (field === 'cover') draft.release.coverAssetId = 'asset_preview_sample'
+    if (field === 'cover') draft.release.coverAssetId = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     if (field === 'date') draft.release.releaseDate = '2026-02-30'
     if (field === 'url') draft.release.platformLinks = [{ provider: 'website', url: 'javascript:alert(1)' }]
     if (field === 'duration') draft.tracks[0]!.durationSeconds = 0
@@ -215,7 +215,7 @@ describe('音乐快照事务', () => {
     const result = applyMusicDraft(text, text, draft)
     const next = JSON.parse(result.text) as YujianContentSnapshot
     expect(next.homepage.sections[1]).toEqual({ ...value.homepage.sections[1], itemIds: draft.sections[0]!.itemIds })
-    draft.sections[0]!.id = 'section_unknown'
+    draft.sections[0]!.id = 'section_1e6d586f-4983-4acb-8fee-c7e2080605bf'
     expect(applyMusicDraft(text, text, draft)).toMatchObject({ text, error: 'invalid-draft' })
   })
 })

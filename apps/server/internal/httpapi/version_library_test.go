@@ -21,19 +21,19 @@ func TestVersionLibraryRoutes(t *testing.T) {
 		if actor.Subject != "editor" || options.Limit != 2 || options.Cursor != "cursor" {
 			t.Fatal("query or actor not forwarded")
 		}
-		return content.ListPage{Items: []content.VersionSummary{{ID: "ver_one", Name: "版本一", Status: domain.StatusDraft, Revision: 1, CreatedAt: now, UpdatedAt: now}}, NextCursor: "next"}, nil
+		return content.ListPage{Items: []content.VersionSummary{{ID: "ver_8fd7f519-2fa0-438e-bea2-9c5f67f9c4fe", Name: "版本一", Status: domain.StatusDraft, Revision: 1, CreatedAt: now, UpdatedAt: now}}, NextCursor: "next"}, nil
 	}
 	stub.cloneFn = func(_ context.Context, actor domain.Principal, source, name string) (domain.ContentVersion, error) {
-		if source != "ver_one" || name != "副本" || actor.Subject != "editor" {
+		if source != "ver_8fd7f519-2fa0-438e-bea2-9c5f67f9c4fe" || name != "副本" || actor.Subject != "editor" {
 			t.Fatal("clone contract not forwarded")
 		}
-		return domain.ContentVersion{ID: "ver_two", Name: name, SourceVersionID: source, Snapshot: json.RawMessage(`{}`), Revision: 1, Status: domain.StatusDraft}, nil
+		return domain.ContentVersion{ID: "ver_0713cc94-f651-4802-9650-20fbfac3c781", Name: name, SourceVersionID: source, Snapshot: json.RawMessage(`{}`), Revision: 1, Status: domain.StatusDraft}, nil
 	}
 	stub.namedCreateFn = func(_ context.Context, _ domain.Principal, name string, snapshot json.RawMessage) (domain.ContentVersion, error) {
 		if name != "新版本" || string(snapshot) != "{}" {
 			t.Fatal("named create contract not forwarded")
 		}
-		return domain.ContentVersion{ID: "ver_new", Name: name, Snapshot: snapshot, Revision: 1}, nil
+		return domain.ContentVersion{ID: "ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526", Name: name, Snapshot: snapshot, Revision: 1}, nil
 	}
 	middleware, _ := auth.NewMiddleware(auth.MiddlewareOptions{AllowDevIdentity: true})
 	router := NewRouter(RouterOptions{Content: stub, Middleware: middleware})
@@ -43,12 +43,12 @@ func TestVersionLibraryRoutes(t *testing.T) {
 		expected           string
 	}{
 		{"GET", "/api/v1/versions?limit=2&cursor=cursor", "", 200, `"name":"版本一"`},
-		{"POST", "/api/v1/versions/ver_one/clone", `{"name":"副本"}`, 201, `"sourceVersionId":"ver_one"`},
+		{"POST", "/api/v1/versions/ver_8fd7f519-2fa0-438e-bea2-9c5f67f9c4fe/clone", `{"name":"副本"}`, 201, `"sourceVersionId":"ver_8fd7f519-2fa0-438e-bea2-9c5f67f9c4fe"`},
 		{"POST", "/api/v1/versions", `{"name":"新版本","snapshot":{}}`, 201, `"name":"新版本"`},
 		{"GET", "/api/v1/versions?limit=bad", "", 400, "invalid_request"},
 		{"GET", "/api/v1/versions?limit=1&limit=2", "", 400, "invalid_request"},
 		{"GET", "/api/v1/versions?cursor=a&cursor=b", "", 400, "invalid_request"},
-		{"POST", "/api/v1/versions/ver_one/clone", `{"name":"副本","snapshot":{}}`, 400, "invalid_request"},
+		{"POST", "/api/v1/versions/ver_8fd7f519-2fa0-438e-bea2-9c5f67f9c4fe/clone", `{"name":"副本","snapshot":{}}`, 400, "invalid_request"},
 	} {
 		r := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
 		r.Header.Set("X-Dev-Subject", "editor")
@@ -62,7 +62,7 @@ func TestVersionLibraryRoutes(t *testing.T) {
 			t.Fatal("list includes snapshot")
 		}
 	}
-	forbidden := httptest.NewRequest("POST", "/api/v1/versions/ver_one/clone", strings.NewReader(`{"name":"副本"}`))
+	forbidden := httptest.NewRequest("POST", "/api/v1/versions/ver_8fd7f519-2fa0-438e-bea2-9c5f67f9c4fe/clone", strings.NewReader(`{"name":"副本"}`))
 	forbidden.Header.Set("X-Dev-Subject", "reviewer")
 	forbidden.Header.Set("X-Dev-Roles", "reviewer")
 	w := httptest.NewRecorder()
@@ -81,7 +81,7 @@ func TestUpdateVersionRejectsDisplayName(t *testing.T) {
 		return testVersion(), nil
 	}}
 	router := testRouter(t, service, &publishServiceStub{})
-	request := authenticatedRequest("PUT", "/api/v1/versions/ver_one", `{"name":"新名称","snapshot":{}}`, "editor")
+	request := authenticatedRequest("PUT", "/api/v1/versions/ver_8fd7f519-2fa0-438e-bea2-9c5f67f9c4fe", `{"name":"新名称","snapshot":{}}`, "editor")
 	request.Header.Set("If-Match", `"1"`)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)

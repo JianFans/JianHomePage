@@ -102,6 +102,8 @@ func validateSiteReferences(root map[string]any, assets map[string]map[string]an
 func validateHomepageReferences(root map[string]any, heroes, releases, videos, events, moments map[string]map[string]any) error {
 	homepage, _ := root["homepage"].(map[string]any)
 	sections, _ := homepage["sections"].([]any)
+	artist, _ := root["artist"].(map[string]any)
+	artistID, _ := artist["id"].(string)
 	for index, raw := range sections {
 		section, _ := raw.(map[string]any)
 		sectionType, _ := section["type"].(string)
@@ -120,7 +122,7 @@ func validateHomepageReferences(root map[string]any, heroes, releases, videos, e
 			records = moments
 		case "artist":
 			for itemIndex, rawID := range itemIDs {
-				if rawID != "artist_primary" {
+				if rawID != artistID {
 					return validationFailure(schemaPath(schemaPath("/homepage/sections", itoa(index)), "itemIds")+"/"+itoa(itemIndex), "unknown artist reference")
 				}
 			}

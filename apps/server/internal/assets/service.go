@@ -3,7 +3,6 @@ package assets
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +15,7 @@ import (
 
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	"yujian.me/server/internal/ports"
 )
 
@@ -132,7 +132,7 @@ func NewService(options ServiceOptions) *Service {
 	}
 	newID := options.NewID
 	if newID == nil {
-		newID = randomID
+		newID = identity.MustNew
 	}
 	return &Service{
 		repository: options.Repository,
@@ -545,12 +545,4 @@ func assetAudit(actor domain.Principal, action, id string, createdAt time.Time) 
 		Metadata:     json.RawMessage(`{}`),
 		CreatedAt:    createdAt,
 	}
-}
-
-func randomID(prefix string) string {
-	buffer := make([]byte, 12)
-	if _, err := rand.Read(buffer); err != nil {
-		panic("secure random source unavailable")
-	}
-	return prefix + hex.EncodeToString(buffer)
 }

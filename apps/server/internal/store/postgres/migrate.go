@@ -15,6 +15,7 @@ import (
 
 const publishFreezeMigration = "0003_publish_target_freeze.sql"
 const assetSourceURLMigration = "0004_asset_source_url.sql"
+const uuidIDsMigration = "0009_uuid_ids.sql"
 
 type MigrationOptions struct {
 	ResolveAssetSourceURL func(context.Context, string) (string, error)
@@ -70,12 +71,15 @@ func Migrate(ctx context.Context, db Executor, migrationOptions ...MigrationOpti
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
 		migrationWasApplied := false
-		if name == publishFreezeMigration || name == assetSourceURLMigration {
+		if name == publishFreezeMigration || name == assetSourceURLMigration || name == uuidIDsMigration {
 			applied, err := migrationApplied(ctx, tx, strings.TrimSuffix(name, ".sql"))
 			if err != nil {
 				return fmt.Errorf("check migration %s: %w", name, err)
 			}
 			migrationWasApplied = applied
+			if name == uuidIDsMigration && applied {
+				continue
+			}
 			if name == publishFreezeMigration && !applied {
 				if err := upgradeLegacyContentChecksums(ctx, tx); err != nil {
 					return fmt.Errorf("upgrade legacy content checksums: %w", err)

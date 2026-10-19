@@ -9,8 +9,8 @@ import { analyzeSnapshotText } from '../../utils/snapshot-workbench'
 /** 挂载真实状态与组件，不用事件桩替代应用事务。 */
 function mountVideo() {
   const source = structuredClone(fixture)
-  source.assets.push({ ...source.assets[0]!, id: 'asset_video_test', kind: 'video', mimeType: 'video/mp4', src: '/media/test.mp4' })
-  source.assets.push({ ...source.assets[0]!, id: 'asset_gif_test', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
+  source.assets.push({ ...source.assets[0]!, id: 'asset_a0b7ada8-6b3e-452f-bdf3-8fa5bcb0cb6c', kind: 'video', mimeType: 'video/mp4', src: '/media/test.mp4' })
+  source.assets.push({ ...source.assets[0]!, id: 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
   const editorText = ref(JSON.stringify(source))
   const snapshot = computed(() => analyzeSnapshotText(editorText.value).snapshot)
   const busy = ref(false)
@@ -47,7 +47,7 @@ describe('影像工作台组件', () => {
     await wrapper.get('[data-testid="video-title-en"]').setValue('English')
     await wrapper.get('[data-testid="video-duration"]').setValue(183)
     await wrapper.get('[data-testid="video-featured"]').setValue(true)
-    const media = { id: 'asset_video_test' }
+    const media = { id: 'asset_a0b7ada8-6b3e-452f-bdf3-8fa5bcb0cb6c' }
     await wrapper.get('[data-testid="video-asset"]').setValue(media.id)
     expect(video.draft!.videos[0]).toMatchObject({ title: { en: 'English' }, durationSeconds: 183, featured: true, videoAssetId: media.id })
     await wrapper.get('[data-testid="video-title-en"]').setValue('')
@@ -72,10 +72,10 @@ describe('影像工作台组件', () => {
       expect(posterIds.includes(asset.id)).toBe(['image', 'gif'].includes(asset.kind))
       expect(videoIds.includes(asset.id)).toBe(asset.kind === 'video')
     }
-    expect(posterIds).toContain('asset_gif_test')
-    expect(posterIds).not.toContain('asset_video_test')
-    expect(videoIds).toContain('asset_video_test')
-    expect(videoIds).not.toContain('asset_gif_test')
+    expect(posterIds).toContain('asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f')
+    expect(posterIds).not.toContain('asset_a0b7ada8-6b3e-452f-bdf3-8fa5bcb0cb6c')
+    expect(videoIds).toContain('asset_a0b7ada8-6b3e-452f-bdf3-8fa5bcb0cb6c')
+    expect(videoIds).not.toContain('asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f')
     await wrapper.get('[data-testid="video-title-zh"]').setValue('保留')
     editorText.value = '{'
     await wrapper.vm.$nextTick()
@@ -92,7 +92,7 @@ describe('影像工作台组件', () => {
   it('展示精确诊断，忙碌锁定 fieldset 与所有按钮', async () => {
     const { wrapper, video, busy } = mountVideo()
     await wrapper.get('[data-testid="video-open"]').trigger('click')
-    video.draft!.videos[0]!.posterAssetId = 'asset_preview_sample'
+    video.draft!.videos[0]!.posterAssetId = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     video.apply()
     await wrapper.vm.$nextTick()
     expect(wrapper.get('[data-testid="video-error"]').text()).toContain('/videos/0/posterAssetId')

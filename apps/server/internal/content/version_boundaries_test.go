@@ -34,7 +34,7 @@ func TestCloneAuditFailureAndCursorValidation(t *testing.T) {
 	repo := memory.NewContentRepository(memory.NewState())
 	now := time.Now().UTC()
 	raw := json.RawMessage(`{"schemaVersion":"1.0.0"}`)
-	source := domain.ContentVersion{ID: "ver_source", Status: domain.StatusPublished, Revision: 3, Snapshot: raw, Checksum: snapshotdata.Checksum(raw), CreatedAt: now, UpdatedAt: now}
+	source := domain.ContentVersion{ID: "ver_4a1d69cc-c429-4747-bd2e-db2cf11cc6b3", Status: domain.StatusPublished, Revision: 3, Snapshot: raw, Checksum: snapshotdata.Checksum(raw), CreatedAt: now, UpdatedAt: now}
 	repo.CreateVersion(ctx, source)
 	service := content.NewService(content.ServiceOptions{Store: auditFailureRepository{Repository: repo}, Validator: acceptingValidator{}})
 	editor := domain.Principal{Subject: "editor", Roles: []domain.Role{domain.RoleEditor}}
@@ -46,7 +46,7 @@ func TestCloneAuditFailureAndCursorValidation(t *testing.T) {
 		t.Fatalf("failed clone left state: %#v %v", page, err)
 	}
 	timestamp := now.Format(time.RFC3339Nano)
-	for _, raw := range []string{`{}`, `{"createdAt":"` + timestamp + `","id":"ver_a","unknown":true}`, `{"createdAt":"` + timestamp + `","id":"ver_a"} {}`, `{"createdAt":"` + timestamp + `","id":"invalid id"}`, `{"createdAt":"` + timestamp + `","id":"ver_a","id":"ver_b"}`} {
+	for _, raw := range []string{`{}`, `{"createdAt":"` + timestamp + `","id":"ver_7dcf840a-224e-401c-8d1d-a273116d1d31","unknown":true}`, `{"createdAt":"` + timestamp + `","id":"ver_7dcf840a-224e-401c-8d1d-a273116d1d31"} {}`, `{"createdAt":"` + timestamp + `","id":"invalid id"}`, `{"createdAt":"` + timestamp + `","id":"ver_7dcf840a-224e-401c-8d1d-a273116d1d31","id":"ver_61b5f9a0-3e20-4b91-aef6-c3f9d1f842c2"}`} {
 		cursor := base64.RawURLEncoding.EncodeToString([]byte(raw))
 		if _, err := service.ListVersions(ctx, editor, content.ListOptions{Cursor: cursor}); !errors.Is(err, domain.ErrInvalidInput) {
 			t.Fatalf("invalid cursor accepted: %s %v", raw, err)

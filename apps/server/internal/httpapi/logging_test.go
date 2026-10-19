@@ -23,7 +23,7 @@ func TestLoggingMiddlewareIncludesRequestActorRouteStatusAndDuration(t *testing.
 		t.Fatalf("create middleware: %v", err)
 	}
 	handler := LoggingMiddleware(middleware.Authenticate(next), logger)
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/versions/ver_1", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", nil)
 	request.Header.Set("X-Request-ID", "req-logging")
 	request.Header.Set("X-Dev-Subject", "admin-1")
 	request.Header.Set("X-Dev-Roles", "admin")
@@ -33,7 +33,7 @@ func TestLoggingMiddlewareIncludesRequestActorRouteStatusAndDuration(t *testing.
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("unexpected status %d", recorder.Code)
 	}
-	for _, fragment := range []string{"request_id", "req-logging", "actor_subject", "admin-1", "route", "/api/v1/versions/ver_1", "status", "duration_ms"} {
+	for _, fragment := range []string{"request_id", "req-logging", "actor_subject", "admin-1", "route", "/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", "status", "duration_ms"} {
 		if !strings.Contains(output.String(), fragment) {
 			t.Fatalf("log missing %q: %s", fragment, output.String())
 		}

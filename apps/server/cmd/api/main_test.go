@@ -394,7 +394,7 @@ func TestBuildProductionDependenciesCreatesServicesAndClosesDatabase(t *testing.
 	for index, query := range database.tx.execQueries {
 		if strings.Contains(query, "UPDATE assets") && strings.Contains(query, "source_url") {
 			args := database.tx.execArgs[index]
-			assetURLBackfilled = len(args) == 2 && args[0] == "/media/assets/asset_legacy/source.webp" && args[1] == "asset_legacy"
+			assetURLBackfilled = len(args) == 2 && args[0] == "/media/assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp" && args[1] == "asset_58d6e938-5806-4086-8a5d-f3908326255e"
 		}
 	}
 	if !assetURLBackfilled {
@@ -914,8 +914,8 @@ func (*productionAssetRowsFake) Scan(dest ...any) error {
 	if !idOK || !keyOK {
 		return errors.New("expected string asset destinations")
 	}
-	*id = "asset_legacy"
-	*key = "assets/asset_legacy/source.webp"
+	*id = "asset_58d6e938-5806-4086-8a5d-f3908326255e"
+	*key = "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp"
 	return nil
 }
 
