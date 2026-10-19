@@ -137,10 +137,13 @@ jobs:
           RELEASE_IMAGE: ${{ needs.prepare.outputs.image }}
         shell: bash
         run: |
+          files=()
           for arch in amd64 arm64; do
-            test -s "yujian-server-$RELEASE_VERSION-linux-$arch.tar.gz"
+            file="yujian-server-$RELEASE_VERSION-linux-$arch"
+            test -s "$file"
+            files+=("$file")
           done
-          sha256sum --binary yujian-server-*.tar.gz > SHA256SUMS.txt
+          sha256sum --binary "${files[@]}" > SHA256SUMS.txt
           existing_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')
           if [ "$existing_sha" != "$RELEASE_SHA" ]; then
             echo 'Release tag does not point to the validated commit.' >&2
@@ -155,7 +158,7 @@ jobs:
           existing_assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
           existing_directory=$(mktemp -d)
           trap 'rm -rf "$existing_directory"' EXIT
-          for path in ./*.tar.gz SHA256SUMS.txt; do
+          for path in "${files[@]}" SHA256SUMS.txt; do
             asset=${path#./}
             if printf '%s\n' "$existing_assets" | grep -Fxq "$asset"; then
               gh release download "$RELEASE_TAG" --pattern "$asset" --dir "$existing_directory"

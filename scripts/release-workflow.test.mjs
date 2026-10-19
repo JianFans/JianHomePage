@@ -155,7 +155,7 @@ switch (args[1]) {
 }
 `
 
-/** Supply local archives and an isolated GitHub CLI, without building the application or using the network. */
+/** Supply raw executable bytes and an isolated GitHub CLI without builds or network access. */
 async function fixture(t, overrides = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'yujian-release-test-'))
   const bashDirectory = process.platform === 'win32'
@@ -168,8 +168,8 @@ async function fixture(t, overrides = {}) {
   const assets = {}
   let checksums = ''
   for (const arch of ['amd64', 'arm64']) {
-    const name = `yujian-server-0.1.0-linux-${arch}.tar.gz`
-    const bytes = Buffer.from(`archive-${arch}`)
+    const name = `yujian-server-0.1.0-linux-${arch}`
+    const bytes = Buffer.from(`binary-${arch}`)
     await writeFile(join(directory, name), bytes)
     assets[name] = bytes.toString('base64')
     checksums += `${createHash('sha256').update(bytes).digest('hex')} *${name}\n`
@@ -179,6 +179,7 @@ async function fixture(t, overrides = {}) {
   await writeFile(statePath, JSON.stringify({ sha, exists: true, isDraft: true, assets: {}, creates: 0, uploads: [], edits: 0, ...overrides }))
   return {
     assets,
+    directory,
     state: async () => JSON.parse(await readFile(statePath, 'utf8')),
     run: () => spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', `export PATH="${bashDirectory}/bin:$PATH"\n${publish}`], {
       cwd: directory, encoding: 'utf8',
@@ -198,9 +199,26 @@ test('首次发布先创建草稿，上传完整文件后才公开', async (t) =
   assert.deepEqual(state.assets, release.assets)
 })
 
+test('缺少任一架构的二进制时，不创建 Release 或上传文件', async (t) => {
+  const release = await fixture(t, { exists: false })
+  await rm(join(release.directory, 'yujian-server-0.1.0-linux-arm64'))
+  assert.notEqual(release.run().status, 0)
+  const state = await release.state()
+  assert.equal(state.creates, 0)
+  assert.deepEqual(state.uploads, [])
+})
+
+test('发布只上传指定版本双架构二进制和校验和', async (t) => {
+  const release = await fixture(t, { exists: false })
+  await writeFile(join(release.directory, 'yujian-server-old-linux-amd64'), 'unrelated file')
+  const result = release.run()
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual((await release.state()).assets, release.assets)
+})
+
 test('中断留下的草稿仅补传缺失文件，不覆盖已上传的相同文件', async (t) => {
-  const name = 'yujian-server-0.1.0-linux-amd64.tar.gz'
-  const release = await fixture(t, { assets: { [name]: Buffer.from('archive-amd64').toString('base64') } })
+  const name = 'yujian-server-0.1.0-linux-amd64'
+  const release = await fixture(t, { assets: { [name]: Buffer.from('binary-amd64').toString('base64') } })
   const result = release.run()
   assert.equal(result.status, 0, result.stderr)
   const state = await release.state()
@@ -221,7 +239,7 @@ test('公开响应丢失后重跑只验证现有版本，不再次写入', async
 })
 
 test('已有同名文件内容不一致时拒绝覆盖和公开', async (t) => {
-  const release = await fixture(t, { assets: { 'yujian-server-0.1.0-linux-amd64.tar.gz': Buffer.from('different').toString('base64') } })
+  const release = await fixture(t, { assets: { 'yujian-server-0.1.0-linux-amd64': Buffer.from('different').toString('base64') } })
   assert.notEqual(release.run().status, 0)
   const state = await release.state()
   assert.equal(state.isDraft, true)

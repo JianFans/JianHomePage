@@ -10,7 +10,7 @@ on:
         required: false
         default: ''
       version:
-        description: Release version for archive names; otherwise use the commit SHA
+        description: Release version for binary names; otherwise use the commit SHA
         type: string
         required: false
         default: ''
@@ -386,9 +386,10 @@ jobs:
           test -n "$expected_version"
           test "$(./dist/yujian-server --version)" = "yujian-server $expected_version"
           # Development startup only: no production database, identity or cloud secrets.
-          APP_ENV=development HTTP_ADDRESS=127.0.0.1:18080 ./dist/yujian-server > dist/server.log 2>&1 &
+          printf 'APP_ENV=development\nHTTP_ADDRESS=127.0.0.1:18080\n' > .env
+          ./dist/yujian-server > dist/server.log 2>&1 &
           server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -f .env' EXIT
           for attempt in {1..30}; do
             if ! kill -0 "$server_pid" 2>/dev/null; then cat dist/server.log; exit 1; fi
             if curl --fail --silent --connect-timeout 2 --max-time 3 http://127.0.0.1:18080/healthz; then
@@ -400,22 +401,19 @@ jobs:
           done
           cat dist/server.log
           exit 1
-      - name: Package executable and source identity
+      - name: Name standalone executable
         shell: bash
         run: |
           if [[ ! "$BUILD_LABEL" =~ ^([0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{40})$ ]]; then
-            echo 'Invalid archive version or commit SHA.' >&2
+            echo 'Invalid binary version or commit SHA.' >&2
             exit 1
           fi
-          app_version=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' apps/server/cmd/api/version.go)
-          test -n "$app_version"
-          printf 'version=%s\ncommit=%s\nplatform=linux/%s\n' "$app_version" "$(git rev-parse HEAD)" "$GOARCH" > dist/BUILD-INFO.txt
-          tar -czf "dist/yujian-server-$BUILD_LABEL-linux-$GOARCH.tar.gz" -C dist yujian-server BUILD-INFO.txt
+          mv dist/yujian-server "dist/yujian-server-$BUILD_LABEL-linux-$GOARCH"
       - name: Upload standalone program
         uses: actions/upload-artifact@v7
         with:
           name: yujian-server-linux-${{ matrix.goarch }}
-          path: dist/yujian-server-*.tar.gz
+          path: dist/yujian-server-*-linux-*
           if-no-files-found: error
           retention-days: 7
       - name: Upload startup failure logs

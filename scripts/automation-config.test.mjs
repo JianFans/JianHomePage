@@ -103,7 +103,7 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
   assert.ok(workflow.jobs.e2e.steps.some(step => step.uses?.startsWith('actions/upload-artifact@') && step.with?.path === 'apps/admin/test-results'))
 })
 
-test('复用验证工作流固定代码身份，复用完整内嵌资源并打包双架构单程序', async () => {
+test('复用验证工作流固定代码身份，复用内嵌资源并输出双架构裸二进制', async () => {
   const workflow = await readYaml('.github/workflows/code-check.yml')
   assert.equal(workflow.on.workflow_call.inputs.ref.type, 'string')
   assert.equal(workflow.on.workflow_call.inputs.version.type, 'string')
@@ -125,14 +125,16 @@ test('复用验证工作流固定代码身份，复用完整内嵌资源并打�
   const commands = binary.steps.map(step => step.run || '').join('\n')
   assert.match(commands, /go build/)
   assert.match(commands, /tar -xzf/)
-  assert.match(commands, /tar -czf/)
+  assert.doesNotMatch(commands, /tar -czf|BUILD-INFO\.txt/)
   assert.match(commands, /healthz/)
   assert.match(commands, /\/preview/)
   assert.match(commands, /yujian-server --version/)
-  assert.match(commands, /printf 'version=%s/)
+  assert.match(commands, /mv dist\/yujian-server/)
+  assert.match(commands, /\.env/)
+  assert.doesNotMatch(commands, /APP_ENV=development HTTP_ADDRESS=/)
   const versionCheck = workflow.jobs.frontend.steps.find(step => step.run?.includes('set-release-version.mjs --check'))
   assert.equal(versionCheck.env.RELEASE_VERSION, '${{ inputs.version }}')
-  assert.ok(binary.steps.some(step => step.with?.['if-no-files-found'] === 'error' && step.with.path === 'dist/yujian-server-*.tar.gz'))
+  assert.ok(binary.steps.some(step => step.with?.['if-no-files-found'] === 'error' && step.with.path === 'dist/yujian-server-*-linux-*'))
 })
 
 test('手动发布先原子推送统一版本提交和标签，再检查构建该提交', async () => {
@@ -165,7 +167,8 @@ test('手动发布先原子推送统一版本提交和标签，再检查构建�
   const download = publish.steps.find(step => step.uses?.startsWith('actions/download-artifact@'))
   assert.equal(download.with.pattern, 'yujian-server-linux-*')
   const commands = publish.steps.map(step => step.run || '').join('\n')
-  assert.match(commands, /sha256sum.*yujian-server-.*SHA256SUMS\.txt/)
+  assert.match(commands, /sha256sum.*SHA256SUMS\.txt/)
+  assert.doesNotMatch(commands, /tar\.gz|zip|BUILD-INFO/)
   assert.match(commands, /RELEASE_SHA/)
   assert.match(commands, /--verify-tag/)
   assert.doesNotMatch(commands, /--clobber/)
