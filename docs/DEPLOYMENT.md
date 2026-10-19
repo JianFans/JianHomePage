@@ -53,9 +53,44 @@ install -m 755 yujian-server-0.1.0-linux-amd64 ./yujian-server
 | `SHUTDOWN_TIMEOUT` | 默认 `10s` | 优雅停止超时 |
 | `ALLOW_DEV_IDENTITY` | 默认 `false` | 生产环境必须为 `false` |
 
-OIDC 可使用 Keycloak 等现有服务。管理员的 ID token 须包含 `aud = ADMIN_OIDC_CLIENT_ID`，以及顶层 `roles: ["admin"]`。API 的 Bearer token 使用 `OIDC_AUDIENCE`。完整认证契约见 [浏览器登录与会话](../apps/server/README.md#浏览器登录与会话)。
+OIDC 可使用标准身份服务；令牌要求及 Casdoor 示例见下节。完整认证契约见 [浏览器登录与会话](../apps/server/README.md#浏览器登录与会话)。
 
 COS 的 SecretId／SecretKey 从 [CAM](https://console.cloud.tencent.com/cam/capi) 创建或获取，使用限制到目标桶的子账号权限；Pages Token 在 [Pages 控制台](https://console.cloud.tencent.com/edgeone/pages) 单独创建。两组凭据都只配置在服务器，不需要放入 Actions。
+
+## OIDC 登录与权限（以 Casdoor 为例）
+
+`aud` 表示令牌发给哪个应用，`roles` 表示用户在本站的权限，两者均由身份服务签发：
+
+| 使用方式 | 本站检查 |
+| --- | --- |
+| 后台网页登录 | ID token 的 `aud` 包含 `ADMIN_OIDC_CLIENT_ID`；验证后创建 Cookie 会话，之后无需手动提供令牌 |
+| 程序直接调用 API | `Authorization: Bearer <access_token>` 中令牌的 `aud` 包含 `OIDC_AUDIENCE` |
+| 两种方式的权限 | 顶层 `roles` 提供本站角色，例如 `roles: ["admin"]`；只有管理员需要 `admin`，其他人员可按职责使用 `editor`、`reviewer`、`publisher` |
+
+`aud` 不是密码，不需要手动修改令牌。两种方式都校验签名、issuer 和有效期；本站角色区分大小写，出现其他角色名也会拒绝认证。Casdoor 的 `isAdmin` 或角色显示名称不替代本站 `roles`。
+
+Casdoor 普通、非共享应用可按以下方式配置，其他 OIDC 服务遵循相同令牌契约：
+
+1. 在应用详情复制 **Client ID**、**Client Secret**，分别填写 `ADMIN_OIDC_CLIENT_ID`、`ADMIN_OIDC_CLIENT_SECRET`。`OIDC_ISSUER` 填 Casdoor 服务根地址，例如 `https://auth.example.com`，须与 `/.well-known/openid-configuration` 返回的 issuer 一致。此示例中 `OIDC_AUDIENCE` 填同一 Client ID；共享应用或另设 API audience 时须按实际 `aud` 调整，ID token 仍须匹配后台 Client ID。
+2. **Redirect URLs** 添加 `https://admin.yujian.me/api/v1/auth/callback`，与 `ADMIN_OIDC_REDIRECT_URL` 完全一致。应用需支持授权码和 S256 PKCE。**Token signing method** 使用 `RS256`，签名证书的公钥须出现在根 discovery 返回的 `jwks_uri` 中；仅应用专属 JWKS 可见的证书不适用于本站当前配置。
+3. 在 Casdoor **Roles** 中创建名称为 `admin` 的角色，启用并在 **Users** 中加入实际管理员账号。其他人员按需分配 `editor`、`reviewer`、`publisher`；不要给所有登录用户统一授予管理员权限。
+4. 应用的 **Token format** 选择 `JWT-Custom`，在 **Token attributes** 新增以下映射。它提取用户已分配角色的名称，而非输出默认角色对象；仅在 **Token fields** 勾选 `Roles` 不等价于此映射。
+
+   | Name | Category | Value | Type |
+   | --- | --- | --- | --- |
+   | `roles` | `Existing Field` | `Roles` | `Array` |
+
+5. 保存后重新登录，使新令牌包含更新后的角色。管理员令牌的相关字段应类似以下片段；`aud` 可为字符串或包含该 Client ID 的数组，实际令牌还须包含有效的 `sub`、`exp`，登录 ID token 须保留 `nonce`。不要将完整令牌上传到公共解析网站。
+
+   ```json
+   {
+     "iss": "https://auth.example.com",
+     "aud": ["0123456789abcdef0123"],
+     "roles": ["admin"]
+   }
+   ```
+
+此映射要求 Casdoor 版本提供 `Existing Field` 类别及 `Roles` 字段；缺少时先升级，不能用静态 `admin` 代替。配置参考：[OIDC 客户端](https://casdoor.org/docs/how-to-connect/oidc-client/)、[自定义令牌属性](https://casdoor.org/docs/token/overview/#custom-token-attributes)、[用户角色](https://casdoor.org/docs/user/roles/)。
 
 ## 接入要求
 
