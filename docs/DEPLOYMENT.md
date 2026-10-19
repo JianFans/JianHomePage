@@ -109,6 +109,7 @@ Casdoor 普通、非共享应用可按以下方式配置，其他 OIDC 服务遵
 
 ## 更新与故障恢复
 
+- 发布请求失败时，用响应中的 `requestId` 查服务日志 `publish request failed`。`stage` 区分版本查询、素材校验、快照读取／写入和发布器提交；外部故障另含白名单 `provider_error_code`、`provider_http_status`，如 `NoSuchBucket`／404、`AccessDenied`／403。`Unknown`／0 表示没有可用分类；日志不记录服务商原文或凭据。版本确实不存在时返回 404，对象存储的桶或上传故障返回服务错误。
 - 内容更新由后台保存、审核和发布；程序升级前结束活动发布任务，备份数据库及旧二进制。迁移前置条件见 [安全与运维](../apps/server/README.md#安全与运维)。
 - 发布任务固定二进制 SHA-256；旧任务未结束时保留并使用旧程序恢复。云端创建结果不明时先核实 Pages 部署，再使用 [发布恢复接口](../apps/server/README.md#内置-pages-发布与恢复)，不要重复提交。
 - Release 准备阶段成功后，版本 commit／tag 保留。后续临时失败用 **Re-run failed jobs**；代码修复后发下一版本，不移动已有标签。准备阶段推送响应丢失时，先核实远端是否已写入。Release 草稿可续传相同文件，已公开文件不会被覆盖。

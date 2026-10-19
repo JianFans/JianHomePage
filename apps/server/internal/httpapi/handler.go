@@ -510,7 +510,7 @@ func (handler *Handler) createPublish(writer http.ResponseWriter, request *http.
 	}
 	job, err := handler.publish.Publish(request.Context(), actor, input.VersionID, key)
 	if err != nil {
-		writeDomainError(writer, request, err)
+		writePublishError(writer, request, err)
 		return
 	}
 	writeJSON(writer, http.StatusAccepted, toPublishResponse(job))
@@ -526,7 +526,7 @@ func (handler *Handler) getPublish(writer http.ResponseWriter, request *http.Req
 	}
 	job, err := handler.publish.GetPublishJob(request.Context(), actor, request.PathValue("publishId"))
 	if err != nil {
-		writeDomainError(writer, request, err)
+		writePublishError(writer, request, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, toPublishResponse(job))
@@ -542,7 +542,7 @@ func (handler *Handler) refreshPublish(writer http.ResponseWriter, request *http
 	}
 	job, err := handler.publish.RefreshStatus(request.Context(), actor, request.PathValue("publishId"))
 	if err != nil {
-		writeDomainError(writer, request, err)
+		writePublishError(writer, request, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, toPublishResponse(job))
@@ -567,7 +567,7 @@ func (handler *Handler) createRollback(writer http.ResponseWriter, request *http
 	}
 	job, err := handler.publish.Rollback(request.Context(), actor, input.VersionID, key)
 	if err != nil {
-		writeDomainError(writer, request, err)
+		writePublishError(writer, request, err)
 		return
 	}
 	writeJSON(writer, http.StatusAccepted, toPublishResponse(job))

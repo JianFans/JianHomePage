@@ -60,7 +60,7 @@ func (store *BlobStore) ReadSnapshot(ctx context.Context, key string) (io.ReadCl
 	}
 	result, err := store.client.GetObject(ctx, &awss3.GetObjectInput{Bucket: aws.String(store.bucket), Key: aws.String(key)})
 	if err != nil {
-		return nil, mapBlobError(err)
+		return nil, mapReadError(err)
 	}
 	if result.Body == nil {
 		return nil, errors.New("object storage returned no snapshot body")
@@ -167,7 +167,7 @@ func (store *BlobStore) Stat(ctx context.Context, key string) (ports.BlobMetadat
 		ChecksumMode: awss3types.ChecksumModeEnabled,
 	})
 	if err != nil {
-		return ports.BlobMetadata{}, mapBlobError(err)
+		return ports.BlobMetadata{}, mapReadError(err)
 	}
 	return ports.BlobMetadata{
 		ContentType: aws.ToString(result.ContentType),
@@ -297,8 +297,6 @@ func mapBlobError(err error) error {
 	var statusError interface{ HTTPStatusCode() int }
 	if errors.As(err, &statusError) {
 		switch statusError.HTTPStatusCode() {
-		case http.StatusNotFound:
-			return errors.Join(domain.ErrNotFound, err)
 		case http.StatusConflict, http.StatusPreconditionFailed:
 			return errors.Join(domain.ErrConflict, err)
 		}
@@ -306,13 +304,28 @@ func mapBlobError(err error) error {
 	var apiError smithy.APIError
 	if errors.As(err, &apiError) {
 		switch apiError.ErrorCode() {
-		case "NoSuchKey", "NotFound", "NoSuchBucket":
-			return errors.Join(domain.ErrNotFound, err)
 		case "Conflict", "PreconditionFailed":
 			return errors.Join(domain.ErrConflict, err)
 		}
 	}
 	return err
+}
+
+// mapReadError recognizes an absent object only on reads. A missing bucket or
+// a failed write is an infrastructure failure, not a missing site resource.
+func mapReadError(err error) error {
+	var apiError smithy.APIError
+	if errors.As(err, &apiError) && apiError.ErrorCode() == "NoSuchBucket" {
+		return err
+	}
+	var statusError interface{ HTTPStatusCode() int }
+	if errors.As(err, &statusError) && statusError.HTTPStatusCode() == http.StatusNotFound {
+		return errors.Join(domain.ErrNotFound, err)
+	}
+	if errors.As(err, &apiError) && (apiError.ErrorCode() == "NoSuchKey" || apiError.ErrorCode() == "NotFound") {
+		return errors.Join(domain.ErrNotFound, err)
+	}
+	return mapBlobError(err)
 }
 
 var _ ports.BlobStore = (*BlobStore)(nil)

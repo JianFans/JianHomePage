@@ -106,9 +106,10 @@ func (service *Service) GetPublishJob(
 	id string,
 ) (domain.PublishJob, error) {
 	if !hasPermission(actor, auth.PermissionPublish) {
-		return domain.PublishJob{}, domain.ErrForbidden
+		return domain.PublishJob{}, failureAt("authorize", domain.ErrForbidden)
 	}
-	return service.repository.GetPublishJob(ctx, id)
+	job, err := service.repository.GetPublishJob(ctx, id)
+	return job, failureAt("job.lookup", err)
 }
 
 // Reconcile advances the single active production job without relying on an
@@ -132,33 +133,42 @@ func (service *Service) Reconcile(ctx context.Context) error {
 	return err
 }
 
+// Publish verifies an approved immutable version, stores its snapshot, and
+// admits one idempotent production job before requesting a durable build.
 func (service *Service) Publish(
 	ctx context.Context,
 	actor domain.Principal,
 	versionID string,
 	idempotencyKey string,
-) (domain.PublishJob, error) {
+) (result domain.PublishJob, returnErr error) {
+	stage := "authorize"
+	defer func() { returnErr = failureAt(stage, returnErr) }()
 	if !hasPermission(actor, auth.PermissionPublish) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
+	stage = "request.validate"
 	var validKey bool
 	idempotencyKey, validKey = domain.NormalizeIdempotencyKey(idempotencyKey)
 	if !validKey {
 		return domain.PublishJob{}, domain.ErrInvalidInput
 	}
+	stage = "job.lookup"
 	if existing, found, err := service.existingJob(ctx, actor, domain.PublishOperationPublish, versionID, idempotencyKey); err != nil {
 		return domain.PublishJob{}, err
 	} else if found {
 		return service.resumeExisting(ctx, existing)
 	}
 
+	stage = "version.lookup"
 	version, err := service.repository.GetVersion(ctx, versionID)
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
+	stage = "version.validate"
 	if version.Status != domain.StatusInReview || !version.ReviewApproved {
 		return domain.PublishJob{}, domain.ErrInvalidTransition
 	}
+	stage = "snapshot.validate"
 	if err := service.validator.Validate(version.Snapshot); err != nil {
 		return domain.PublishJob{}, fmt.Errorf("%w: validate publish snapshot: %v", domain.ErrInvalidInput, err)
 	}
@@ -169,6 +179,7 @@ func (service *Service) Publish(
 	if version.Checksum != canonical.Checksum {
 		return domain.PublishJob{}, domain.ErrConflict
 	}
+	stage = "assets.validate"
 	if err := service.validateManagedAssets(ctx, canonical.JSON, false); err != nil {
 		return domain.PublishJob{}, err
 	}
@@ -177,6 +188,7 @@ func (service *Service) Publish(
 		return domain.PublishJob{}, err
 	}
 	job := service.newJob(actor, domain.PublishOperationPublish, versionID, canonical.ReleaseID, idempotencyKey, snapshotKey, canonical.Checksum, version.Revision)
+	stage = "job.create"
 	if err := service.createJob(ctx, actor, &job, "publish.requested"); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
 			if existing, found, lookupErr := service.existingJob(ctx, actor, domain.PublishOperationPublish, versionID, idempotencyKey); lookupErr != nil {
@@ -191,37 +203,47 @@ func (service *Service) Publish(
 	return service.trigger(ctx, job, canonical.ReleaseID)
 }
 
+// Rollback validates a historical version and reuses its immutable snapshot
+// while preserving the same production-slot and idempotency protections.
 func (service *Service) Rollback(
 	ctx context.Context,
 	actor domain.Principal,
 	versionID string,
 	idempotencyKey string,
-) (domain.PublishJob, error) {
+) (result domain.PublishJob, returnErr error) {
+	stage := "authorize"
+	defer func() { returnErr = failureAt(stage, returnErr) }()
 	if !hasPermission(actor, auth.PermissionRollback) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
+	stage = "request.validate"
 	var validKey bool
 	idempotencyKey, validKey = domain.NormalizeIdempotencyKey(idempotencyKey)
 	if !validKey {
 		return domain.PublishJob{}, domain.ErrInvalidInput
 	}
+	stage = "job.lookup"
 	if existing, found, err := service.existingJob(ctx, actor, domain.PublishOperationRollback, versionID, idempotencyKey); err != nil {
 		return domain.PublishJob{}, err
 	} else if found {
 		return service.resumeExisting(ctx, existing)
 	}
 
+	stage = "version.lookup"
 	version, err := service.repository.GetVersion(ctx, versionID)
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
+	stage = "version.validate"
 	if version.Status != domain.StatusArchived && version.Status != domain.StatusPublished {
 		return domain.PublishJob{}, domain.ErrInvalidTransition
 	}
+	stage = "history.lookup"
 	historical, err := service.repository.GetSuccessfulPublishByVersion(ctx, versionID)
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
+	stage = "snapshot.validate"
 	if err := service.validator.Validate(version.Snapshot); err != nil {
 		return domain.PublishJob{}, fmt.Errorf("%w: validate rollback snapshot: %v", domain.ErrInvalidInput, err)
 	}
@@ -229,6 +251,7 @@ func (service *Service) Rollback(
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
+	stage = "assets.validate"
 	if err := service.validateManagedAssets(ctx, canonical.JSON, true); err != nil {
 		return domain.PublishJob{}, err
 	}
@@ -252,6 +275,7 @@ func (service *Service) Rollback(
 		snapshotChecksum,
 		version.Revision,
 	)
+	stage = "job.create"
 	if err := service.createJob(ctx, actor, &job, "rollback.requested"); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
 			if existing, found, lookupErr := service.existingJob(ctx, actor, domain.PublishOperationRollback, versionID, idempotencyKey); lookupErr != nil {
@@ -265,6 +289,8 @@ func (service *Service) Rollback(
 	return service.trigger(ctx, job, canonical.ReleaseID)
 }
 
+// validateManagedAssets verifies managed references against both retained
+// metadata and object storage, while leaving independent external assets alone.
 func (service *Service) validateManagedAssets(ctx context.Context, snapshot []byte, allowDeleted bool) error {
 	var envelope struct {
 		Assets []snapshotAsset `json:"assets"`
@@ -285,7 +311,7 @@ func (service *Service) validateManagedAssets(ctx context.Context, snapshot []by
 			continue
 		}
 		if err != nil {
-			return err
+			return failureAt("asset.lookup", err)
 		}
 		matches := managedAssetPath.FindStringSubmatch("/" + asset.BlobKey)
 		if len(matches) == 0 || matches[1] != reference.ID || asset.BlobKey != "assets/"+matches[1]+"/"+matches[2] {
@@ -300,7 +326,7 @@ func (service *Service) validateManagedAssets(ctx context.Context, snapshot []by
 		if expectedSource == "" {
 			expectedSource, err = service.blobStore.PublicURL(ctx, blobKey)
 			if err != nil {
-				return err
+				return failureAt("asset.public_url", err)
 			}
 		}
 		if expectedSource != reference.Source {
@@ -316,7 +342,7 @@ func (service *Service) validateManagedAssets(ctx context.Context, snapshot []by
 			return fmt.Errorf("%w: managed asset %s blob does not exist", domain.ErrInvalidInput, reference.ID)
 		}
 		if err != nil {
-			return err
+			return failureAt("asset.stat", err)
 		}
 		if metadata.ContentType != reference.MIMEType || metadata.Size != reference.ByteSize || metadata.Checksum != reference.Checksum {
 			return fmt.Errorf("%w: managed asset %s metadata does not match", domain.ErrInvalidInput, reference.ID)
@@ -357,14 +383,19 @@ func managedBlobKey(reference snapshotAsset) (string, bool, error) {
 	return "assets/" + matches[1] + "/" + matches[2], true, nil
 }
 
+// RefreshStatus polls the durable build and atomically moves the production
+// pointer only if the frozen target still matches the admitted publish job.
 func (service *Service) RefreshStatus(
 	ctx context.Context,
 	actor domain.Principal,
 	jobID string,
-) (domain.PublishJob, error) {
+) (result domain.PublishJob, returnErr error) {
+	stage := "authorize"
+	defer func() { returnErr = failureAt(stage, returnErr) }()
 	if !hasPermission(actor, auth.PermissionPublish) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
+	stage = "job.lookup"
 	job, err := service.repository.GetPublishJob(ctx, jobID)
 	if err != nil {
 		return domain.PublishJob{}, err
@@ -374,9 +405,10 @@ func (service *Service) RefreshStatus(
 	}
 	run, err := service.buildTrigger.Status(ctx, job.BuildID)
 	if err != nil {
-		return job, err
+		return job, failureAt("build.status", err)
 	}
 	if run.Status == domain.PublishFailed {
+		stage = "job.fail"
 		failed, changed, err := service.failBuildingJob(ctx, actor, job, run.Error, true)
 		if err != nil {
 			return domain.PublishJob{}, err
@@ -391,6 +423,7 @@ func (service *Service) RefreshStatus(
 	}
 
 	var pointer domain.PublishPointer
+	stage = "job.finalize"
 	alreadyFinalized := false
 	finalizationFailed := false
 	err = service.repository.WithinTransaction(ctx, func(repository Repository) error {
@@ -487,6 +520,8 @@ func (service *Service) RefreshStatus(
 	return job, nil
 }
 
+// ensureSnapshot reuses matching immutable content or writes the first copy;
+// only a missing object permits creation, while provider failures propagate.
 func (service *Service) ensureSnapshot(
 	ctx context.Context,
 	key string,
@@ -495,18 +530,19 @@ func (service *Service) ensureSnapshot(
 	metadata, err := service.blobStore.Stat(ctx, key)
 	if err == nil {
 		if metadata.Checksum != canonical.Checksum {
-			return domain.ErrConflict
+			return failureAt("snapshot.verify", domain.ErrConflict)
 		}
 		return nil
 	}
 	if !errors.Is(err, domain.ErrNotFound) {
-		return err
+		return failureAt("snapshot.stat", err)
 	}
-	return service.blobStore.Put(ctx, key, bytes.NewReader(canonical.JSON), ports.BlobMetadata{
+	err = service.blobStore.Put(ctx, key, bytes.NewReader(canonical.JSON), ports.BlobMetadata{
 		ContentType: "application/json",
 		Size:        int64(len(canonical.JSON)),
 		Checksum:    canonical.Checksum,
 	})
+	return failureAt("snapshot.put", err)
 }
 
 func (service *Service) createJob(
@@ -554,6 +590,8 @@ func (service *Service) createJob(
 	})
 }
 
+// trigger records uncertain submission as retryable without switching the
+// production pointer or overwriting concurrent progress from another request.
 func (service *Service) trigger(
 	ctx context.Context,
 	job domain.PublishJob,
@@ -571,20 +609,22 @@ func (service *Service) trigger(
 		job.ErrorMessage = err.Error()
 		if updateErr := service.repository.UpdatePublishJob(ctx, job, domain.PublishPending); updateErr != nil {
 			if errors.Is(updateErr, domain.ErrConflict) {
-				return service.repository.GetPublishJob(ctx, job.ID)
+				current, lookupErr := service.repository.GetPublishJob(ctx, job.ID)
+				return current, failureAt("job.lookup", lookupErr)
 			}
-			return domain.PublishJob{}, errors.Join(err, updateErr)
+			return domain.PublishJob{}, failureAt("job.update", errors.Join(err, updateErr))
 		}
-		return job, err
+		return job, failureAt("build.trigger", err)
 	}
 	job.BuildID = run.ID
 	job.Status = domain.PublishBuilding
 	job.ErrorMessage = ""
 	if err := service.repository.UpdatePublishJob(ctx, job, domain.PublishPending); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
-			return service.repository.GetPublishJob(ctx, job.ID)
+			current, lookupErr := service.repository.GetPublishJob(ctx, job.ID)
+			return current, failureAt("job.lookup", lookupErr)
 		}
-		return domain.PublishJob{}, err
+		return domain.PublishJob{}, failureAt("job.update", err)
 	}
 	return job, nil
 }
