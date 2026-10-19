@@ -174,7 +174,7 @@ pnpm --filter @yujian/web test:e2e
 pnpm --filter @yujian/admin test:e2e
 ```
 
-TypeScript 门槛为行和语句 80%、函数 75%、分支 70%；Go 语句覆盖率门槛为 80%。GitHub Actions 在 `master` 的 push、Pull Request 和手动触发时并行执行前端、Go、覆盖率、E2E 与容器门禁。Go 门禁还会执行 race 测试，前端和 Go 生成命令执行后必须保持已跟踪契约文件不变。失败的 Playwright 报告和覆盖率产物会保留为工作流制品。
+TypeScript 门槛为行和语句 80%、函数 75%、分支 70%；Go 语句覆盖率门槛为 80%。GitHub Actions 的 `Check Code` 在 `master` 的 push、Pull Request 和手动触发时执行前端、Go、覆盖率、E2E 与容器门禁，并生成 Linux amd64、arm64 单程序包，保留 7 天。Go 门禁还会执行 race 测试，前端和 Go 生成命令执行后必须保持已跟踪契约文件不变。失败的 Playwright 报告和覆盖率产物会保留为工作流制品。`Release` 通过 `workflow_call` 复用同一套完整检查，固定所有构建的代码提交。
 
 Dependabot 每周检查 pnpm 工作区、Go Modules、Docker 基础镜像和 GitHub Actions。Node.js、pnpm、Go 与应用依赖版本由 `package.json`、`go.mod` 和锁文件管理，Docker 基础镜像版本由 `Dockerfile` 管理；工作流不重复声明这些版本。GitHub Actions 引用按工作流语法保留在 YAML 中，并由 Dependabot 更新。前端门禁还会按根锁文件审计生产依赖的高危和严重漏洞。
 
@@ -196,7 +196,9 @@ PostgreSQL 集成测试需要显式设置 `YUJIAN_TEST_POSTGRES_URL`，否则会
 
 第一次需要配置云服务和账号登录，并设置 `PAGES_API_TOKEN`、`PAGES_PROJECT_ID`、`PAGES_REGION`、`PAGES_PUBLIC_URL`。配置完成后，日常更新只需在后台编辑、保存、审核、点发布；Go worker 自动生成和上传网页。
 
-`pnpm build:server` 和 Docker 构建均自动打包管理页面。已有数据库的升级注意事项见 [服务端安全与运维](apps/server/README.md#安全与运维)，发布中断后的处理见 [内置 Pages 发布与恢复](apps/server/README.md#内置-pages-发布与恢复)。云端创建结果不明时不会自动重试，需要管理员核实后恢复。
+无需本地编译：在 GitHub **Actions → Release → Run workflow** 选择版本递增方式，第一次建议选 `minor`，完整检查通过后从 **Releases** 下载服务器对应的 `.tar.gz` 和 `SHA256SUMS.txt`，校验、解压并安装。工作流同时发布 GHCR 镜像，目前镜像支持 Linux amd64，ARM64 使用单程序包。编译机器和服务器都不需要手工放置管理页面；Node.js 和 Go 只安装在 Actions 构建环境。
+
+Actions 发布程序文件，不会自动更新你的服务器或公开首页。服务器启动后的日常内容发布仍由 Go 程序连接腾讯云完成。已有数据库的升级注意事项见 [服务端安全与运维](apps/server/README.md#安全与运维)，发布中断后的处理见 [内置 Pages 发布与恢复](apps/server/README.md#内置-pages-发布与恢复)。云端创建结果不明时不会自动重试，需要管理员核实后恢复。
 
 ## 文档索引
 

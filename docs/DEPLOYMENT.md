@@ -23,36 +23,46 @@
 - 登录完成后回到：`https://admin.yujian.me/`。
 - ID token 的 `aud` 包含管理客户端 ID，`roles` 包含 `admin`。完整字段见 [服务端说明](../apps/server/README.md#浏览器登录与会话)。
 
-## 2. 在开发电脑编译一次
+## 2. 在 GitHub Actions 编译并下载
 
-这里才需要 Node.js、pnpm 和 Go，版本以 `package.json` 与 `apps/server/go.mod` 为准。
+不用在本地编译。代码合并到默认分支后，在 [GitHub Actions](https://github.com/JianFans/JianHomePage/actions/workflows/release.yml) 操作：
 
-Linux 或 macOS，在仓库根目录执行：
+1. 左侧选择 **Release**，点 **Run workflow**，分支选默认分支，目前是 `master`。
+2. `bump` 选择版本递增方式。第一次建议选 `minor`，得到 `v0.1.0`；以后修 Bug 选 `patch`，增加功能选 `minor`，有不兼容改动选 `major`。
+3. 点绿色 **Run workflow**，等待这次运行全部成功。它会检查代码、测试、覆盖率、浏览器操作、数据库和容器，然后编译并发布文件。
+4. 打开 [Releases](https://github.com/JianFans/JianHomePage/releases)，选择刚发布的版本，在 Assets 中下载服务器对应的 `.tar.gz` 和 `SHA256SUMS.txt`。
 
-```bash
-pnpm install --frozen-lockfile
-GOOS=linux GOARCH=amd64 pnpm build:server
-```
+| 服务器上 `uname -m` 的结果 | 下载文件，以下以 0.1.0 为例 |
+| --- | --- |
+| `x86_64` | `yujian-server-0.1.0-linux-amd64.tar.gz` |
+| `aarch64` 或 `arm64` | `yujian-server-0.1.0-linux-arm64.tar.gz` |
 
-Windows PowerShell：
-
-```powershell
-pnpm install --frozen-lockfile
-$env:GOOS = 'linux'
-$env:GOARCH = 'amd64'
-pnpm build:server
-```
-
-产物是 `dist/yujian-server`。ARM64 服务器把 `GOARCH` 改为 `arm64`。命令会先编译 Vue 页面和资源，再把它们嵌入 Go 程序；不需要给构建机器配置云密钥。
-
-把文件上传到服务器的 `/opt/yujian/yujian-server`：
+把这两个文件上传到服务器的一个空目录，在该目录执行：
 
 ```bash
-chmod 755 /opt/yujian/yujian-server
+sha256sum --check --ignore-missing SHA256SUMS.txt
+```
+
+只有下载的压缩包显示 `OK` 才继续。校验文件同时列出两个架构，`--ignore-missing` 会跳过没下载的另一个架构；它不会跳过已下载文件的校验失败。
+
+第一次安装，解压后把程序放到固定位置。下面的版本与架构要与下载文件一致：
+
+```bash
+tar -xzf yujian-server-0.1.0-linux-amd64.tar.gz
+sudo install -d /opt/yujian
+sudo install -m 755 yujian-server /opt/yujian/yujian-server
 /opt/yujian/yujian-server --help
 ```
 
-也可以在构建机器执行 `docker build -t yujian-server:local .`，把镜像传到服务器。运行层只有 Go 程序及系统证书，仍使用下面的一份配置。
+压缩包里还带有 `BUILD-INFO.txt`，记录对应的代码提交和架构。程序已包含 Vue 管理页面、首页生成器和浏览器资源，不用再下载其他前端文件。
+
+**只想临时测试某次提交**：选择 **Check Code → Run workflow**；push 和 PR 也会运行它。成功后，在这次运行页面底部的 Artifacts 下载 `yujian-server-linux-amd64` 或 `yujian-server-linux-arm64`，解开下载的 ZIP 后得到 `.tar.gz`。这些临时文件保留 7 天；正式部署使用 Releases 中带版本和校验和的文件。
+
+**使用 Docker**：同一次 Release 还会发布 `ghcr.io/jianfans/jianhomepage:v0.1.0` 和 `latest`。目前镜像只支持 Linux amd64；ARM64 使用上面的单程序包。部署时固定版本标签，不用 `latest`。第一次发布后，在 GitHub 的 Packages 页面确认镜像可见性；公开镜像可以直接拉取，私有镜像需要有读取权限的账号登录 GHCR。运行时仍使用下一节的一份配置，不用在服务器构建镜像。
+
+Release 只允许从默认分支启动。普通 push、PR 和手动创建标签不会发布正式版本。仓库需要允许 Actions 创建版本标签、Release 和 GHCR 包；构建过程不需要 COS、Pages、OIDC 或数据库的生产密钥。
+
+运行失败时，查看红色任务的日志。修复代码后重新发起 Release；如果只是临时网络或权限问题，使用该次运行的 **Re-run failed jobs**，继续原来已固定的提交和版本。上传先保存为草稿，文件完整后才公开；重跑会核对已有文件，只补传草稿中缺失的文件。已有文件内容不同，或已公开版本文件缺失时，会停止并报错，不会覆盖。不要移动已有标签或手动替换 Release 文件。
 
 ## 3. 填一份配置
 
@@ -152,7 +162,18 @@ location / {
 
 **改内容**：后台编辑、保存、审核、发布，不用重新编译。需要退回之前的内容时，在发布操作台选择历史版本回滚。
 
-**改程序**：先处理完活动发布任务，备份数据库和旧二进制，编译新程序，再替换文件并重启。任务冻结完整二进制的 SHA-256；更换程序后不会用新逻辑悄悄重建旧任务。保留原程序用于恢复未完成的旧任务。
+**改程序**：先在 Actions 发布新版本，按第 2 节下载、校验和解压。处理完活动发布任务，备份数据库和旧二进制，再停止服务、替换程序并重启：
+
+```bash
+sudo systemctl stop yujian
+sudo cp -p /opt/yujian/yujian-server /opt/yujian/yujian-server.previous
+sudo install -m 755 yujian-server /opt/yujian/yujian-server
+sudo systemctl start yujian
+sudo journalctl -u yujian -n 50 --no-pager
+curl --fail http://127.0.0.1:8080/healthz
+```
+
+升级前也要阅读该版本的变更说明和迁移前置条件。健康检查失败时保留日志，停止继续发布内容；不要清空数据库。任务冻结完整二进制的 SHA-256；更换程序后不会用新逻辑悄悄重建旧任务。保留原程序用于恢复未完成的旧任务。
 
 **提示上传结果未知**：不要重复创建发布或删除数据库记录。先在 Pages 控制台核实有没有创建部署。管理员使用 [发布恢复接口](../apps/server/README.md#内置-pages-发布与恢复)，绑定核实过的部署 ID，或确认没有创建部署并填写备注。恢复会记录操作账号。
 
