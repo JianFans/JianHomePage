@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile, copyFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { parse } from 'yaml'
 
@@ -12,6 +12,110 @@ const publish = workflow.jobs.publish.steps.find(step => step.run).run
 const sha = 'a'.repeat(40)
 const bash = process.platform === 'win32'
   ? join(execFileSync('git', ['--exec-path'], { encoding: 'utf8' }).trim(), '../../../bin/bash.exe') : 'bash'
+
+/** Run the actual preparation shell against a local bare remote without credentials or builds. */
+async function preparationFixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), 'yujian-prepare-test-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const remote = join(directory, 'remote.git')
+  const checkout = join(directory, 'checkout')
+  const git = (args, cwd = checkout) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  git(['init', '--bare', '--initial-branch=master', remote], directory)
+  git(['clone', remote, checkout], directory)
+  git(['config', 'user.name', 'Release Test'])
+  git(['config', 'user.email', 'release-test@example.invalid'])
+  git(['config', 'commit.gpgsign', 'false'])
+  git(['config', 'tag.gpgsign', 'false'])
+  git(['config', 'core.autocrlf', 'false'])
+  const files = ['package.json', 'apps/web/package.json', 'apps/admin/package.json', 'packages/schema/package.json',
+    'apps/server/cmd/api/version.go', 'scripts/release-version.mjs', 'scripts/set-release-version.mjs']
+  for (const file of files) {
+    await mkdir(dirname(join(checkout, file)), { recursive: true })
+    await copyFile(new URL(`../${file}`, import.meta.url), join(checkout, file))
+  }
+  // Keep the simulated first release stable after the real repository is versioned by Actions.
+  for (const file of files.filter(file => file.endsWith('package.json'))) {
+    const manifest = JSON.parse(await readFile(join(checkout, file), 'utf8'))
+    await writeFile(join(checkout, file), JSON.stringify({ ...manifest, version: '0.0.0' }, null, 2) + '\n')
+  }
+  await writeFile(join(checkout, 'apps/server/cmd/api/version.go'), 'package main\n\nconst Version = "0.0.0"\n')
+  git(['add', '.'])
+  git(['commit', '-m', 'initial source'])
+  git(['push', 'origin', 'HEAD:master'])
+  const initial = git(['rev-parse', 'HEAD'])
+  const output = join(directory, 'output.txt')
+  const script = workflow.jobs.prepare.steps.find(step => step.id === 'version').run
+  return {
+    git, remote, checkout, initial,
+    run: (body = script, overrides = {}) => spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', body], {
+      cwd: checkout, encoding: 'utf8',
+      env: { ...process.env, GITHUB_REF: 'refs/heads/master', DEFAULT_BRANCH: 'master', BUMP: 'minor', GITHUB_REPOSITORY: 'Example/Site', GITHUB_OUTPUT: output, ...overrides },
+    }),
+    outputs: async () => Object.fromEntries((await readFile(output, 'utf8')).trim().split(/\r?\n/).map(line => line.split('='))),
+    script,
+  }
+}
+
+test('准备阶段同步所有版本文件并将版本提交和标签原子推送到同一 SHA', async (t) => {
+  const release = await preparationFixture(t)
+  const result = release.run()
+  assert.equal(result.status, 0, result.stderr)
+  const outputs = await release.outputs()
+  assert.equal(outputs.version, '0.1.0')
+  assert.equal(outputs.tag, 'v0.1.0')
+  assert.equal(outputs.image, 'ghcr.io/example/site')
+  assert.notEqual(outputs.sha, release.initial)
+  assert.equal(release.git(['rev-parse', 'HEAD^']), release.initial)
+  for (const ref of ['refs/heads/master', 'refs/tags/v0.1.0']) {
+    assert.equal(release.git(['--git-dir', release.remote, 'rev-parse', ref]), outputs.sha)
+  }
+  for (const file of ['package.json', 'apps/web/package.json', 'apps/admin/package.json', 'packages/schema/package.json']) {
+    assert.equal(JSON.parse(release.git(['show', `${outputs.sha}:${file}`])).version, outputs.version)
+  }
+  assert.match(release.git(['show', `${outputs.sha}:apps/server/cmd/api/version.go`]), /const Version = "0\.1\.0"/)
+  assert.equal(release.git(['status', '--porcelain']), '')
+})
+
+test('准备阶段拒绝非默认分支且不写远端引用', async (t) => {
+  const release = await preparationFixture(t)
+  const result = release.run(undefined, { GITHUB_REF: 'refs/heads/topic' })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /default branch/)
+  assert.equal(release.git(['--git-dir', release.remote, 'rev-parse', 'master']), release.initial)
+  assert.equal(release.git(['--git-dir', release.remote, 'tag', '--list']), '')
+})
+
+test('准备阶段拒绝过时的启动提交', async (t) => {
+  const release = await preparationFixture(t)
+  release.git(['commit', '--allow-empty', '-m', 'concurrent change'])
+  release.git(['push', 'origin', 'HEAD:master'])
+  release.git(['switch', '--detach', release.initial])
+  const result = release.run()
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /Default branch changed/)
+  assert.equal(release.git(['--git-dir', release.remote, 'tag', '--list']), '')
+})
+
+test('推送时出现标签冲突，默认分支也不被部分更新', async (t) => {
+  const release = await preparationFixture(t)
+  // Inject a concurrent tag creation after the fetch and before the real atomic push.
+  const race = release.script.replace('git push --atomic', 'git push origin "HEAD^:refs/tags/v$version"\ngit push --atomic')
+  const result = release.run(race)
+  assert.notEqual(result.status, 0)
+  assert.equal(release.git(['--git-dir', release.remote, 'rev-parse', 'master']), release.initial)
+  assert.equal(release.git(['--git-dir', release.remote, 'rev-parse', 'v0.1.0']), release.initial)
+})
+
+test('推送时默认分支已被更新，不留下孤立的版本标签', async (t) => {
+  const release = await preparationFixture(t)
+  // A sibling commit advances the remote after the latest-branch guard has passed.
+  const concurrent = release.git(['-c', 'commit.gpgsign=false', 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'concurrent change'])
+  const race = release.script.replace('git push --atomic', `git push origin "${concurrent}:refs/heads/master"\ngit push --atomic`)
+  const result = release.run(race)
+  assert.notEqual(result.status, 0)
+  assert.equal(release.git(['--git-dir', release.remote, 'rev-parse', 'master']), concurrent)
+  assert.equal(release.git(['--git-dir', release.remote, 'tag', '--list']), '')
+})
 
 // Simulate only the GitHub CLI boundary; execute the real workflow's Bash unchanged.
 const githubStub = `#!/usr/bin/env node

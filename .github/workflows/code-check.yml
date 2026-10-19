@@ -48,6 +48,10 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify synchronized Node and Go application versions
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: node scripts/set-release-version.mjs --check "$RELEASE_VERSION"
       - name: Verify frontend and static output
         run: pnpm verify
       - name: Verify generated TypeScript contract
@@ -378,6 +382,9 @@ jobs:
         if: matrix.goarch == 'amd64'
         shell: bash
         run: |
+          expected_version=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' apps/server/cmd/api/version.go)
+          test -n "$expected_version"
+          test "$(./dist/yujian-server --version)" = "yujian-server $expected_version"
           # Development startup only: no production database, identity or cloud secrets.
           APP_ENV=development HTTP_ADDRESS=127.0.0.1:18080 ./dist/yujian-server > dist/server.log 2>&1 &
           server_pid=$!
@@ -400,7 +407,9 @@ jobs:
             echo 'Invalid archive version or commit SHA.' >&2
             exit 1
           fi
-          printf 'commit=%s\nplatform=linux/%s\n' "$(git rev-parse HEAD)" "$GOARCH" > dist/BUILD-INFO.txt
+          app_version=$(sed -n 's/^const Version = "\(.*\)"$/\1/p' apps/server/cmd/api/version.go)
+          test -n "$app_version"
+          printf 'version=%s\ncommit=%s\nplatform=linux/%s\n' "$app_version" "$(git rev-parse HEAD)" "$GOARCH" > dist/BUILD-INFO.txt
           tar -czf "dist/yujian-server-$BUILD_LABEL-linux-$GOARCH.tar.gz" -C dist yujian-server BUILD-INFO.txt
       - name: Upload standalone program
         uses: actions/upload-artifact@v7

@@ -87,7 +87,7 @@ go run ./cmd/api
 
 服务入口提供管理页面 `/`、隔离预览 `/preview` 和 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 SHA-256；上传成功后可通过与内容契约一致的 `/media/*` 路径读取，便于本地 API 调试和内容快照引用。生产环境不会自动降级到内存仓储；启动时加载配置、探测 PostgreSQL、校验 S3、事务执行迁移，并校验 Pages、发布仓储和内嵌资源后注册路由。任一步失败都会关闭已打开的数据库并拒绝启动。
 
-日常部署从 GitHub Releases 下载 Linux amd64 或 arm64 的 `.tar.gz`，并用同一 Release 的 `SHA256SUMS.txt` 校验。Actions 的 `Check Code` 也会生成同名架构的临时下载包，保留 7 天；正式版本通过手动 `Release` 运行完整门禁后发布。包内只有 `yujian-server` 和记录代码提交及架构的 `BUILD-INFO.txt`，运行时不依赖它旁边的源码或资源文件。
+日常部署从 GitHub Releases 下载 Linux amd64 或 arm64 的 `.tar.gz`，并用同一 Release 的 `SHA256SUMS.txt` 校验。Actions 的 `Check Code` 也会生成同名架构的临时下载包，保留 7 天；手动 `Release` 先同步四份 Node 清单和 `cmd/api/version.go` 的应用版本，创建版本提交和标签并原子推送，随后针对该提交执行完整门禁并发布。应用版本独立于 `go.mod` 的工具链版本和内容 Schema 版本。包内只有 `yujian-server` 和记录版本、代码提交及架构的 `BUILD-INFO.txt`，运行时不依赖它旁边的源码或资源文件；`yujian-server --version` 无需配置即可查看程序版本。准备成功后，失败重跑应选 **Re-run failed jobs** 保留该版本提交；详细权限和恢复步骤见 [部署操作指南](../../docs/DEPLOYMENT.md#2-在-github-actions-编译并下载)。
 
 仅开发时需要自行编译：在仓库根目录运行 `pnpm build:server`，输出 `dist/yujian-server`，Windows 为 `dist/yujian-server.exe`。此命令生成前端资源并编译 Go，不自动运行测试。交付二进制已包含管理端、SSR 渲染器和公开浏览器资源，目标机器无需安装 Node.js。`GOOS`、`GOARCH` 可用于指定编译目标。
 

@@ -29,7 +29,7 @@
 
 1. 左侧选择 **Release**，点 **Run workflow**，分支选默认分支，目前是 `master`。
 2. `bump` 选择版本递增方式。第一次建议选 `minor`，得到 `v0.1.0`；以后修 Bug 选 `patch`，增加功能选 `minor`，有不兼容改动选 `major`。
-3. 点绿色 **Run workflow**，等待这次运行全部成功。它会检查代码、测试、覆盖率、浏览器操作、数据库和容器，然后编译并发布文件。
+3. 点绿色 **Run workflow**，等待这次运行全部成功。它先更新项目文件中的版本号，自动创建版本提交和 `vX.Y.Z` 标签，一起推送到默认分支；随后针对这个提交检查代码、测试、覆盖率、浏览器操作、数据库和容器，最后编译并发布文件。
 4. 打开 [Releases](https://github.com/JianFans/JianHomePage/releases)，选择刚发布的版本，在 Assets 中下载服务器对应的 `.tar.gz` 和 `SHA256SUMS.txt`。
 
 | 服务器上 `uname -m` 的结果 | 下载文件，以下以 0.1.0 为例 |
@@ -52,17 +52,20 @@ tar -xzf yujian-server-0.1.0-linux-amd64.tar.gz
 sudo install -d /opt/yujian
 sudo install -m 755 yujian-server /opt/yujian/yujian-server
 /opt/yujian/yujian-server --help
+/opt/yujian/yujian-server --version
 ```
 
-压缩包里还带有 `BUILD-INFO.txt`，记录对应的代码提交和架构。程序已包含 Vue 管理页面、首页生成器和浏览器资源，不用再下载其他前端文件。
+压缩包里还带有 `BUILD-INFO.txt`，记录对应的版本、代码提交和架构。`--version` 可以直接查看程序版本，不需要先填服务器配置。程序已包含 Vue 管理页面、首页生成器和浏览器资源，不用再下载其他前端文件。
 
 **只想临时测试某次提交**：选择 **Check Code → Run workflow**；push 和 PR 也会运行它。成功后，在这次运行页面底部的 Artifacts 下载 `yujian-server-linux-amd64` 或 `yujian-server-linux-arm64`，解开下载的 ZIP 后得到 `.tar.gz`。这些临时文件保留 7 天；正式部署使用 Releases 中带版本和校验和的文件。
 
 **使用 Docker**：同一次 Release 还会发布 `ghcr.io/jianfans/jianhomepage:v0.1.0` 和 `latest`。目前镜像只支持 Linux amd64；ARM64 使用上面的单程序包。部署时固定版本标签，不用 `latest`。第一次发布后，在 GitHub 的 Packages 页面确认镜像可见性；公开镜像可以直接拉取，私有镜像需要有读取权限的账号登录 GHCR。运行时仍使用下一节的一份配置，不用在服务器构建镜像。
 
-Release 只允许从默认分支启动。普通 push、PR 和手动创建标签不会发布正式版本。仓库需要允许 Actions 创建版本标签、Release 和 GHCR 包；构建过程不需要 COS、Pages、OIDC 或数据库的生产密钥。
+Release 只允许从最新默认分支启动。普通 push、PR 和手动创建标签不会发布正式版本。仓库需要允许 Actions 机器人向默认分支提交，并创建版本标签、Release 和 GHCR 包；如果分支或标签保护规则禁止这些操作，准备阶段就会失败，需要先调整仓库规则。构建过程不需要 COS、Pages、OIDC 或数据库的生产密钥。
 
-运行失败时，查看红色任务的日志。修复代码后重新发起 Release；如果只是临时网络或权限问题，使用该次运行的 **Re-run failed jobs**，继续原来已固定的提交和版本。上传先保存为草稿，文件完整后才公开；重跑会核对已有文件，只补传草稿中缺失的文件。已有文件内容不同，或已公开版本文件缺失时，会停止并报错，不会覆盖。不要移动已有标签或手动替换 Release 文件。
+自动同步的文件是根目录、`apps/web`、`apps/admin`、`packages/schema` 的四份 `package.json`，以及 `apps/server/cmd/api/version.go`。版本递增以这些文件与已有稳定标签中的最高版本为准。`go.mod` 中的 Go 工具链版本和内容快照的 `schemaVersion` 是独立版本，不随程序发版修改。版本提交与标签通过一次原子推送写入；分支被并发更新或标签冲突时，两者不会只更新一个。
+
+运行失败时，查看红色任务的日志。准备阶段成功后，即使后续检查失败，版本提交和标签也会保留，尚不会公开 Release。需要修复代码时，合并修复后重新发起 Release，使用下一个版本；如果只是后续任务的临时网络或权限问题，使用该次运行的 **Re-run failed jobs**，继续原来已固定的提交和版本，不要重跑已成功的准备阶段。如果准备阶段推送响应丢失，先检查远端提交和标签是否已经写入；已写入时重新发起下一版本，不重写原标签。上传先保存为草稿，文件完整后才公开；重跑会核对已有文件，只补传草稿中缺失的文件。已有文件内容不同，或已公开版本文件缺失时，会停止并报错，不会覆盖。不要移动已有标签或手动替换 Release 文件。
 
 ## 3. 填一份配置
 
