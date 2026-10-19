@@ -130,20 +130,18 @@ describe('canonical field issue navigation', () => {
     expect(description(add.element)).toContain('项目过少')
   })
 
-  it('locates a removed hero reference list without focusing unrelated hero fields', async () => {
+  it('allows removing all hero records and references without a required-item error', async () => {
     const { wrapper, form } = mountWorkbench('homepage')
     await wrapper.get('[data-testid="homepage-open"]').trigger('click')
     for (const hero of fixture.heroSlides) {
       await wrapper.get(`[data-testid="homepage-hero-${hero.id}"]`).trigger('click')
       await wrapper.get('[data-testid="homepage-hero-remove"]').trigger('click')
     }
-    expect(form.apply()).toBe(false)
+    expect(form.apply()).toBe(true)
     await flushPromises()
-    expect(form.issues[0]?.path).toBe('/homepage/sections/0/itemIds')
-    expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
+    expect(form.issues).toEqual([])
     const select = wrapper.get('[data-testid="homepage-section-section_hero"] [data-testid="homepage-item-add-select"]')
-    expect(document.activeElement).toBe(select.element)
-    expect(description(select.element)).toContain('项目过少')
+    expect(select.attributes('aria-invalid')).toBeUndefined()
   })
 
   it.each(['reorder', 'remove', 'duplicate'] as const)('keeps track diagnostics aligned with canonical order after %s', async (operation) => {

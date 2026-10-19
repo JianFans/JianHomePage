@@ -105,7 +105,9 @@ function diagnoseSemantics(snapshot: YujianContentSnapshot): ContentSnapshotIssu
   const knownContentIds = collectKnownContentIds(snapshot, indexes, tracks)
   const renderedIds = renderedContentIds(snapshot, indexes)
 
-  requireAssetKind(snapshot.site.seo.ogAssetId, assets, ['image', 'gif'], '/site/seo/ogAssetId', issues)
+  if (snapshot.site.seo.ogAssetId !== undefined) {
+    requireAssetKind(snapshot.site.seo.ogAssetId, assets, ['image', 'gif'], '/site/seo/ogAssetId', issues)
+  }
   validateHomepage(snapshot, indexes, issues)
   validateHeroes(snapshot.heroSlides, assets, releases, knownContentIds, renderedIds, issues)
   validateReleases(snapshot.releases, assets, tracks, issues)
@@ -113,7 +115,9 @@ function diagnoseSemantics(snapshot: YujianContentSnapshot): ContentSnapshotIssu
   validateVideos(snapshot.videos, assets, issues)
   validateEvents(snapshot.events, assets, issues)
   validateMoments(snapshot.moments, assets, knownContentIds, renderedIds, issues)
-  requireAssetKind(snapshot.artist.portraitAssetId, assets, ['image', 'gif'], '/artist/portraitAssetId', issues)
+  if (snapshot.artist.portraitAssetId !== undefined) {
+    requireAssetKind(snapshot.artist.portraitAssetId, assets, ['image', 'gif'], '/artist/portraitAssetId', issues)
+  }
   snapshot.assets.forEach((asset, index) => {
     if (asset.posterAssetId) {
       requireAssetKind(asset.posterAssetId, assets, ['image', 'gif'], `/assets/${index}/posterAssetId`, issues)

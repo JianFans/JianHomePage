@@ -203,13 +203,16 @@ describe('首页工作台界面', () => {
     expect(draft.value!.sections[1]!.itemIds).toEqual([...music.itemIds, 'release_01'])
   })
 
-  it('限制宣传位为 1 至 5 个引用、艺人为最多一个，并展示各板块 limit 边界', async () => {
+  it('允许宣传位暂时为空且最多五个引用、艺人为最多一个，并展示各板块 limit 边界', async () => {
     const { wrapper, draft } = mountHomepage()
     const hero = draft.value!.sections[0]!
     hero.itemIds = ['hero_studio']
     await wrapper.vm.$nextTick()
     const heroPanel = wrapper.get('[data-testid="homepage-section-section_hero"]')
-    expect(heroPanel.get('[data-testid="homepage-item-remove"]').attributes('disabled')).toBeDefined()
+    expect(heroPanel.get('[data-testid="homepage-item-remove"]').attributes('disabled')).toBeUndefined()
+    await heroPanel.get('[data-testid="homepage-item-remove"]').trigger('click')
+    expect(hero.itemIds).toEqual([])
+    hero.itemIds.push('hero_studio')
     hero.itemIds.push('hero_studio', 'hero_studio', 'hero_studio', 'hero_studio')
     await wrapper.vm.$nextTick()
     expect(heroPanel.get('[data-testid="homepage-item-add"]').attributes('disabled')).toBeDefined()

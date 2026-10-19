@@ -16,7 +16,7 @@ const props = defineProps<{ studio: StudioWorkspace; locale: AdminLocale }>()
 const emit = defineEmits<{ navigate: [module: StudioModule]; workflow: [mode: 'review' | 'publish' | 'rollback']; assetBusy: [value: boolean]; assetDirty: [value: boolean] }>()
 const { workspace, session, toasts, music, homepage, video, event, moment } = props.studio
 const copy = computed(() => props.studio.copy)
-const versionName = computed(() => workspace.version?.name || workspace.version?.id || copy.value.noVersion)
+const versionName = computed(() => workspace.version?.name || workspace.version?.id || (workspace.editorAnalysis.snapshot ? copy.value.initialDraft : copy.value.noVersion))
 const assetOpened = ref(false)
 watch(() => props.studio.module, (module) => { if (module === 'assets') assetOpened.value = true }, { immediate: true })
 /** 模块导航复用全局未保存保护，不在展示组件中自行重建编辑上下文。 */

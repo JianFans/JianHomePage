@@ -33,6 +33,32 @@ func TestValidatorAcceptsFixtureAndGeneratedType(t *testing.T) {
 	}
 }
 
+// TestValidatorAcceptsInitialContent permits a real first draft without fabricated media.
+func TestValidatorAcceptsInitialContent(t *testing.T) {
+	var value map[string]any
+	if err := json.Unmarshal(readFixture(t), &value); err != nil {
+		t.Fatal(err)
+	}
+	delete(value["site"].(map[string]any)["seo"].(map[string]any), "ogAssetId")
+	delete(value["artist"].(map[string]any), "portraitAssetId")
+	for _, field := range []string{"heroSlides", "releases", "tracks", "videos", "events", "moments", "assets"} {
+		value[field] = []any{}
+	}
+	for _, raw := range value["homepage"].(map[string]any)["sections"].([]any) {
+		section := raw.(map[string]any)
+		if section["type"] != "artist" {
+			section["itemIds"] = []any{}
+		}
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := NewValidator().Validate(raw); err != nil {
+		t.Fatalf("initial content should be valid: %v", err)
+	}
+}
+
 // TestValidatorEventCalendarDates keeps the server's date contract aligned with
 // the shared editor validator, including leap years and explicit UTC offsets.
 func TestValidatorEventCalendarDates(t *testing.T) {

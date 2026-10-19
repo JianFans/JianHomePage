@@ -6,7 +6,7 @@ import AdminPage from '../../pages/index.vue'
 import type { StudioWorkspace } from '../../composables/useStudioWorkspace'
 
 /** 模拟真实 HTTP 边界，不替代页面的表单、事务和版本状态。 */
-function backend(options: { authenticated?: boolean; status?: string; roles?: string[]; failSave?: boolean; empty?: boolean; paginated?: boolean; logout?: Promise<Response> } = {}) {
+function backend(options: { authenticated?: boolean; status?: string; roles?: string[]; failSave?: boolean; failList?: boolean; empty?: boolean; paginated?: boolean; logout?: Promise<Response> } = {}) {
   const records = new Map([
     ['ver_current', { id: 'ver_current', name: '工作草稿', status: options.status || 'draft', revision: 4, snapshot: structuredClone(fixture), checksum: 'sha256:test' }],
     ['ver_history', { id: 'ver_history', name: '之前版本', status: 'archived', revision: 2, snapshot: structuredClone(fixture), checksum: 'sha256:history' }],
@@ -23,6 +23,7 @@ function backend(options: { authenticated?: boolean; status?: string; roles?: st
         const body = JSON.parse(String(init.body))
         return json({ ...records.get('ver_current'), id: 'ver_first', snapshot: body.snapshot })
       }
+      if (options.failList) return json({ code: 'unavailable', message: 'Unavailable' }, 503)
       if (options.paginated) return json(url.searchParams.has('cursor')
         ? { items: [records.get('ver_current')] }
         : { items: [records.get('ver_history')], nextCursor: 'older-page' })
@@ -54,6 +55,71 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 }
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
+
+it('opens a usable first draft without importing test content or writing to the server', async () => {
+  const { wrapper, fetcher } = await mountStudio({ empty: true })
+  try {
+    const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+    expect(studio.workspace.editorAnalysis.snapshot?.site.brand['zh-CN']).toBe('遇健我')
+    expect(studio.workspace.editorAnalysis.snapshot?.assets).toEqual([])
+    expect(studio.workspace.editorAnalysis.snapshot?.releases).toEqual([])
+    expect(studio.workspace.editorAnalysis.snapshot?.homepage.sections.map(section => section.type)).toEqual(['hero', 'music', 'video', 'event', 'moment', 'artist'])
+    expect(studio.workspace.dirty).toBe(true)
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+    await wrapper.get('[data-testid="nav-homepage"]').trigger('click')
+    expect(studio.homepage.draft?.heroSlides).toEqual([])
+    await wrapper.get('[data-testid="snapshot-save"]').trigger('click')
+    await flushPromises()
+    expect(studio.workspace.version?.id).toBe('ver_first')
+  } finally { wrapper.unmount() }
+})
+
+it('does not initialize content for a read-only empty account', async () => {
+  const { wrapper, fetcher } = await mountStudio({ empty: true, roles: ['reviewer'] })
+  try {
+    const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+    expect(studio.workspace.editorText).toBe('{}')
+    expect(studio.workspace.dirty).toBe(false)
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+  } finally { wrapper.unmount() }
+})
+
+it('keeps local input when initialization is retried against an empty server', async () => {
+  const { wrapper } = await mountStudio({ empty: true })
+  try {
+    const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+    studio.workspace.editorText = '{"local":"unsaved"}'
+    await studio.initialize()
+    expect(studio.workspace.editorText).toBe('{"local":"unsaved"}')
+  } finally { wrapper.unmount() }
+})
+
+it('keeps unsaved initial content when another editor creates a server version', async () => {
+  const options = { empty: true }
+  const { wrapper, fetcher } = await mountStudio(options)
+  try {
+    const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+    studio.workspace.editorText = '{"local":"unsaved"}'
+    options.empty = false
+    fetcher.mockClear()
+    await studio.initialize()
+    expect(studio.workspace.versions).toHaveLength(2)
+    expect(studio.workspace.editorText).toBe('{"local":"unsaved"}')
+    expect(studio.workspace.version).toBeNull()
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes('/versions/ver_'))).toBe(false)
+  } finally { wrapper.unmount() }
+})
+
+it('does not mistake a failed version listing for a new empty database', async () => {
+  const { wrapper, fetcher } = await mountStudio({ failList: true })
+  try {
+    const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+    expect(studio.workspace.editorText).toBe('{}')
+    expect(studio.workspace.dirty).toBe(false)
+    expect(studio.workspace.listError).toBe(true)
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+  } finally { wrapper.unmount() }
+})
 
 it.each([
   { status: 'archived', roles: ['admin'] },
@@ -312,10 +378,14 @@ describe('CMS 版本工作区', () => {
     Object.defineProperty(input.element, 'files', { configurable: true, value: [new File([JSON.stringify(fixture)], 'snapshot.json', { type: 'application/json' })] })
     await input.trigger('change')
     await flushPromises()
+    await wrapper.get('[data-testid="leave-discard"]').trigger('click')
+    await flushPromises()
     await wrapper.get('[data-testid="dialog-close"]').trigger('click')
     await wrapper.get('[data-testid="snapshot-save"]').trigger('click')
     await flushPromises()
     expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true)
+    const post = fetcher.mock.calls.find(([, init]) => init?.method === 'POST')!
+    expect(JSON.parse(String(post[1]?.body)).snapshot.releaseId).toBe(fixture.releaseId)
     wrapper.unmount()
   })
 })

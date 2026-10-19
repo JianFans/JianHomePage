@@ -19,6 +19,7 @@ import {
   type SnapshotImportFile,
 } from '../utils/snapshot-workbench'
 import type { AdminLocale } from '../utils/admin-locale'
+import { createInitialSnapshot } from '../utils/initial-snapshot'
 
 const EDITOR_ANALYSIS_DEBOUNCE_MS = 250
 
@@ -157,6 +158,15 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     } finally {
       if (!disposed && sequence === listSequence && currentEpoch === epoch) listing.value = false
     }
+  }
+
+  /** 确认空库后准备未保存的首份草稿，不覆盖导入、恢复输入或已选版本。 */
+  function initializeDraft(): boolean {
+    if (disposed || busy.value || !editable.value || listError.value || listing.value
+      || version.value || versions.value.length || nextCursor.value || dirty.value || editorText.value !== '{}') return false
+    editorText.value = JSON.stringify(createInitialSnapshot(), null, 2)
+    draftName.value = locale.value === 'en' ? 'Initial version' : '初始版本'
+    return true
   }
 
   /** 服务端读取源快照并生成独立版本；客户端不参与复制内容或审核状态。 */
@@ -360,6 +370,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     canRollback,
     loadVersion,
     listVersions,
+    initializeDraft,
     cloneVersion,
     saveDraft,
     importSnapshot,

@@ -26,7 +26,7 @@ const snapshotFileInput = ref<HTMLInputElement | null>(null)
 const modal = computed(() => studio.pending ? 'leave' : studio.cloneRequested ? 'clone' : uiMode.value)
 const modalTitle = computed(() => ({ leave: copy.value.leaveTitle, clone: copy.value.clone, tools: copy.value.tools, preview: copy.value.preview,
   review: copy.value.versions, publish: copy.value.publish, rollback: copy.value.rollback, navigation: copy.value.studio, '': '' })[modal.value])
-const versionName = computed(() => workspace.version?.name || workspace.version?.id || copy.value.noVersion)
+const versionName = computed(() => workspace.version?.name || workspace.version?.id || (workspace.editorAnalysis.snapshot ? copy.value.initialDraft : copy.value.noVersion))
 const textCurrent = computed(() => workspace.editorText === workspace.analyzedText)
 const validationLabel = computed(() => workspace.editorAnalysis.issues.length ? `${workspace.editorAnalysis.issues.length} · ${copy.value.invalid}` : copy.value.valid)
 watch(() => studio.cloneRequested, (requested) => { if (requested) cloneName.value = `${versionName.value} · ${copy.value.newName}` })

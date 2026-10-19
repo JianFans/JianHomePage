@@ -23,6 +23,25 @@ describe('首页快照契约', () => {
     expect(validate(fixture), JSON.stringify(validate.errors)).toBe(true)
   })
 
+  it('接受尚未添加素材与作品的初始内容结构', () => {
+    const initial = structuredClone(fixture)
+    delete initial.site.seo.ogAssetId
+    delete initial.artist.portraitAssetId
+    for (const key of ['heroSlides', 'releases', 'tracks', 'videos', 'events', 'moments', 'assets']) initial[key] = []
+    for (const section of initial.homepage.sections) section.itemIds = section.type === 'artist' ? ['artist_primary'] : []
+    expect(diagnoseContentSnapshot(initial)).toEqual([])
+  })
+
+  it.each(['ogAssetId', 'portraitAssetId'])('选填图片 %s 若已填写仍校验引用与用途', (field) => {
+    const value = structuredClone(fixture)
+    const owner = field === 'ogAssetId' ? value.site.seo : value.artist
+    const path = field === 'ogAssetId' ? '/site/seo/ogAssetId' : '/artist/portraitAssetId'
+    owner[field] = 'asset_missing'
+    expect(diagnoseContentSnapshot(value)).toContainEqual({ path, source: 'semantic', code: 'missing-reference' })
+    owner[field] = 'asset_preview_sample'
+    expect(diagnoseContentSnapshot(value)).toContainEqual({ path, source: 'semantic', code: 'asset-kind' })
+  })
+
   it.each([
     '2030-02-30T20:00:00Z',
     '2030-02-29T20:00:00+08:00',

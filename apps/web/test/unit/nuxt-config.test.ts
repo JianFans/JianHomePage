@@ -15,6 +15,22 @@ afterEach(() => {
   vi.resetModules()
 })
 
+it('省略未配置的分享图，允许初始快照生成页面', async () => {
+  const snapshot = JSON.parse(readFileSync(resolve(process.cwd(), '../../content/fixtures/homepage.json'), 'utf8'))
+  delete snapshot.site.seo.ogAssetId
+  delete snapshot.artist.portraitAssetId
+  const root = mkdtempSync(join(tmpdir(), 'yujian-nuxt-empty-seo-'))
+  const snapshotPath = join(root, 'initial.json')
+  writeFileSync(snapshotPath, JSON.stringify(snapshot))
+  process.env.CONTENT_SNAPSHOT_PATH = snapshotPath
+  vi.resetModules()
+  const { loadNuxtConfig } = await import('nuxt/kit')
+  const config = await loadNuxtConfig({ cwd: process.cwd() })
+  const meta = config.app?.head?.meta ?? []
+  expect(meta.some(item => item.property === 'og:image')).toBe(false)
+  expect(meta.find(item => item.name === 'twitter:card')?.content).toBe('summary')
+})
+
 it('从发布快照生成静态 SEO head', async () => {
   const fixturePath = resolve(process.cwd(), '../../content/fixtures/homepage.json')
   const snapshot = JSON.parse(readFileSync(fixturePath, 'utf8'))

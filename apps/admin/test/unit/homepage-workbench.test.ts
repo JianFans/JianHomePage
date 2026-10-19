@@ -45,7 +45,7 @@ describe('首页草稿事务', () => {
     slide.headline = { 'zh-CN': '新宣传位', en: 'New hero' }
     slide.assetId = value.heroSlides[0]!.assetId
     draft.heroSlides.push(slide)
-    section(draft, 'hero').itemIds.push(slide.id)
+    ;(section(draft, 'hero').itemIds as string[]).push(slide.id)
     const before = structuredClone(draft)
     const result = applyHomepageDraft(text, text, draft)
     expect(result.error).toBeNull()
@@ -64,11 +64,11 @@ describe('首页草稿事务', () => {
     const id = value.heroSlides[0]!.id
     value.moments[0]!.target = { kind: 'internal', contentId: id }
     const draft = createHomepageDraft(value)
-    section(draft, 'hero').itemIds.push(id)
+    ;(section(draft, 'hero').itemIds as string[]).push(id)
     draft.sections.push({ ...structuredClone(section(draft, 'hero')), id: 'section_second_hero' })
     removeHomepageHero(draft, id)
     expect(draft.heroSlides.some(slide => slide.id === id)).toBe(false)
-    expect(draft.sections.filter(item => item.type === 'hero').every(item => !item.itemIds.includes(id))).toBe(true)
+    expect(draft.sections.filter(item => item.type === 'hero').every(item => !(item.itemIds as string[]).includes(id))).toBe(true)
     expect(value.assets).toEqual(fixtureData.assets)
     expect(value.moments[0]!.target).toEqual({ kind: 'internal', contentId: id })
     expect(draft.sections.filter(item => item.type !== 'hero')).toEqual(value.homepage.sections.filter(item => item.type !== 'hero'))
@@ -144,7 +144,7 @@ describe('首页草稿事务', () => {
     expect(draft).toEqual(before)
   })
 
-  it.each([0, 6])('hero 引用数量 %s 失败且保留原文', (count) => {
+  it.each([6])('hero 引用数量 %s 失败且保留原文', (count) => {
     const value = snapshot()
     const text = JSON.stringify(value, null, 4)
     const draft = createHomepageDraft(value)
@@ -156,7 +156,7 @@ describe('首页草稿事务', () => {
     expect(draft).toEqual(before)
   })
 
-  it.each([1, 5])('允许 hero 引用边界 %s，重复引用不去重', (count) => {
+  it.each([0, 1, 5])('允许 hero 引用边界 %s，重复引用不去重', (count) => {
     const value = snapshot()
     const text = JSON.stringify(value)
     const draft = createHomepageDraft(value)

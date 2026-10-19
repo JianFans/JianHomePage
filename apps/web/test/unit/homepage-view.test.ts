@@ -181,7 +181,7 @@ describe('HomepageView explicit rendering boundary', () => {
   it.each([false, true])('stops the previous shared-src video and applies autoplay permission %s to the next one', async (autoplayEnabled) => {
     const snapshot = videoSnapshot()
     snapshot.heroSlides.push({ ...snapshot.heroSlides[0]!, id: 'second-video' })
-    snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds.push('second-video')
+    ;(snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds as string[]).push('second-video')
     const wrapper = mount(HomepageView, {
       props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled },
     })
@@ -230,7 +230,7 @@ describe('HomepageView explicit rendering boundary', () => {
     const slide = snapshot.heroSlides[0]!
     snapshot.heroSlides.push({ ...slide, id: 'second-video' })
     const hero = snapshot.homepage.sections.find(section => section.type === 'hero')!
-    hero.itemIds.push('second-video')
+    ;(hero.itemIds as string[]).push('second-video')
     const errors: unknown[] = []
     const wrapper = mount(HomepageView, {
       props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled: false },
@@ -281,7 +281,7 @@ describe('HomepageView explicit rendering boundary', () => {
   ])('keeps newer playback after %s when the old request ends with %s', async (action, outcome) => {
     const snapshot = videoSnapshot()
     snapshot.heroSlides.push({ ...snapshot.heroSlides[0]!, id: 'second-video' })
-    snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds.push('second-video')
+    ;(snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds as string[]).push('second-video')
     const wrapper = mount(HomepageView, {
       props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled: false },
     })
@@ -318,7 +318,7 @@ describe('HomepageView explicit rendering boundary', () => {
   it('invalidates pending playback on a roundtrip even without a newer manual request', async () => {
     const snapshot = videoSnapshot()
     snapshot.heroSlides.push({ ...snapshot.heroSlides[0]!, id: 'second-video' })
-    snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds.push('second-video')
+    ;(snapshot.homepage.sections.find(section => section.type === 'hero')!.itemIds as string[]).push('second-video')
     const wrapper = mount(HomepageView, {
       props: { snapshot, locale: 'en', player: playerFixture(), autoplayEnabled: false },
     })

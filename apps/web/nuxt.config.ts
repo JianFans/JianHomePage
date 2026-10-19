@@ -16,11 +16,10 @@ const defaultLocale = buildSnapshot.site.defaultLocale
 const seoTitle = buildSnapshot.site.seo.title[defaultLocale]
 const seoDescription = buildSnapshot.site.seo.description[defaultLocale]
 const seoAsset = buildSnapshot.assets.find(asset => asset.id === buildSnapshot.site.seo.ogAssetId)
-if (!seoAsset) {
-  throw new Error(`SEO asset not found: ${buildSnapshot.site.seo.ogAssetId}`)
-}
-const seoImage = new URL(seoAsset.src, buildSnapshot.site.canonicalUrl).toString()
-const seoImageAlt = seoAsset.alt[defaultLocale]
+const seoImageMeta = seoAsset ? [
+  { property: 'og:image', content: new URL(seoAsset.src, buildSnapshot.site.canonicalUrl).toString() },
+  { property: 'og:image:alt', content: seoAsset.alt[defaultLocale] },
+] : []
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-01',
@@ -72,9 +71,8 @@ export default defineNuxtConfig({
         { property: 'og:description', content: seoDescription },
         { property: 'og:type', content: 'website' },
         { property: 'og:url', content: buildSnapshot.site.canonicalUrl },
-        { property: 'og:image', content: seoImage },
-        { property: 'og:image:alt', content: seoImageAlt },
-        { name: 'twitter:card', content: 'summary_large_image' },
+        ...seoImageMeta,
+        { name: 'twitter:card', content: seoAsset ? 'summary_large_image' : 'summary' },
       ],
       link: [
         { rel: 'canonical', href: buildSnapshot.site.canonicalUrl },

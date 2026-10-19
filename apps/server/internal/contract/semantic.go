@@ -93,7 +93,10 @@ func indexRecords(root map[string]any, key, prefix, path string) (map[string]map
 func validateSiteReferences(root map[string]any, assets map[string]map[string]any) error {
 	site, _ := root["site"].(map[string]any)
 	seo, _ := site["seo"].(map[string]any)
-	return requireAssetKind(seo["ogAssetId"], "/site/seo/ogAssetId", assets, "image", "gif")
+	if id, exists := seo["ogAssetId"]; exists {
+		return requireAssetKind(id, "/site/seo/ogAssetId", assets, "image", "gif")
+	}
+	return nil
 }
 
 func validateHomepageReferences(root map[string]any, heroes, releases, videos, events, moments map[string]map[string]any) error {
@@ -357,7 +360,10 @@ func validateMomentReferences(root map[string]any, moments, assets map[string]ma
 
 func validateArtistReferences(root map[string]any, assets map[string]map[string]any) error {
 	artist, _ := root["artist"].(map[string]any)
-	return requireAssetKind(artist["portraitAssetId"], "/artist/portraitAssetId", assets, "image", "gif")
+	if id, exists := artist["portraitAssetId"]; exists {
+		return requireAssetKind(id, "/artist/portraitAssetId", assets, "image", "gif")
+	}
+	return nil
 }
 
 func validateAssetReferences(root map[string]any, assets map[string]map[string]any) error {

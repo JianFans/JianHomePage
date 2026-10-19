@@ -18,11 +18,13 @@ async function render(raw: string) {
   const locale = snapshot.site.defaultLocale
   const body = await renderToString(createSSRApp(App, { snapshot }))
   const seo = snapshot.site.seo
-  const asset = snapshot.assets.find(item => item.id === seo.ogAssetId)!
+  const asset = snapshot.assets.find(item => item.id === seo.ogAssetId)
   const title = escapeHTML(seo.title[locale])
   const description = escapeHTML(seo.description[locale])
   const canonical = escapeHTML(snapshot.site.canonicalUrl)
-  const image = escapeHTML(new URL(asset.src, snapshot.site.canonicalUrl).href)
+  const imageMeta = asset
+    ? `<meta property="og:image" content="${escapeHTML(new URL(asset.src, snapshot.site.canonicalUrl).href)}"><meta property="og:image:alt" content="${escapeHTML(asset.alt[locale])}">`
+    : ''
   const data = JSON.stringify(snapshot).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e').replaceAll('&', '\\u0026')
   return {
     html: [
@@ -32,8 +34,8 @@ async function render(raw: string) {
       `<title>${title}</title><meta name="description" content="${description}">`,
       `<link rel="canonical" href="${canonical}"><meta property="og:title" content="${title}">`,
       `<meta property="og:description" content="${description}"><meta property="og:type" content="website">`,
-      `<meta property="og:url" content="${canonical}"><meta property="og:image" content="${image}">`,
-      `<meta property="og:image:alt" content="${escapeHTML(asset.alt[locale])}"><meta name="twitter:card" content="summary_large_image">`,
+      `<meta property="og:url" content="${canonical}">${imageMeta}`,
+      `<meta name="twitter:card" content="${asset ? 'summary_large_image' : 'summary'}">`,
       ...__SITE_ASSETS__.styles.map(path => `<link rel="stylesheet" href="${path}">`),
       `<script type="application/ld+json">${serializeStructuredData(buildStructuredData(snapshot, locale))}</script>`,
       `</head><body><div id="app">${body}</div>`,

@@ -79,7 +79,7 @@ export interface SiteConfig {
   seo: {
     title: LocalizedText;
     description: LocalizedText;
-    ogAssetId: string;
+    ogAssetId?: string;
   };
   futureNavigation: {
     id: string;
@@ -112,10 +112,10 @@ export interface HeroSection {
   enabled: boolean;
   layoutVariant: "immersive";
   /**
-   * @minItems 1
    * @maxItems 5
    */
   itemIds:
+    | []
     | [string]
     | [string, string]
     | [string, string, string]
@@ -240,6 +240,6 @@ export interface ArtistProfile {
   id: "artist_primary";
   name: LocalizedText;
   shortBio: LocalizedText;
-  portraitAssetId: string;
+  portraitAssetId?: string;
   platformLinks: PlatformLink[];
 }

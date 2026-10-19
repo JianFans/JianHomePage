@@ -25,7 +25,6 @@ const options = computed(() => homepageItemOptions(props.snapshot, props.draft, 
 const optionIndex = computed(() => new Map(options.value.map(option => [option.id, option])))
 const visibility = computed(() => homepageItemVisibility(props.snapshot, props.draft, model.value))
 const maxItems = computed(() => model.value.type === 'hero' ? 5 : model.value.type === 'artist' ? 1 : Infinity)
-const minItems = computed(() => model.value.type === 'hero' ? 1 : 0)
 const limitMaximum = computed(() => ({ music: 8, video: 5, event: 6, moment: 8 })[model.value.type as 'music' | 'video' | 'event' | 'moment'])
 
 watch(() => model.value, /** 按位置复用组件时清除上一板块的选择；嵌套字段编辑不影响待添加内容。 */ () => {
@@ -52,7 +51,7 @@ function moveItem(index: number, direction: -1 | 1) {
 
 /** 保留正常编辑所需的最少宣传位引用；记录删除后的无效草稿仍由应用校验。 */
 function removeItem(index: number) {
-  if (model.value.itemIds.length > minItems.value) model.value.itemIds.splice(index, 1)
+  model.value.itemIds.splice(index, 1)
 }
 
 /** 更多链接使用稳定单对象，关闭时移除整个可选字段。 */
@@ -128,7 +127,6 @@ function toggleLabel(link: PlatformLink, event: Event) {
             type="button"
             class="icon-tool"
             data-testid="homepage-item-remove"
-            :disabled="model.itemIds.length <= minItems"
             :aria-label="`${copy.remove} ${itemId} ${index + 1}`"
             @click="removeItem(index)"
           >

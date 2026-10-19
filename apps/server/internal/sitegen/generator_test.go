@@ -89,6 +89,38 @@ func embeddedGenerator(t *testing.T) (*Generator, map[string]any) {
 	return generator, snapshot
 }
 
+// TestInitialContentRendersWithoutMedia verifies the first real draft exports without broken images.
+func TestInitialContentRendersWithoutMedia(t *testing.T) {
+	generator, value := embeddedGenerator(t)
+	delete(value["site"].(map[string]any)["seo"].(map[string]any), "ogAssetId")
+	delete(value["artist"].(map[string]any), "portraitAssetId")
+	for _, field := range []string{"heroSlides", "releases", "tracks", "videos", "events", "moments", "assets"} {
+		value[field] = []any{}
+	}
+	for _, raw := range value["homepage"].(map[string]any)["sections"].([]any) {
+		section := raw.(map[string]any)
+		if section["type"] != "artist" {
+			section["itemIds"] = []any{}
+		}
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := generator.Generate(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(files["index.html"])
+	if !strings.Contains(html, "遇健我") || !strings.Contains(html, `id="artist"`) ||
+		!strings.Contains(html, `name="twitter:card" content="summary"`) {
+		t.Fatal("initial content did not render site information")
+	}
+	if strings.Contains(html, `property="og:image"`) || strings.Contains(html, `src="undefined"`) || strings.Contains(html, `id="music"`) {
+		t.Fatal("initial content emitted absent media or an empty section")
+	}
+}
+
 // TestGeneratedHTMLPreservesDataWithoutExecutableInjection distinguishes safe
 // display escaping from lossless JSON payload escaping during hydration.
 func TestGeneratedHTMLPreservesDataWithoutExecutableInjection(t *testing.T) {

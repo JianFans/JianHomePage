@@ -170,7 +170,7 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
     return true
   }
 
-  /** 会话恢复后读取摘要并选择最近草稿，初次空库不隐式加载测试内容。 */
+  /** 会话恢复后选择最近草稿；确认空库时为编辑者准备不含测试素材的初始内容。 */
   async function initialize() {
     if (initializing.value) return
     initializing.value = true
@@ -187,8 +187,11 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
         await workspace.listVersions(true)
         if (!session.authenticated || workspace.listError) return
       }
+      // A retry may discover another editor's version while this tab has local work.
+      if (unsaved.value || assetDirty.value || assetBusy.value) return
       const next = workspace.versions.find(item => item.status === 'draft') || workspace.versions[0]
       if (next) { workspace.versionId = next.id; await workspace.loadVersion() }
+      else if (canEdit.value) workspace.initializeDraft()
     } finally { initializing.value = false }
   }
 
