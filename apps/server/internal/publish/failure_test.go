@@ -88,7 +88,7 @@ func TestFailureDiagnosticsDiscardUntrustedProviderFields(t *testing.T) {
 		{"NoSuchBucket", "NoSuchBucket", 404, 404},
 		{"AccessDenied", "AccessDenied", 403, 403},
 		{"provider-private-detail", "Unknown", 500, 500},
-		{"SignatureDoesNotMatch", "SignatureDoesNotMatch", 200, 0},
+		{"SignatureDoesNotMatch", "SignatureDoesNotMatch", 200, 200},
 		{"", "Unknown", 1000, 0},
 	} {
 		var failure *Failure

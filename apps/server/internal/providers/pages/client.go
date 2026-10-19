@@ -155,6 +155,10 @@ func (c *Client) request(ctx context.Context, body map[string]any, out any) erro
 	if err != nil {
 		return errors.New("invalid Pages request")
 	}
+	action, ok := body["Action"].(string)
+	if !ok || (&cloudError{action: action}).ProviderAction() == "unknown" {
+		return errors.New("invalid Pages request")
+	}
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	// Wrapping the reader prevents net/http from synthesizing GetBody and replaying a write.
@@ -166,7 +170,7 @@ func (c *Client) request(ctx context.Context, body map[string]any, out any) erro
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "yujian-pages/go")
-	data, err := c.send(req)
+	data, status, err := c.send(req, action)
 	if err != nil {
 		return err
 	}
@@ -174,46 +178,55 @@ func (c *Client) request(ctx context.Context, body map[string]any, out any) erro
 		Code json.RawMessage
 		Data struct{ Response json.RawMessage }
 	}
-	if json.Unmarshal(data, &envelope) != nil || (string(envelope.Code) != "0" && string(envelope.Code) != `"0"`) || len(envelope.Data.Response) == 0 || bytes.Equal(envelope.Data.Response, []byte("null")) {
-		return errors.New("Pages API returned an invalid or unsuccessful response")
+	if json.Unmarshal(data, &envelope) != nil || !successCode(envelope.Code) || len(envelope.Data.Response) == 0 || bytes.Equal(bytes.TrimSpace(envelope.Data.Response), []byte("null")) {
+		return newCloudError(action, status, data, nil)
 	}
 	var payload struct{ Error json.RawMessage }
-	if json.Unmarshal(envelope.Data.Response, &payload) != nil || (len(payload.Error) > 0 && !bytes.Equal(payload.Error, []byte("null"))) {
-		return errors.New("Pages API action failed")
+	if json.Unmarshal(envelope.Data.Response, &payload) != nil || (len(payload.Error) > 0 && !bytes.Equal(bytes.TrimSpace(payload.Error), []byte("null"))) {
+		return newCloudError(action, status, data, nil)
 	}
 	if json.Unmarshal(envelope.Data.Response, out) != nil {
-		return errors.New("Pages API returned an invalid payload")
+		return newCloudError(action, status, data, nil)
 	}
 	return nil
 }
 
-// send bounds all cloud response bodies and prevents provider errors or transport URLs leaking secrets.
-func (c *Client) send(req *http.Request) ([]byte, error) {
+func successCode(code json.RawMessage) bool {
+	code = bytes.TrimSpace(code)
+	return bytes.Equal(code, []byte("0")) || bytes.Equal(code, []byte(`"0"`))
+}
+
+// send bounds provider responses and preserves only safe status and request classifications.
+func (c *Client) send(req *http.Request, action string) ([]byte, int, error) {
 	if err := req.Context().Err(); err != nil {
-		return nil, err
+		return nil, 0, newCloudError(action, 0, nil, err)
 	}
 	response, err := c.http.Do(req)
 	if err != nil {
 		if req.Context().Err() != nil {
-			return nil, req.Context().Err()
+			err = req.Context().Err()
 		}
-		return nil, errors.New("Pages cloud request failed")
+		return nil, 0, newCloudError(action, 0, nil, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, errors.New("Pages cloud request was rejected")
+		data, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
+		if len(data) > maxResponseBytes {
+			data = nil
+		}
+		return nil, response.StatusCode, newCloudError(action, response.StatusCode, data, readErr)
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
 		if req.Context().Err() != nil {
-			return nil, req.Context().Err()
+			err = req.Context().Err()
 		}
-		return nil, errors.New("Pages cloud response could not be read")
+		return nil, response.StatusCode, newCloudError(action, response.StatusCode, nil, err)
 	}
 	if len(data) > maxResponseBytes {
-		return nil, errors.New("Pages cloud response exceeds limit")
+		return nil, response.StatusCode, newCloudError(action, response.StatusCode, nil, nil)
 	}
-	return data, nil
+	return data, response.StatusCode, nil
 }
 
 // safeHeaderValue allows only bounded non-whitespace ASCII credential values.

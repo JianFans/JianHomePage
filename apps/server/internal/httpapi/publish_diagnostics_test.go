@@ -91,12 +91,16 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 			}
 			if test.stage != "" {
 				found := false
+				foundServiceIdentity := false
 				for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
 					var entry map[string]any
 					if err := json.Unmarshal([]byte(line), &entry); err != nil {
 						t.Fatal(err)
 					}
-					if entry["msg"] == "publish request failed" {
+					if entry["component"] == "publish" && entry["msg"] == "publish operation failed" {
+						foundServiceIdentity = entry["version_id"] == "ver_private"
+					}
+					if entry["msg"] == "publish request failed" && entry["component"] == "management" {
 						found = true
 						if entry["request_id"] != "req-test" || entry["stage"] != test.stage || entry["error_kind"] != test.kind || entry["actor_subject"] != "editor-1" {
 							t.Fatalf("incorrect failure diagnostics: %#v", entry)
@@ -115,8 +119,11 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 				if !found {
 					t.Fatalf("missing publish failure log: %s", logs.String())
 				}
+				if !foundServiceIdentity {
+					t.Fatalf("missing service-level version correlation: %s", logs.String())
+				}
 			}
-			for _, secret := range []string{"provider-secret", "provider-private-code", "secret.example", "private-bucket", "private-access", "private-secret", "private-cookie", "private-idempotency", "ver_private", "rel_private", provider.URL} {
+			for _, secret := range []string{"provider-secret", "provider-private-code", "secret.example", "private-bucket", "private-access", "private-secret", "private-cookie", "private-idempotency", provider.URL} {
 				if strings.Contains(logs.String()+recorder.Body.String(), secret) && test.status != http.StatusAccepted {
 					t.Fatalf("private detail leaked: %s", secret)
 				}

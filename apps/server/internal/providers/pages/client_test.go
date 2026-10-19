@@ -195,6 +195,46 @@ func TestCloudErrorsAreBoundedAndRedacted(t *testing.T) {
 	}
 }
 
+// TestCloudFailureDiagnosticsRetainSafeClassificationWithoutResponseBodies keeps Pages failures actionable.
+func TestCloudFailureDiagnosticsRetainSafeClassificationWithoutResponseBodies(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, code, requestID string
+		status                      int
+	}{
+		{"http rejection", `{"Response":{"Error":{"Code":"UnauthorizedOperation","Message":"client_secret=private-value","RequestId":"pages-req-123"}}}`, "UnauthorizedOperation", "pages-req-123", http.StatusForbidden},
+		{"api rejection", `{"Code":0,"RequestId":"pages-req-456","Data":{"Response":{"Error":{"Code":"FailedOperation","Message":"private-response","RequestId":"pages-req-456"}}}}`, "FailedOperation", "pages-req-456", http.StatusOK},
+		{"unknown provider code", `{"Code":0,"Data":{"Response":{"Error":{"Code":"private-token-value","Message":"private-response"}}}}`, "Unknown", "", http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := testClient(t, "china", func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			})
+			_, err := client.Get(context.Background(), "project-1", "deploy-1")
+			if err == nil {
+				t.Fatal("expected Pages failure")
+			}
+			var diagnostic interface {
+				SafeProviderCode() string
+				HTTPStatusCode() int
+				RequestID() string
+				ProviderAction() string
+			}
+			if !errors.As(err, &diagnostic) {
+				t.Fatalf("missing structured Pages diagnostics: %T %v", err, err)
+			}
+			if diagnostic.SafeProviderCode() != tc.code || diagnostic.HTTPStatusCode() != tc.status || diagnostic.RequestID() != tc.requestID || diagnostic.ProviderAction() != "DescribePagesDeployments" {
+				t.Fatalf("unexpected Pages diagnostics: code=%q status=%d request=%q action=%q", diagnostic.SafeProviderCode(), diagnostic.HTTPStatusCode(), diagnostic.RequestID(), diagnostic.ProviderAction())
+			}
+			for _, secret := range []string{"private-value", "private-response", "private-token-value"} {
+				if strings.Contains(err.Error(), secret) {
+					t.Fatalf("provider response detail leaked: %v", err)
+				}
+			}
+		})
+	}
+}
+
 // TestWritesNeverRetryOrFollowRedirects preserves uncertain deployment outcomes.
 func TestWritesNeverRetryOrFollowRedirects(t *testing.T) {
 	for _, status := range []int{http.StatusServiceUnavailable, http.StatusTemporaryRedirect, http.StatusUnauthorized} {

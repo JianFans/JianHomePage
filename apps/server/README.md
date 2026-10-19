@@ -43,6 +43,11 @@
 | `ADMIN_ALLOWED_ORIGINS` | 空 | 逗号分隔的管理端 Origin；生产环境至少一个且必须为 HTTPS。 |
 | `ALLOW_DEV_IDENTITY` | `false` | 仅非生产环境显式设置为 `true` 时读取 `X-Dev-Subject` 和 `X-Dev-Roles`。 |
 | `SHUTDOWN_TIMEOUT` | `10s` | 优雅关闭等待时间。 |
+| `LOG_LEVEL` | `info` | `debug`、`info`、`warn` 或 `error`；同时控制控制台和文件日志。 |
+| `LOG_FORMAT` | `text` | 控制台格式，支持便于阅读的 `text` 和便于采集的 `json`；文件始终为 JSONL。 |
+| `LOG_FILE` | 空 | 可选日志文件路径，相对路径基于进程工作目录；启用前须创建父目录并授予服务账号写权限。 |
+| `LOG_MAX_SIZE_MB` | `20` | 单个日志文件达到该大小后轮转，范围为 1–1024 MB。 |
+| `LOG_MAX_BACKUPS` | `5` | 保留的轮转文件数，范围为 1–100；备份文件不压缩。 |
 | `S3_ENDPOINT` | 空 | S3 兼容 HTTPS 端点，例如腾讯云 COS 地域端点。 |
 | `S3_REGION` | 空 | 对象存储地域，例如 `ap-singapore`。 |
 | `S3_BUCKET` | 空 | 素材与不可变发布快照所在桶。 |
@@ -57,6 +62,12 @@
 | `PAGES_PUBLIC_URL` | 空 | 生产环境必填；公开站 HTTPS 基址，不得包含凭据、查询参数或片段。 |
 
 生产环境禁止把开发身份头当作认证信息。OIDC 实现只信任发行方签发的 `sub`、`email`、`name` 和已知角色。
+
+### 日志
+
+默认将人类可读的分级日志写入标准输出。`LOG_FORMAT=json` 可将控制台输出切换为 JSON；设置 `LOG_FILE` 后，服务会额外写入 JSONL 文件，并按 `LOG_MAX_SIZE_MB` 和 `LOG_MAX_BACKUPS` 轮转。文件输出始终为 JSONL，文件权限为 `0600`。文件日志不可用时会向标准错误写出脱敏诊断，不中断控制台日志。
+
+HTTP 日志包含请求 ID、匹配路由、操作者、状态码、响应字节数和耗时；管理操作、认证和发布 worker 另记录固定阶段、资源 ID、错误分类及可安全保留的依赖原因。5xx 为 `ERROR`、4xx 为 `WARN`、普通成功请求为 `INFO`，健康检查和成功的静态资源请求为 `DEBUG`。不会记录请求或响应正文、Cookie、Authorization、Token、授权码、幂等键、签名 URL 或服务商响应正文。受控错误诊断会保留 SQLSTATE、白名单服务商错误码、上游 HTTP 状态和请求 ID；未知服务商错误码记录为 `Unknown`。配置中的秘密会在截断日志字段前脱敏，避免边界处残留凭据片段。
 
 ### 浏览器登录与会话
 

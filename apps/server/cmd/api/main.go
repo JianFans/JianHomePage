@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sync"
@@ -22,6 +24,7 @@ import (
 	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/contract"
 	"yujian.me/server/internal/httpapi"
+	"yujian.me/server/internal/observability"
 	"yujian.me/server/internal/ports"
 	"yujian.me/server/internal/providers/local"
 	"yujian.me/server/internal/providers/pages"
@@ -37,27 +40,62 @@ import (
 // main validates startup settings and translates process signals into the
 // cancellation used by HTTP, reconciliation and dependency cleanup.
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if handled, err := runCommand(os.Args[1:], os.Stdout); handled {
 		if err != nil {
-			logger.Error("export site", "error", err)
+			logger.Error("export site", observability.Error(err))
 			os.Exit(1)
 		}
 		return
 	}
 	settings, err := config.LoadEnvironment()
 	if err != nil {
-		logger.Error("load configuration", "error", err)
+		logger.Error("load configuration", observability.Error(err))
 		os.Exit(1)
 	}
+	logger, closeLog, err := newOperationalLogger(settings, os.Stdout, os.Stderr)
+	if err != nil {
+		loggerFallback := slog.New(slog.NewTextHandler(os.Stderr, nil))
+		loggerFallback.Error("configure logging", observability.Error(err))
+		os.Exit(1)
+	}
+	slog.SetDefault(logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, settings, logger); err != nil {
-		logger.Error("server stopped", "error", err)
+	runErr := run(ctx, settings, logger)
+	if runErr != nil {
+		logger.Error("server stopped", "component", "server", observability.Error(runErr))
+	} else {
+		logger.Info("server stopped", "component", "server")
+	}
+	if err := closeLog(); err != nil {
+		logger.Error("close logging outputs", "component", "logging", observability.Error(err))
+		runErr = errors.Join(runErr, err)
+	}
+	if runErr != nil {
 		os.Exit(1)
 	}
+}
+
+// newOperationalLogger applies validated settings and registers known credentials for redaction.
+func newOperationalLogger(settings config.Config, console, diagnostic io.Writer) (*slog.Logger, func() error, error) {
+	secrets := []string{
+		settings.AdminOIDCClientSecret, settings.PagesAPIToken,
+		settings.S3AccessKeyID, settings.S3SecretAccessKey, settings.S3SessionToken,
+		string(settings.AdminSessionKey), base64.StdEncoding.EncodeToString(settings.AdminSessionKey),
+	}
+	if databaseURL, err := url.Parse(settings.DatabaseURL); err == nil && databaseURL.User != nil {
+		if password, ok := databaseURL.User.Password(); ok {
+			secrets = append(secrets, password)
+		}
+	}
+	return observability.New(observability.Options{
+		Level: settings.Log.Level, Format: settings.Log.Format, File: settings.Log.File,
+		MaxSizeMB: settings.Log.MaxSizeMB, MaxBackups: settings.Log.MaxBackups,
+		Secrets: secrets, Console: console, Diagnostic: diagnostic,
+	})
 }
 
 // run selects environment-specific services and shuts down the HTTP server and
@@ -403,9 +441,10 @@ func runPublishReconciler(ctx context.Context, interval time.Duration, reconcile
 	if interval <= 0 {
 		interval = 15 * time.Second
 	}
+	ctx = observability.WithLogger(ctx, logger)
 	for {
 		if err := reconciler.Reconcile(ctx); err != nil && ctx.Err() == nil {
-			logger.Error("reconcile publish job", "error", err)
+			logger.Error("reconcile publish jobs", "component", "reconcile", observability.Error(err))
 		}
 		timer := time.NewTimer(interval)
 		select {
@@ -435,7 +474,7 @@ func runServer(ctx context.Context, settings config.Config, logger *slog.Logger,
 
 	serveErrors := make(chan error, 1)
 	go func() {
-		logger.Info("http server listening", "address", settings.Address)
+		logger.Info("http server listening", "component", "http", "address", settings.Address, "environment", settings.Environment)
 		serveErrors <- server.ListenAndServe()
 	}()
 

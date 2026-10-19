@@ -17,6 +17,7 @@ import (
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/observability"
 	"yujian.me/server/internal/publish"
 )
 
@@ -173,12 +174,12 @@ func NewRouter(options RouterOptions) http.Handler {
 
 	api := http.NewServeMux()
 	register := func(pattern string, permission auth.Permission, endpoint http.HandlerFunc) {
-		api.Handle(pattern, middleware.Require(permission, endpoint))
+		api.Handle(pattern, routeHandler(func(w http.ResponseWriter, r *http.Request) { middleware.Require(permission, endpoint).ServeHTTP(w, r) }))
 	}
 	register("POST /api/v1/versions", auth.PermissionEditDraft, handler.createVersion)
 	register("GET /api/v1/versions", auth.PermissionReadContent, handler.listVersions)
 	register("POST /api/v1/versions/{versionId}/clone", auth.PermissionEditDraft, handler.cloneVersion)
-	api.Handle("GET /api/v1/versions/{versionId}", http.HandlerFunc(handler.getVersion))
+	api.Handle("GET /api/v1/versions/{versionId}", routeHandler(handler.getVersion))
 	register("PUT /api/v1/versions/{versionId}", auth.PermissionEditDraft, handler.updateVersion)
 	register("POST /api/v1/versions/{versionId}/review", auth.PermissionSubmitReview, handler.submitReview)
 	register("POST /api/v1/versions/{versionId}/approve", auth.PermissionReview, handler.approveReview)
@@ -226,14 +227,20 @@ func (handler *Handler) withBodyLimit(next http.Handler) http.Handler {
 func requestIDMiddleware(next http.Handler, generator func(*http.Request) string) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requestID := strings.TrimSpace(request.Header.Get("X-Request-ID"))
-		if requestID == "" {
+		state, _ := request.Context().Value(requestLogKey{}).(*requestLog)
+		if !validRequestID(requestID) || (state != nil && state.generatedByLogging) {
 			requestID = strings.TrimSpace(generator(request))
 		}
-		if requestID == "" {
+		if !validRequestID(requestID) {
 			requestID = "req-unknown"
 		}
 		request.Header.Set("X-Request-ID", requestID)
 		writer.Header().Set("X-Request-ID", requestID)
+		if state != nil && state.generatedByLogging {
+			state.generatedByLogging = false
+			ctx := observability.WithLogger(request.Context(), state.logger.With("request_id", requestID))
+			*request = *request.WithContext(ctx)
+		}
 		next.ServeHTTP(writer, request)
 	})
 }
@@ -643,6 +650,25 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 }
 
 func writeDomainError(writer http.ResponseWriter, request *http.Request, err error) {
+	writeDomainErrorResponse(writer, request, err, true)
+}
+
+// writeDomainErrorResponse optionally records the cause before returning the stable public contract.
+func writeDomainErrorResponse(writer http.ResponseWriter, request *http.Request, err error, report bool) {
+	if report {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, domain.ErrForbidden):
+			status = 403
+		case errors.Is(err, domain.ErrNotFound):
+			status = 404
+		case errors.Is(err, domain.ErrConflict), errors.Is(err, domain.ErrInvalidTransition):
+			status = 409
+		case errors.Is(err, domain.ErrInvalidInput):
+			status = 400
+		}
+		logOperation(request, err, status, "domain_error", "management operation failed")
+	}
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "forbidden", "Permission denied.")
@@ -660,6 +686,10 @@ func writeDomainError(writer http.ResponseWriter, request *http.Request, err err
 }
 
 func writeError(writer http.ResponseWriter, request *http.Request, status int, code, message string) {
+	state, _ := request.Context().Value(requestLogKey{}).(*requestLog)
+	if state == nil || !state.failed {
+		logOperation(request, nil, status, code, "management request rejected", "reason", message)
+	}
 	writeJSON(writer, status, errorResponse{Code: code, Message: message, RequestID: request.Header.Get("X-Request-ID")})
 }
 

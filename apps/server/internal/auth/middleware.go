@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -61,10 +62,12 @@ func (middleware *Middleware) Require(permission Permission, next http.Handler) 
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := PrincipalFromContext(request.Context())
 		if !ok {
+			logAuthentication(request, slog.LevelWarn, "rbac", "identity_missing", "", nil)
 			writeAuthError(writer, request, http.StatusUnauthorized, "unauthorized", "Authentication required.")
 			return
 		}
 		if !HasPermission(principal, permission) {
+			logAuthentication(request, slog.LevelWarn, "rbac", "permission_denied", principal.Subject, nil)
 			writeAuthError(writer, request, http.StatusForbidden, "forbidden", "Permission denied.")
 			return
 		}
@@ -75,13 +78,25 @@ func (middleware *Middleware) Require(permission Permission, next http.Handler) 
 func (middleware *Middleware) authenticate(request *http.Request) (domain.Principal, error) {
 	if middleware.sessions != nil && request.Header.Get("Authorization") == "" {
 		if _, err := request.Cookie(sessionCookieName); err == nil {
-			return middleware.sessions.authenticateCookie(request)
+			principal, authErr := middleware.sessions.authenticateCookie(request)
+			if authErr != nil {
+				level := slog.LevelWarn
+				if !errors.Is(authErr, domain.ErrForbidden) && !errors.Is(authErr, domain.ErrNotFound) && !errors.Is(authErr, errCSRF) {
+					level = slog.LevelError
+				}
+				reason, level := authReason(authErr, "session_rejected", level)
+				logAuthentication(request, level, "cookie.verify", reason, "", authErr)
+			} else {
+				logAuthentication(request, slog.LevelDebug, "cookie.verify", "authenticated", principal.Subject, nil)
+			}
+			return principal, authErr
 		}
 	}
 	if middleware.allowDevIdentity {
 		if subject := strings.TrimSpace(request.Header.Get("X-Dev-Subject")); subject != "" {
 			roles, err := parseRoleHeader(request.Header.Get("X-Dev-Roles"))
 			if err != nil || len(roles) == 0 {
+				logAuthentication(request, slog.LevelWarn, "development.verify", "roles_invalid", "", nil)
 				return domain.Principal{}, domain.ErrForbidden
 			}
 			return domain.Principal{Subject: subject, Roles: roles}, nil
@@ -90,12 +105,20 @@ func (middleware *Middleware) authenticate(request *http.Request) (domain.Princi
 
 	token, ok := bearerToken(request.Header.Get("Authorization"))
 	if !ok || middleware.identityProvider == nil {
+		reason := "bearer_missing"
+		if ok {
+			reason = "provider_not_configured"
+		}
+		logAuthentication(request, slog.LevelWarn, "bearer.verify", reason, "", nil)
 		return domain.Principal{}, domain.ErrForbidden
 	}
 	principal, err := middleware.identityProvider.Authenticate(request.Context(), token)
 	if err != nil || principal.Subject == "" || len(principal.Roles) == 0 {
+		reason, level := authReason(err, "identity_rejected", slog.LevelWarn)
+		logAuthentication(request, level, "bearer.verify", reason, "", err)
 		return domain.Principal{}, domain.ErrForbidden
 	}
+	logAuthentication(request, slog.LevelDebug, "bearer.verify", "authenticated", principal.Subject, nil)
 	return principal, nil
 }
 

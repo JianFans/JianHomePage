@@ -24,6 +24,7 @@ func TestLoggingMiddlewareIncludesRequestActorRouteStatusAndDuration(t *testing.
 	}
 	handler := LoggingMiddleware(middleware.Authenticate(next), logger)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/versions/ver_1", nil)
+	request.Pattern = "GET /api/v1/versions/{versionId}"
 	request.Header.Set("X-Request-ID", "req-logging")
 	request.Header.Set("X-Dev-Subject", "admin-1")
 	request.Header.Set("X-Dev-Roles", "admin")
@@ -33,7 +34,7 @@ func TestLoggingMiddlewareIncludesRequestActorRouteStatusAndDuration(t *testing.
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("unexpected status %d", recorder.Code)
 	}
-	for _, fragment := range []string{"request_id", "req-logging", "actor_subject", "admin-1", "route", "/api/v1/versions/ver_1", "status", "duration_ms"} {
+	for _, fragment := range []string{"request_id", "req-logging", "actor_subject", "admin-1", "route", "GET /api/v1/versions/{versionId}", "status", "duration_ms"} {
 		if !strings.Contains(output.String(), fragment) {
 			t.Fatalf("log missing %q: %s", fragment, output.String())
 		}

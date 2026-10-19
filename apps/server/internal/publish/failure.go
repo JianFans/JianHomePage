@@ -1,6 +1,10 @@
 package publish
 
-import "errors"
+import (
+	"errors"
+
+	"yujian.me/server/internal/observability"
+)
 
 // Failure identifies the failed publish boundary without exposing repository or
 // provider error text. Unwrap retains existing permission and concurrency checks.
@@ -33,17 +37,7 @@ func (failure *Failure) External() bool {
 // ProviderCode exposes only recognized diagnostic codes. Unknown provider text
 // is deliberately discarded because service responses can contain private data.
 func (failure *Failure) ProviderCode() string {
-	var coded interface{ ErrorCode() string }
-	if errors.As(failure.cause, &coded) {
-		switch code := coded.ErrorCode(); code {
-		case "NoSuchBucket", "NoSuchKey", "NotFound", "AccessDenied", "Forbidden",
-			"InvalidAccessKeyId", "SignatureDoesNotMatch", "ExpiredToken", "InvalidToken",
-			"AuthorizationHeaderMalformed", "RequestTimeTooSkewed", "InvalidDigest", "BadDigest",
-			"Conflict", "PreconditionFailed", "SlowDown", "ServiceUnavailable", "InternalError", "RequestTimeout":
-			return code
-		}
-	}
-	return "Unknown"
+	return observability.ProviderCode(failure.cause)
 }
 
 // ProviderHTTPStatus keeps an upstream HTTP failure distinguishable from the
@@ -51,7 +45,7 @@ func (failure *Failure) ProviderCode() string {
 func (failure *Failure) ProviderHTTPStatus() int {
 	var status interface{ HTTPStatusCode() int }
 	if errors.As(failure.cause, &status) {
-		if code := status.HTTPStatusCode(); code >= 400 && code <= 599 {
+		if code := status.HTTPStatusCode(); code >= 200 && code <= 599 {
 			return code
 		}
 	}
