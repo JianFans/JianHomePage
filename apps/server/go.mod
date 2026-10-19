@@ -10,6 +10,7 @@ require (
 	github.com/aws/smithy-go v1.28.5
 	github.com/dop251/goja v0.0.0-20261014135309-2cb8274eed06
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/joho/godotenv v1.5.1
 	github.com/nlnwa/whatwg-url v0.6.2
 	golang.org/x/net v0.61.0
 )

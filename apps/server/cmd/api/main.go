@@ -45,7 +45,7 @@ func main() {
 		}
 		return
 	}
-	settings, err := config.Load(os.Getenv)
+	settings, err := config.LoadEnvironment()
 	if err != nil {
 		logger.Error("load configuration", "error", err)
 		os.Exit(1)
