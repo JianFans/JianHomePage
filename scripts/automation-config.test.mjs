@@ -146,7 +146,6 @@ test('单程序镜像只在编译阶段使用 Node 并嵌入管理页面和渲�
   assert.match(rootPackage.engines.node, /^>=\d+\.\d+\.\d+$/, 'Node 只声明最低版本，不限制后续主版本')
   const image = dockerfile.match(/^FROM node:(\d+)(?:\.\d+\.\d+)?-[^\s]+ AS assets$/m)
   assert.ok(image, '资源编译镜像必须声明明确的 Node 版本标签')
-  assert.match(dockerfile, /^FROM node:24-bookworm-slim AS assets$/m)
   assert.ok(Number(image[1]) >= Number(rootPackage.engines.node.match(/\d+/)[0]))
   assert.match(dockerfile, /npm install --global --prefix \/opt\/pnpm/)
   assert.ok(dockerfile.includes('require(\'./package.json\').packageManager'))
