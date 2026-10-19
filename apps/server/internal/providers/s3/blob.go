@@ -240,8 +240,9 @@ func parsePublicBaseURL(value string, requireHTTPS bool) (*url.URL, error) {
 	return publicBaseURL, nil
 }
 
+// validateKey accepts safe legacy object keys but reserves snapshots for the publish store.
 func validateKey(key string) error {
-	if !strings.HasPrefix(key, "assets/") || strings.HasPrefix(key, "/") || strings.Contains(key, "\\") || path.Clean(key) != key || key == "." {
+	if key == "snapshots" || strings.HasPrefix(key, "snapshots/") || strings.HasPrefix(key, "/") || strings.Contains(key, "\\") || path.Clean(key) != key || key == "." {
 		return domain.ErrInvalidInput
 	}
 	for _, segment := range strings.Split(key, "/") {

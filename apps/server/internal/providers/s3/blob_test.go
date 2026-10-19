@@ -20,6 +20,7 @@ import (
 	"yujian.me/server/internal/ports"
 )
 
+// TestBlobStoreSupportsSignedAndServerSideObjectOperations checks media and legacy-key flows.
 func TestBlobStoreSupportsSignedAndServerSideObjectOperations(t *testing.T) {
 	digest := sha256.Sum256([]byte("payload"))
 	checksum := fmt.Sprintf("sha256:%x", digest)
@@ -112,6 +113,24 @@ func TestBlobStoreSupportsSignedAndServerSideObjectOperations(t *testing.T) {
 	if err != nil || !strings.Contains(readURL, "X-Amz-Signature=") {
 		t.Fatalf("unexpected read URL %q err=%v", readURL, err)
 	}
+
+	legacyKey := "legacy/asset/cover.webp"
+	legacyURL, err := store.PublicURL(context.Background(), legacyKey)
+	if err != nil || legacyURL != "https://media.example.test/base/legacy/asset/cover.webp" {
+		t.Fatalf("unexpected legacy public URL %q err=%v", legacyURL, err)
+	}
+	if err := store.Put(context.Background(), legacyKey, bytes.NewReader([]byte("payload")), metadata); err != nil {
+		t.Fatalf("put legacy object: %v", err)
+	}
+	if _, err := store.Stat(context.Background(), legacyKey); err != nil {
+		t.Fatalf("stat legacy object: %v", err)
+	}
+	if err := store.Delete(context.Background(), legacyKey); err != nil {
+		t.Fatalf("delete legacy object: %v", err)
+	}
+	if _, err := store.SignedReadURL(context.Background(), legacyKey, 5*time.Minute); err != nil {
+		t.Fatalf("sign legacy read URL: %v", err)
+	}
 }
 
 func TestS3HTTPClientUsesBoundedTimeoutInProduction(t *testing.T) {
@@ -121,6 +140,7 @@ func TestS3HTTPClientUsesBoundedTimeoutInProduction(t *testing.T) {
 	}
 }
 
+// TestBlobStoreMapsMissingObject distinguishes a missing object from storage failures.
 func TestBlobStoreMapsMissingObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusNotFound)
@@ -218,10 +238,18 @@ func TestNewBlobStoreRejectsInvalidPublicBaseURL(t *testing.T) {
 	}
 }
 
+// TestBlobStoreRejectsParentDirectoryObjectKeys rejects traversal and publish-store keys.
 func TestBlobStoreRejectsParentDirectoryObjectKeys(t *testing.T) {
-	for _, key := range []string{"..", "../escape", "assets/../escape"} {
+	for _, key := range []string{"..", "../escape", "assets/../escape", "snapshots/rel_test/content.json"} {
 		if err := validateKey(key); !errors.Is(err, domain.ErrInvalidInput) {
 			t.Fatalf("expected invalid key %q, got %v", key, err)
 		}
+	}
+}
+
+// TestBlobStoreAcceptsSafeLegacyObjectKeys keeps historical media addresses usable.
+func TestBlobStoreAcceptsSafeLegacyObjectKeys(t *testing.T) {
+	if err := validateKey("legacy/asset/cover.webp"); err != nil {
+		t.Fatalf("rejected safe legacy object key: %v", err)
 	}
 }
