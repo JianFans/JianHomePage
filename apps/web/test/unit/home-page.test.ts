@@ -41,7 +41,7 @@ describe('公开首页', () => {
     expect(footer.find('[href="https://yujian.me"]').exists()).toBe(true)
     expect(footer.find('.platform-links').exists()).toBe(false)
     expect(wrapper.findAll('#artist .platform-links')).toHaveLength(1)
-    expect(wrapper.findAll('#artist .platform-links__desktop [aria-label="微博"], #artist .platform-links__desktop [aria-label="Weibo"]')).toHaveLength(1)
+    expect(wrapper.findAll('#artist .platform-links__desktop [aria-label="微博 W"], #artist .platform-links__desktop [aria-label="Weibo W"]')).toHaveLength(1)
     wrapper.unmount()
   })
 })

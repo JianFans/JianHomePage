@@ -58,7 +58,7 @@ function durationLabel(seconds: number) {
         :href="card.link.url"
         target="_blank"
         rel="noopener noreferrer"
-        :aria-label="`${labels.open}: ${resolveLocalized(card.video.title, locale)}`"
+        :title="`${labels.open}: ${resolveLocalized(card.video.title, locale)}`"
       >
         <FallbackImage
           :src="card.poster.src"

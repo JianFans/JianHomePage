@@ -54,7 +54,7 @@ const labels = computed(() => props.locale === 'en'
       ref="identity"
       class="site-identity"
       href="#top"
-      :aria-label="labels.home"
+      :title="labels.home"
     >
       <span>{{ brand }}</span>
       <small>{{ artistName }}</small>

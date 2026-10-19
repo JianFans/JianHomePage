@@ -28,7 +28,6 @@ const hostname = computed(() => {
       <a
         class="site-footer__identity"
         :href="canonicalUrl"
-        :aria-label="brand"
       >
         <strong>{{ brand }}</strong>
         <small>{{ hostname }} · © {{ copyrightYear }}</small>

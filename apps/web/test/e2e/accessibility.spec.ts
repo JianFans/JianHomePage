@@ -19,20 +19,30 @@ test.use({
   viewport: { width: 1440, height: 1000 },
 })
 
-test('首页通过 axe 自动无障碍扫描', async ({ page }) => {
-  await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+for (const locale of ['zh-CN', 'en-US']) {
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+    test.describe(`无障碍扫描 ${locale} ${viewport.width}`, () => {
+      test.use({ locale, viewport })
 
-  const results = await new AxeBuilder({ page }).analyze()
-  expect(results.violations).toEqual([])
-})
+      test('首页通过 axe 自动无障碍扫描', async ({ page }) => {
+        await page.goto('/')
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+        await expect(page.locator('html')).toHaveAttribute('lang', locale === 'en-US' ? 'en' : 'zh-CN')
+        if (viewport.width === 390) await page.getByTestId('platform-more').first().locator('summary').click()
+
+        const results = await new AxeBuilder({ page }).analyze()
+        expect(results.violations).toEqual([])
+      })
+    })
+  }
+}
 
 test('导航、播放、平台和语言操作都可由键盘访问', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
   const targets = [
-    page.getByRole('link', { name: '首页', exact: true }),
+    page.getByRole('link', { name: /遇健我.*王子健/ }),
     page.getByRole('link', { name: '音乐', exact: true }),
     page.getByRole('button', { name: 'Switch to English' }),
     page.getByTestId('preview-trigger').first(),

@@ -44,7 +44,7 @@ const dateFormatter = computed(() => new Intl.DateTimeFormat(
             :href="event.detailUrl"
             target="_blank"
             rel="noopener noreferrer"
-            :aria-label="`${labels.open}: ${resolveLocalized(event.title, locale)}`"
+            :title="`${labels.open}: ${resolveLocalized(event.title, locale)}`"
           >
             <time :datetime="event.dateTime">
               {{ dateFormatter.format(new Date(event.dateTime)) }}

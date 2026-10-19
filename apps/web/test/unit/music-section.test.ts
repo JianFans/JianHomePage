@@ -84,6 +84,18 @@ describe('MusicSection', () => {
 })
 
 describe('PlatformLinks', () => {
+  it.each(['zh-CN', 'en'] as const)('平台按钮在 %s 下保留自定义名称与可见标记', (locale) => {
+    const wrapper = mount(PlatformLinks, {
+      props: {
+        locale,
+        links: [{ provider: 'netease-music', url: 'https://music.163.com/', label: { 'zh-CN': '试听', en: 'Listen' } }],
+      },
+    })
+    for (const link of wrapper.findAll('a')) {
+      expect(link.attributes('aria-label')).toBe(`${locale === 'en' ? 'Listen' : '试听'} 163`)
+    }
+  })
+
   it('允许靠左的平台组让移动菜单向右展开', () => {
     const wrapper = mount(PlatformLinks, {
       props: {

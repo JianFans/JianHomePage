@@ -76,6 +76,11 @@ function labelFor(link: PlatformLink) {
   const custom = link.label?.[props.locale] || link.label?.['zh-CN']
   return custom || metaFor(link).label[props.locale]
 }
+
+/** Keep the visible platform mark in the spoken name, including with custom labels. */
+function buttonLabelFor(link: PlatformLink) {
+  return [labelFor(link), metaFor(link).mark].filter(Boolean).join(' ')
+}
 </script>
 
 <template>
@@ -95,7 +100,7 @@ function labelFor(link: PlatformLink) {
           :href="link.url"
           target="_blank"
           rel="noopener noreferrer"
-          :aria-label="labelFor(link)"
+          :aria-label="buttonLabelFor(link)"
         >
           <component
             :is="metaFor(link).icon"
@@ -115,7 +120,7 @@ function labelFor(link: PlatformLink) {
           :href="safeLinks[0]!.url"
           target="_blank"
           rel="noopener noreferrer"
-          :aria-label="labelFor(safeLinks[0]!)"
+          :aria-label="buttonLabelFor(safeLinks[0]!)"
         >
           <component
             :is="metaFor(safeLinks[0]!).icon"
