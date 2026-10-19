@@ -22,6 +22,8 @@
 
 ## 环境变量
 
+默认从当前工作目录读取 `.env`，不搜索父目录；进程环境变量优先，包括显式空值。缺失 `.env` 时继续读取环境变量，文件读取或解析失败则拒绝启动。模板见根目录 [.env.example](../../.env.example)，凭据来源见 [部署说明](../../docs/DEPLOYMENT.md#环境变量)。`--help`、`--version` 和 `--export-site` 不加载该文件。
+
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `APP_ENV` | `development` | `production` 时强制要求数据库和 OIDC 配置，并禁止开发身份。 |
@@ -45,7 +47,7 @@
 | `S3_SESSION_TOKEN` | 空 | 可选临时凭据 Token。 |
 | `S3_USE_PATH_STYLE` | `false` | 服务商要求 path-style URL 时设置为 `true`。 |
 | `MEDIA_PUBLIC_BASE_URL` | 空 | 生产环境必填；素材的稳定 HTTPS 公开基址，例如接入 EdgeOne 的 `https://media.yujian.me`。不得包含凭据、查询参数或片段。 |
-| `PAGES_API_TOKEN` | 空 | 生产环境必填；Pages API Token，只从环境变量或密钥服务读取。 |
+| `PAGES_API_TOKEN` | 空 | 生产环境必填；Pages API Token，从 `.env`、环境变量或密钥服务注入。 |
 | `PAGES_PROJECT_ID` | 空 | 生产环境必填；Direct Upload 项目的 ID。 |
 | `PAGES_REGION` | 空 | 生产环境必填；`china` 或 `global`。 |
 | `PAGES_PUBLIC_URL` | 空 | 生产环境必填；公开站 HTTPS 基址，不得包含凭据、查询参数或片段。 |
@@ -87,7 +89,7 @@ go run ./cmd/api
 
 服务入口提供管理页面 `/`、隔离预览 `/preview` 和 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 SHA-256；上传成功后可通过与内容契约一致的 `/media/*` 路径读取，便于本地 API 调试和内容快照引用。生产环境不会自动降级到内存仓储；启动时加载配置、探测 PostgreSQL、校验 S3、事务执行迁移，并校验 Pages、发布仓储和内嵌资源后注册路由。任一步失败都会关闭已打开的数据库并拒绝启动。
 
-日常部署从 GitHub Releases 下载 Linux amd64 或 arm64 的 `.tar.gz`，并用同一 Release 的 `SHA256SUMS.txt` 校验。Actions 的 `Check Code` 也会生成同名架构的临时下载包，保留 7 天；手动 `Release` 先同步四份 Node 清单和 `cmd/api/version.go` 的应用版本，创建版本提交和标签并原子推送，随后针对该提交执行完整门禁并发布。应用版本独立于 `go.mod` 的工具链版本和内容 Schema 版本。包内只有 `yujian-server` 和记录版本、代码提交及架构的 `BUILD-INFO.txt`，运行时不依赖它旁边的源码或资源文件；`yujian-server --version` 无需配置即可查看程序版本。准备成功后，失败重跑应选 **Re-run failed jobs** 保留该版本提交；详细权限和恢复步骤见 [部署操作指南](../../docs/DEPLOYMENT.md#2-在-github-actions-编译并下载)。
+正式部署使用 Releases 中的 Linux amd64／arm64 裸二进制及 `SHA256SUMS.txt`，`--version` 查看应用版本。`Check Code` 的二进制制品保留 7 天；`Release` 先同步 Node／Go 版本并原子推送 commit 和 tag，再检查与构建该提交。工具链版本与内容 Schema 版本独立；配置、启动和失败恢复见 [部署说明](../../docs/DEPLOYMENT.md)。
 
 仅开发时需要自行编译：在仓库根目录运行 `pnpm build:server`，输出 `dist/yujian-server`，Windows 为 `dist/yujian-server.exe`。此命令生成前端资源并编译 Go，不自动运行测试。交付二进制已包含管理端、SSR 渲染器和公开浏览器资源，目标机器无需安装 Node.js。`GOOS`、`GOARCH` 可用于指定编译目标。
 
@@ -105,7 +107,7 @@ go run ./cmd/api
 
 Go 标准库会编入 API 二进制。修复标准库漏洞时，需要更新 `Dockerfile` 构建阶段的 Go 补丁版本并重新构建；仅更新 distroless 运行镜像不能替换二进制中的标准库。CI 会扫描最终镜像，并阻止包含 HIGH 或 CRITICAL 漏洞的镜像通过。
 
-生产部署优先使用 Actions 已发布的 `ghcr.io/jianfans/jianhomepage:vX.Y.Z`，将标签换成实际 Release 版本。当前镜像支持 Linux amd64，ARM64 服务器使用 Releases 中的单程序包。镜像可见性及拉取要求见 [部署操作指南](../../docs/DEPLOYMENT.md)。不要在生产使用浮动的 `latest` 标签。
+生产部署可使用 Actions 发布的 `ghcr.io/jianfans/jianhomepage:vX.Y.Z`。镜像目前支持 Linux amd64，ARM64 使用 Releases 裸二进制。私有包需要拉取权限，生产固定版本标签。
 
 以下命令仅用于开发时自行构建镜像并执行开发模式健康检查：
 
@@ -116,31 +118,7 @@ curl --fail http://127.0.0.1:8080/healthz
 docker rm --force yujian-server-local
 ```
 
-生产部署应由编排平台注入下文列出的环境变量和密钥。不要在 Dockerfile、镜像层、构建参数或提交的 `.env` 文件中保存凭据。容器默认以 `nonroot` 用户运行并监听 `0.0.0.0:8080`；EdgeOne 回源和 TLS 在容器外配置。
-
-生产运行示例：
-
-```powershell
-$env:APP_ENV = "production"
-$env:HTTP_ADDRESS = "0.0.0.0:8080"
-$env:DATABASE_URL = "postgres://..."
-$env:OIDC_ISSUER = "https://id.example.com"
-$env:OIDC_AUDIENCE = "yujian-admin"
-$env:ADMIN_ALLOWED_ORIGINS = "https://admin.yujian.me"
-$env:S3_ENDPOINT = "https://cos.ap-singapore.myqcloud.com"
-$env:S3_REGION = "ap-singapore"
-$env:S3_BUCKET = "yujian-media"
-$env:S3_ACCESS_KEY_ID = "..."
-$env:S3_SECRET_ACCESS_KEY = "..."
-$env:MEDIA_PUBLIC_BASE_URL = "https://media.yujian.me"
-$env:PAGES_API_TOKEN = "..."
-$env:PAGES_PROJECT_ID = "your-pages-project-id"
-$env:PAGES_REGION = "global"
-$env:PAGES_PUBLIC_URL = "https://yujian.me"
-.\dist\yujian-server.exe
-```
-
-生产示例在仓库根目录运行，浏览器登录还需配置前文的 `ADMIN_OIDC_*`、`ADMIN_RETURN_URL` 与 `ADMIN_SESSION_KEY`。管理域名的 HTTPS 反向代理应将 `/`、`/preview`、`/_nuxt/*` 和 `/api/*` 转发至同一进程；公开域名由 Pages 分发。管理端跨域请求只接受 `ADMIN_ALLOWED_ORIGINS` 中的精确 Origin；未知来源和非 HTTPS 生产来源会被拒绝。
+生产通过环境变量或容器工作目录下只读挂载的 `.env` 提供配置，使用根 [.env.example](../../.env.example) 中的完整字段。不要把凭据写入镜像。容器以 `nonroot` 用户运行，默认监听 `0.0.0.0:8080`。管理域名 HTTPS 回源覆盖 `/`、`/preview`、`/_nuxt/*` 和 `/api/*`；公开域名由 Pages 分发。
 
 COS 桶还需单独配置浏览器直传 CORS：Origin 与 `ADMIN_ALLOWED_ORIGINS` 保持一致，允许 `PUT`、`HEAD`，并放行 `Content-Type`、`X-Amz-Checksum-Sha256` 请求头。公开读取建议通过 `MEDIA_PUBLIC_BASE_URL` 对应的 EdgeOne 域名，不直接暴露带凭据或签名参数的存储端点。
 

@@ -196,7 +196,7 @@ PostgreSQL 集成测试需要显式设置 `YUJIAN_TEST_POSTGRES_URL`，否则会
 
 第一次需要配置云服务和账号登录，并设置 `PAGES_API_TOKEN`、`PAGES_PROJECT_ID`、`PAGES_REGION`、`PAGES_PUBLIC_URL`。配置完成后，日常更新只需在后台编辑、保存、审核、点发布；Go worker 自动生成和上传网页。
 
-无需本地编译：在 GitHub **Actions → Release → Run workflow** 选择版本递增方式，第一次建议选 `minor`。工作流先同步四份 `package.json` 和 Go 应用版本，创建版本提交和标签并原子推送，再对该提交执行完整检查和构建。成功后从 **Releases** 下载服务器对应的 `.tar.gz` 和 `SHA256SUMS.txt`，校验、解压并安装；运行 `yujian-server --version` 查看程序版本。工作流同时发布 GHCR 镜像，目前镜像支持 Linux amd64，ARM64 使用单程序包。编译机器和服务器都不需要手工放置管理页面；Node.js 和 Go 只安装在 Actions 构建环境。Actions 机器人需有默认分支和版本标签的写入权限；失败恢复说明见 [部署操作指南](docs/DEPLOYMENT.md#2-在-github-actions-编译并下载)。
+手动运行 GitHub Actions 的 `Release`，同步 Node／Go 版本并创建 commit 和 tag，通过完整检查后发布 Linux amd64／arm64 裸二进制、校验和与 GHCR amd64 镜像。将 [.env.example](.env.example) 复制为服务工作目录的 `.env`，填写后启动；服务器无需 Node.js 或 Go。配置与凭据获取方式见 [部署说明](docs/DEPLOYMENT.md)。
 
 Actions 发布程序文件，不会自动更新你的服务器或公开首页。服务器启动后的日常内容发布仍由 Go 程序连接腾讯云完成。已有数据库的升级注意事项见 [服务端安全与运维](apps/server/README.md#安全与运维)，发布中断后的处理见 [内置 Pages 发布与恢复](apps/server/README.md#内置-pages-发布与恢复)。云端创建结果不明时不会自动重试，需要管理员核实后恢复。
 
