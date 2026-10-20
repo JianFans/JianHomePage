@@ -192,7 +192,7 @@ func (service *Service) ApproveReview(
 		return domain.ContentVersion{}, domain.ErrForbidden
 	}
 	return service.mutate(ctx, actor, id, expectedRevision, "content.approve_review", nil, func(version *domain.ContentVersion) error {
-		if version.Status != domain.StatusInReview {
+		if version.Status != domain.StatusInReview || version.ReviewApproved {
 			return domain.ErrInvalidTransition
 		}
 		version.ReviewApproved = true

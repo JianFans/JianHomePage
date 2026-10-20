@@ -199,7 +199,25 @@ func TestReviewRequiresReviewerAndValidTransition(t *testing.T) {
 		t.Fatalf("unexpected approved version %#v", approved)
 	}
 
-	rejected, err := service.RejectReview(ctx, reviewer, approved.ID, approved.Revision, "needs changes")
+	auditCount := len(store.audits)
+	if _, err := service.ApproveReview(ctx, reviewer, approved.ID, approved.Revision); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("approved version must not be approved again: %v", err)
+	}
+	if _, err := service.RejectReview(ctx, reviewer, approved.ID, approved.Revision, "late rejection"); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("approved version must not be rejected: %v", err)
+	}
+	if stored := store.versions[approved.ID]; stored.Revision != approved.Revision || !stored.ReviewApproved || len(store.audits) != auditCount {
+		t.Fatalf("completed review was mutated: %#v", stored)
+	}
+}
+
+// TestRejectPendingReviewReturnsDraft preserves rejection before approval.
+func TestRejectPendingReviewReturnsDraft(t *testing.T) {
+	store := newMemoryStore()
+	service := newServiceForTest(store, validatorStub{})
+	version := domain.ContentVersion{ID: "ver_bdbb0538-f839-4221-a47d-d9d0a990ea63", Status: domain.StatusInReview, Revision: 2, Snapshot: validSnapshot()}
+	store.versions[version.ID] = version
+	rejected, err := service.RejectReview(context.Background(), principal("reviewer-1", domain.RoleReviewer), version.ID, version.Revision, "needs changes")
 	if err != nil {
 		t.Fatalf("reject review: %v", err)
 	}

@@ -1,6 +1,12 @@
 import type { AdminLocale } from './admin-locale'
+import type { AdminVersionSummary } from './admin-api'
 
 export type StudioModule = 'overview' | 'homepage' | 'music' | 'video' | 'event' | 'moment' | 'assets' | 'history'
+
+/** 将已完成审核的待发布版本与仍在审核的版本区分，不改变 API 状态契约。 */
+export function studioVersionStatus(version: Pick<AdminVersionSummary, 'status' | 'reviewApproved'>) {
+  return version.status === 'in_review' && version.reviewApproved === true ? 'approved' : version.status
+}
 
 /** CMS 壳层共享双语文案，不把界面标签或语言写入内容快照。 */
 export function studioCopy(locale: AdminLocale) {
@@ -10,7 +16,7 @@ export function studioCopy(locale: AdminLocale) {
     logout: 'Sign out', language: '切换中文', menu: 'Open navigation', close: 'Close', collapse: 'Collapse navigation', expand: 'Expand navigation',
     save: 'Save draft', saved: 'Saved', unsaved: 'Unsaved changes', readonly: 'Read only', preview: 'Preview', tools: 'Snapshot tools', clone: 'Create from version', cloneName: 'Version name', create: 'Create draft',
     noVersion: 'No content version', initialDraft: 'Initial draft', firstVersion: 'Edit the initial content and save your first version.', latest: 'Recent versions', more: 'Load more', refresh: 'Refresh', source: 'Based on', revision: 'Revision',
-    statuses: { draft: 'Draft', in_review: 'In review', publishing: 'Publishing', published: 'Published', archived: 'Archived' },
+    statuses: { draft: 'Draft', in_review: 'In review', approved: 'Approved', publishing: 'Publishing', published: 'Published', archived: 'Archived' },
     leaveTitle: 'Keep your changes?', leaveHint: 'Save before continuing, or discard the changes in the current context.', keep: 'Keep editing', discard: 'Discard and continue', saveContinue: 'Save and continue',
     import: 'Import JSON', export: 'Export snapshot', editor: 'JSON snapshot editor', valid: 'Valid', invalid: 'Invalid snapshot', formInvalid: 'Check the highlighted fields. Your input has been kept.',
     submit: 'Submit review', approve: 'Approve', reject: 'Return to draft', reason: 'Return reason', publish: 'Publish', rollback: 'Rollback', confirm: 'Confirm', publishingHint: 'This changes the public site. Continue?',
@@ -23,7 +29,7 @@ export function studioCopy(locale: AdminLocale) {
     logout: '退出登录', language: 'Switch to English', menu: '打开导航', close: '关闭', collapse: '收起导航', expand: '展开导航',
     save: '保存草稿', saved: '已保存', unsaved: '未保存更改', readonly: '只读', preview: '预览', tools: '快照工具', clone: '基于此版本新建', cloneName: '版本名称', create: '新建草稿',
     noVersion: '尚无内容版本', initialDraft: '初始草稿', firstVersion: '编辑初始内容并保存，即可创建第一个版本。', latest: '最近版本', more: '加载更多', refresh: '刷新', source: '来源', revision: '修订',
-    statuses: { draft: '草稿', in_review: '审核中', publishing: '发布中', published: '已发布', archived: '已归档' },
+    statuses: { draft: '草稿', in_review: '审核中', approved: '审核通过', publishing: '发布中', published: '已发布', archived: '已归档' },
     leaveTitle: '保留当前更改？', leaveHint: '保存后继续，或放弃当前上下文中的更改。', keep: '继续编辑', discard: '放弃并继续', saveContinue: '保存并继续',
     import: '导入 JSON', export: '导出快照', editor: 'JSON 快照编辑器', valid: '有效', invalid: '快照无效', formInvalid: '请检查表单字段，当前输入已保留。',
     submit: '提交审核', approve: '通过审核', reject: '退回草稿', reason: '退回原因', publish: '发布', rollback: '回滚', confirm: '确认', publishingHint: '此操作会改变公开站点，是否继续？',

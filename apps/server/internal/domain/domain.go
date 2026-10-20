@@ -50,7 +50,7 @@ func CanTransition(from, to ContentStatus, reviewApproved bool) bool {
 	case from == StatusDraft && to == StatusInReview:
 		return true
 	case from == StatusInReview && to == StatusDraft:
-		return true
+		return !reviewApproved
 	case from == StatusInReview && to == StatusPublished:
 		return reviewApproved
 	case from == StatusInReview && to == StatusPublishing:

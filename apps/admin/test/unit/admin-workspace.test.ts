@@ -433,6 +433,11 @@ describe('管理工作区', () => {
     expect(workspace.canApprove).toBe(true)
     await workspace.approveReview()
     expect(workspace.canPublish).toBe(true)
+    workspace.rejectReason = 'Too late to reject'
+    const callsAfterApproval = fetcher.mock.calls.length
+    await workspace.approveReview()
+    await workspace.rejectReview()
+    expect(fetcher.mock.calls).toHaveLength(callsAfterApproval)
 
     await workspace.publish()
     expect(workspace.version).toMatchObject({ status: 'publishing', revision: 5 })

@@ -92,6 +92,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   const canSave = computed(() => editable.value && Boolean(editorAnalysis.value.snapshot) && !busy.value)
   const canSubmitReview = computed(() => version.value?.status === 'draft' && !busy.value && !dirty.value)
   const canApprove = computed(() => version.value?.status === 'in_review' && !version.value.reviewApproved && !busy.value && !dirty.value)
+  const canReject = computed(() => canApprove.value && Boolean(rejectReason.value.trim()))
   const canPublish = computed(() => version.value?.status === 'in_review' && version.value.reviewApproved === true && !busy.value && !dirty.value)
   const canRollback = computed(() => (version.value?.status === 'published' || version.value?.status === 'archived') && !busy.value)
 
@@ -252,14 +253,14 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
 
   /** 批准当前审核版本，并同步审核状态。 */
   async function approveReview() {
-    if (!version.value || dirty.value || busy.value) return
+    if (!canApprove.value) return
     const result = await run('reviewing', () => api().approveReview(version.value!.id, version.value!.revision), locale.value === 'en' ? 'Review approved' : '审核已通过')
     if (result) setVersion(result)
   }
 
   /** 校验退回原因后将当前审核版本退回草稿。 */
   async function rejectReview() {
-    if (busy.value || dirty.value) return
+    if (!canApprove.value) return
     if (!version.value || !rejectReason.value.trim()) {
       workflow.value = workflowError({ message: locale.value === 'en' ? 'Enter a return reason' : '请填写退回原因' })
       return
@@ -366,6 +367,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     canSave,
     canSubmitReview,
     canApprove,
+    canReject,
     canPublish,
     canRollback,
     loadVersion,
