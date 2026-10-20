@@ -30,6 +30,9 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', visibilit
     tag="div"
     class="toast-viewport"
     data-testid="toast-viewport"
+    role="region"
+    :aria-label="locale === 'en' ? 'Messages' : '消息提示'"
+    :tabindex="items.length ? 0 : -1"
   >
     <article
       v-for="item in items"
@@ -68,8 +71,10 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', visibilit
 </template>
 
 <style scoped>
-.toast-viewport { position: fixed; z-index: 120; bottom: max(1.25rem, env(safe-area-inset-bottom)); right: max(1rem, env(safe-area-inset-right)); display: flex; flex-direction: column; align-items: flex-end; gap: .65rem; pointer-events: none; }
-.toast-message { --toast-accent: var(--info, #a7bfd5); box-sizing: border-box; inline-size: max-content; max-inline-size: min(28rem, calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right))); pointer-events: auto; display: grid; grid-template-columns: 1.15rem minmax(0, 1fr) 2.75rem; align-items: center; gap: .7rem; padding: .6rem .6rem .6rem 1rem; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-left: 3px solid var(--toast-accent); border-radius: .7rem; box-shadow: 0 8px 32px #0005; }
+.toast-viewport { position: fixed; z-index: 120; bottom: max(1.25rem, env(safe-area-inset-bottom)); right: max(1rem, env(safe-area-inset-right)); max-block-size: calc(100dvh - max(1.25rem, env(safe-area-inset-bottom)) - max(1rem, env(safe-area-inset-top))); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; align-items: flex-end; gap: .65rem; pointer-events: none; }
+/* 保留滚轮、触控和键盘滚动，避免出入动画的临时溢出闪现滚动条。 */
+.toast-viewport::-webkit-scrollbar { display: none; }
+.toast-message { --toast-accent: var(--info, #a7bfd5); flex-shrink: 0; box-sizing: border-box; inline-size: max-content; max-inline-size: min(28rem, calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right))); pointer-events: auto; display: grid; grid-template-columns: 1.15rem minmax(0, 1fr) 2.75rem; align-items: center; gap: .7rem; padding: .6rem .6rem .6rem 1rem; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-left: 3px solid var(--toast-accent); border-radius: .7rem; box-shadow: 0 8px 32px #0005; }
 .toast-message > svg { color: var(--toast-accent); }
 .toast-message p { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
 .toast-message--success { --toast-accent: var(--accent, #9ebdb5); }
