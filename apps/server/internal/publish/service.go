@@ -151,12 +151,13 @@ func (service *Service) Publish(
 	defer func() {
 		returnErr = failureAt(stage, returnErr)
 		if returnErr != nil {
-			if result.VersionID == "" {
-				result.VersionID = versionID
-				result.RequestedBy = actor.Subject
-				result.Operation = domain.PublishOperationPublish
+			loggedJob := result
+			if loggedJob.VersionID == "" {
+				loggedJob.VersionID = versionID
+				loggedJob.RequestedBy = actor.Subject
+				loggedJob.Operation = domain.PublishOperationPublish
 			}
-			lifecycleError(ctx, actor, result, returnErr)
+			lifecycleError(ctx, actor, loggedJob, returnErr)
 		}
 	}()
 	if !hasPermission(actor, auth.PermissionPublish) {
@@ -236,12 +237,13 @@ func (service *Service) Rollback(
 	defer func() {
 		returnErr = failureAt(stage, returnErr)
 		if returnErr != nil {
-			if result.VersionID == "" {
-				result.VersionID = versionID
-				result.RequestedBy = actor.Subject
-				result.Operation = domain.PublishOperationRollback
+			loggedJob := result
+			if loggedJob.VersionID == "" {
+				loggedJob.VersionID = versionID
+				loggedJob.RequestedBy = actor.Subject
+				loggedJob.Operation = domain.PublishOperationRollback
 			}
-			lifecycleError(ctx, actor, result, returnErr)
+			lifecycleError(ctx, actor, loggedJob, returnErr)
 		}
 	}()
 	if !hasPermission(actor, auth.PermissionRollback) {

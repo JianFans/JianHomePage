@@ -165,6 +165,41 @@ func TestPublishSnapshotValidationDoesNotLogSnapshotDetails(t *testing.T) {
 	}
 }
 
+// TestAdmissionFailureLogsDoNotChangeReturnedJobs preserves empty error results while retaining diagnostic context.
+func TestAdmissionFailureLogsDoNotChangeReturnedJobs(t *testing.T) {
+	for _, operation := range []domain.PublishOperation{domain.PublishOperationPublish, domain.PublishOperationRollback} {
+		for _, scenario := range []struct {
+			name, key string
+			actor     domain.Principal
+			wantErr   error
+		}{
+			{"forbidden", "admission-forbidden", domain.Principal{Subject: "editor-1", Roles: []domain.Role{domain.RoleEditor}}, domain.ErrForbidden},
+			{"invalid key", "bad", publisher(), domain.ErrInvalidInput},
+			{"missing version", "admission-missing", publisher(), domain.ErrNotFound},
+		} {
+			t.Run(string(operation)+"/"+scenario.name, func(t *testing.T) {
+				service := publishServiceForTest(newMemoryRepository(), newBlobStoreFake(), &buildTriggerFake{statuses: make(map[string]ports.BuildRun)})
+				admit := service.Publish
+				if operation == domain.PublishOperationRollback {
+					admit = service.Rollback
+				}
+				ctx, output := publishLogContext(t)
+				job, err := admit(ctx, scenario.actor, "ver_missing", scenario.key)
+				if !errors.Is(err, scenario.wantErr) {
+					t.Fatalf("failure classification changed: %v", err)
+				}
+				if job != (domain.PublishJob{}) {
+					t.Errorf("logging populated an empty error result: %#v", job)
+				}
+				entry := requirePublishEvent(t, output, "publish operation failed", "WARN")
+				if entry["version_id"] != "ver_missing" || entry["actor_subject"] != scenario.actor.Subject || entry["operation"] != string(operation) {
+					t.Fatalf("failure log lost admission context: %#v", entry)
+				}
+			})
+		}
+	}
+}
+
 // TestPublishLogsDoNotEchoInvalidRequestedVersionIDs prevents caller paths from becoming log fields.
 func TestPublishLogsDoNotEchoInvalidRequestedVersionIDs(t *testing.T) {
 	service := publishServiceForTest(newMemoryRepository(), newBlobStoreFake(), &buildTriggerFake{statuses: make(map[string]ports.BuildRun)})
