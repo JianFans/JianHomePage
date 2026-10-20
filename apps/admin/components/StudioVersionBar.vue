@@ -3,7 +3,7 @@ import { CopyPlus, History } from '@lucide/vue'
 import { computed } from 'vue'
 import type { AdminVersion, AdminVersionSummary } from '../utils/admin-api'
 import type { AdminLocale } from '../utils/admin-locale'
-import { studioCopy } from '../utils/studio-copy'
+import { studioCopy, studioVersionStatus } from '../utils/studio-copy'
 
 const props = defineProps<{ version: AdminVersion | null; versions: AdminVersionSummary[]; locale: AdminLocale; busy: boolean; canClone: boolean }>()
 const emit = defineEmits<{ select: [id: string]; clone: []; history: [] }>()
@@ -46,9 +46,9 @@ function selectVersion(event: Event) {
       >
         <span
           class="studio-status-dot"
-          :data-status="item.status"
+          :data-status="studioVersionStatus(item)"
           aria-hidden="true"
-        /><span>{{ item.name || item.id }}</span><small>{{ copy.statuses[item.status] }}</small>
+        /><span>{{ item.name || item.id }}</span><small>{{ copy.statuses[studioVersionStatus(item)] }}</small>
       </button>
       <span
         v-if="!visible.length"
@@ -73,7 +73,7 @@ function selectVersion(event: Event) {
         :key="item.id"
         :value="item.id"
       >
-        {{ item.name || item.id }} · {{ copy.statuses[item.status] }}
+        {{ item.name || item.id }} · {{ copy.statuses[studioVersionStatus(item)] }}
       </option>
     </select>
     <div class="studio-version-actions">

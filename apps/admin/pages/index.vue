@@ -13,7 +13,7 @@ import StudioDialog from '../components/StudioDialog.vue'
 import ToastViewport from '../components/ToastViewport.vue'
 import { useStudioWorkspace } from '../composables/useStudioWorkspace'
 import { persistAdminLocale, resolveAdminLocale, type AdminLocale } from '../utils/admin-locale'
-import type { StudioModule } from '../utils/studio-copy'
+import { studioVersionStatus, type StudioModule } from '../utils/studio-copy'
 
 const locale = ref<AdminLocale>('zh-CN')
 const studio = reactive(useStudioWorkspace(locale))
@@ -288,8 +288,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
                   <span
                     v-if="workspace.version"
                     class="studio-status"
-                    :data-status="workspace.version.status"
-                  >{{ copy.statuses[workspace.version.status] }}</span><span>{{ studio.locked && !workspace.busy ? copy.readonly : studio.unsaved ? copy.unsaved : copy.saved }}</span><span v-if="workspace.version">{{ copy.revision }} {{ workspace.version.revision }}</span>
+                    :data-status="studioVersionStatus(workspace.version)"
+                  >{{ copy.statuses[studioVersionStatus(workspace.version)] }}</span><span>{{ studio.locked && !workspace.busy ? copy.readonly : studio.unsaved ? copy.unsaved : copy.saved }}</span><span v-if="workspace.version">{{ copy.revision }} {{ workspace.version.revision }}</span>
                 </div>
               </div>
               <button
@@ -473,11 +473,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
           />{{ copy.approve }}
         </button><label class="studio-field"><span>{{ copy.reason }}</span><input
           v-model="workspace.rejectReason"
-          :disabled="workspace.busy"
+          :disabled="!workspace.canApprove || !studio.canReview"
         ></label><button
           class="button button--danger"
           type="button"
-          :disabled="workspace.busy || !studio.canReview || !workspace.rejectReason.trim() || workspace.version?.status !== 'in_review'"
+          :disabled="!workspace.canReject || !studio.canReview"
           @click="workspace.rejectReview"
         >
           {{ copy.reject }}
