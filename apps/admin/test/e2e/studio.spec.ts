@@ -296,6 +296,7 @@ test('窄屏长 Toast 保持在视口内，可滚动阅读并用键盘关闭', a
   const oldest = viewport.locator('.toast-message').last()
   await expect(oldest).toContainText('End 1')
   const dismiss = oldest.getByRole('button', { name: 'Dismiss message' })
+  await dismiss.scrollIntoViewIfNeeded()
   await dismiss.focus()
   const buttonBounds = await dismiss.boundingBox()
   expect(buttonBounds!.y).toBeGreaterThanOrEqual(0)
