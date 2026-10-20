@@ -175,6 +175,62 @@ func TestPublishLogsDoNotEchoInvalidRequestedVersionIDs(t *testing.T) {
 	}
 }
 
+// TestRefreshFailureLogsRetainJobIdentity covers lookup fallback and loaded jobs lost by error returns.
+func TestRefreshFailureLogsRetainJobIdentity(t *testing.T) {
+	for _, scenario := range []string{"missing", "invalid-id", "build-status", "fail-persistence", "finalize"} {
+		t.Run(scenario, func(t *testing.T) {
+			repository := newMemoryRepository()
+			trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+			service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+			job := domain.PublishJob{ID: "pub_missing"}
+			stage := "job.lookup"
+			if scenario == "invalid-id" {
+				job.ID = "private-token-value"
+			} else if scenario != "missing" {
+				repository.versions["ver_new"] = approvedVersion("ver_new", "rel_new")
+				var err error
+				job, err = service.Publish(t.Context(), publisher(), "ver_new", "refresh-log-identity")
+				if err != nil {
+					t.Fatal(err)
+				}
+				switch scenario {
+				case "build-status":
+					stage = "build.status"
+					// No provider status exists, so the fake returns a lookup error.
+				case "fail-persistence":
+					stage = "job.fail"
+					trigger.statuses[job.BuildID] = ports.BuildRun{Status: domain.PublishFailed, Error: "build failed"}
+					repository.updateFailures = 1
+					repository.updateErr = errors.New("database unavailable")
+				case "finalize":
+					stage = "job.finalize"
+					trigger.statuses[job.BuildID] = ports.BuildRun{Status: domain.PublishSucceeded}
+					delete(repository.versions, job.VersionID)
+				}
+			}
+			ctx, output := publishLogContext(t)
+			result, err := service.RefreshStatus(ctx, publisher(), job.ID)
+			if err == nil || (scenario != "build-status" && result.ID != "") {
+				t.Fatalf("unexpected refresh result: %#v, %v", result, err)
+			}
+			var event map[string]any
+			for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {
+				var entry map[string]any
+				if json.Unmarshal([]byte(line), &entry) == nil && entry["msg"] == "publish operation failed" {
+					event = entry
+				}
+			}
+			wantID := job.ID
+			if scenario == "invalid-id" {
+				wantID = ""
+			}
+			if event == nil || event["job_id"] != wantID || event["version_id"] != job.VersionID || event["build_id"] != job.BuildID || event["stage"] != stage || strings.Contains(output.String(), "private-token-value") {
+				t.Fatalf("refresh failure lost safe job identity: %s", output.String())
+			}
+		})
+	}
+}
+
 // TestUnclassifiedPublishFailuresDoNotReuseHTTPEventNames keeps service and request diagnostics distinguishable.
 func TestUnclassifiedPublishFailuresDoNotReuseHTTPEventNames(t *testing.T) {
 	ctx, output := publishLogContext(t)

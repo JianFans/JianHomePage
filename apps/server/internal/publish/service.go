@@ -421,17 +421,26 @@ func (service *Service) RefreshStatus(
 ) (result domain.PublishJob, returnErr error) {
 	started := time.Now()
 	stage := "authorize"
+	var job domain.PublishJob
 	defer func() {
 		returnErr = failureAt(stage, returnErr)
 		if returnErr != nil {
-			lifecycleError(ctx, actor, result, returnErr)
+			loggedJob := result
+			if loggedJob.ID == "" {
+				loggedJob = job
+			}
+			if loggedJob.ID == "" {
+				loggedJob.ID = jobID
+			}
+			lifecycleError(ctx, actor, loggedJob, returnErr)
 		}
 	}()
 	if !hasPermission(actor, auth.PermissionPublish) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
 	stage = "job.lookup"
-	job, err := service.repository.GetPublishJob(ctx, jobID)
+	var err error
+	job, err = service.repository.GetPublishJob(ctx, jobID)
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
