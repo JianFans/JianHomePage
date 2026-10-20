@@ -619,6 +619,31 @@ it('keeps a current dirty snapshot while refreshing its version status', async (
   } finally { wrapper.unmount() }
 })
 
+it.each(['lost', 'conflict'] as const)('回滚请求 %s 后恢复服务端任务并继续跟踪', async (failure) => {
+  const { wrapper, workspace } = await mountWorkspace()
+  vi.useFakeTimers()
+  const job = publishJob({ operation: 'rollback' })
+  vi.stubGlobal('fetch', vi.fn(async input => {
+    const url = String(input)
+    if (url.endsWith('/rollbacks')) {
+      if (failure === 'lost') throw new Error('Response lost')
+      return jsonResponse({ code: 'conflict', message: 'Active job exists' }, 409)
+    }
+    if (url.endsWith('/latest')) return jsonResponse(job)
+    if (url.endsWith(`/${job.id}`)) return jsonResponse({ ...job, status: 'succeeded' })
+    return jsonResponse(version({ status: 'published', revision: 6 }))
+  }))
+  try {
+    workspace.version = version({ status: 'archived' })
+    await workspace.rollback()
+    expect(workspace.workflow.status).toBe('error')
+    expect(workspace.publishJob).toMatchObject({ id: job.id, status: 'building', operation: 'rollback' })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(workspace.publishJob?.status).toBe('succeeded')
+    expect(workspace.version).toMatchObject({ status: 'published', revision: 6 })
+  } finally { wrapper.unmount() }
+})
+
 it.each(['succeeded', 'failed'] as const)('synchronizes rollback acceptance and its %s terminal version', async (status) => {
   const finalStatus = status === 'succeeded' ? 'published' : 'archived'
   vi.stubGlobal('fetch', vi.fn()

@@ -301,7 +301,8 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (!version.value) return
     const current = version.value
     const key = operationKeys.get('rollback', current.id)
-    await runPublishJob('rollback', () => api().rollback(current.id, key), locale.value === 'en' ? 'Rollback job created' : '回滚任务已创建')
+    const accepted = await runPublishJob('rollback', () => api().rollback(current.id, key), locale.value === 'en' ? 'Rollback job created' : '回滚任务已创建')
+    if (!accepted && workflow.value.status === 'error') await publishMonitor.restore()
   }
 
   /** 失败重试使用新任务与新幂等键，保留原操作类型、审核约束和历史记录。 */
