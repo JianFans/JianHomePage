@@ -1,5 +1,7 @@
 # Go 内容与发布服务实现计划
 
+> 后续架构更新（2026-10-19）：本计划早期将不可变发布快照放入 S3/COS。现行实现已由迁移 `0009_publish_snapshots` 改为 PostgreSQL 持久化；S3/COS 仅供媒体文件使用。请以 [`apps/server/README.md`](../../../apps/server/README.md) 为准。
+
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
 **目标：** 构建可供「遇健我」管理端使用的 Go 内容与发布服务，完成 OIDC/RBAC、草稿与审核、乐观锁、素材适配、不可变快照、发布幂等、历史回滚和审计日志。

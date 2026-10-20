@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/ports"
 )
 
 // TestPublishReportsJobPersistenceFailureAtCorrectStage covers both accepted
@@ -50,13 +51,33 @@ func TestFailureRetainsDomainClassificationsWithoutExposingCauses(t *testing.T) 
 	}
 }
 
+// TestSnapshotPersistenceFailureDoesNotReachMediaStorageOrPages keeps database
+// snapshot failures separate from media storage and deployment diagnostics.
+func TestSnapshotPersistenceFailureDoesNotReachMediaStorageOrPages(t *testing.T) {
+	repository := newMemoryRepository()
+	repository.versions["ver_new"] = approvedVersion("ver_new", "rel_new")
+	repository.snapshotStore.putErr = errors.New("database unavailable")
+	blobs := newBlobStoreFake()
+	trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+	service := publishServiceForTest(repository, blobs, trigger)
+
+	_, err := service.Publish(context.Background(), publisher(), "ver_new", "publish-snapshot-failure")
+	var failure *Failure
+	if !errors.As(err, &failure) || failure.Stage() != "snapshot.save" || failure.External() {
+		t.Fatalf("database snapshot failure was misclassified: %v", err)
+	}
+	if blobs.putCalls != 0 || trigger.triggerCalls != 0 || len(repository.jobs) != 0 {
+		t.Fatalf("failed snapshot persistence reached another boundary: media=%d pages=%d jobs=%d", blobs.putCalls, trigger.triggerCalls, len(repository.jobs))
+	}
+}
+
 // TestFailureKeepsInnermostExternalStage ensures outer admission and retry
 // boundaries preserve the specific failed dependency rather than hiding it.
 func TestFailureKeepsInnermostExternalStage(t *testing.T) {
-	inner := failureAt("snapshot.put", domain.ErrNotFound)
+	inner := failureAt("asset.stat", domain.ErrNotFound)
 	err := failureAt("job.create", inner)
 	var failure *Failure
-	if err != inner || !errors.As(err, &failure) || failure.Stage() != "snapshot.put" || !failure.External() {
+	if err != inner || !errors.As(err, &failure) || failure.Stage() != "asset.stat" || !failure.External() {
 		t.Fatalf("lost inner storage failure: %v", err)
 	}
 	if !errors.Is(err, domain.ErrNotFound) {
@@ -92,13 +113,13 @@ func TestFailureDiagnosticsDiscardUntrustedProviderFields(t *testing.T) {
 		{"", "Unknown", 1000, 0},
 	} {
 		var failure *Failure
-		err := failureAt("snapshot.put", diagnosticProviderError{code: test.code, status: test.status})
+		err := failureAt("asset.stat", diagnosticProviderError{code: test.code, status: test.status})
 		if !errors.As(err, &failure) || failure.ProviderCode() != test.expectedCode || failure.ProviderHTTPStatus() != test.expectedStatus {
 			t.Fatalf("unsafe or inaccurate provider diagnostics for %#v", test)
 		}
 	}
 	var failure *Failure
-	if !errors.As(failureAt("snapshot.stat", errors.New("network failure")), &failure) || failure.ProviderCode() != "Unknown" || failure.ProviderHTTPStatus() != 0 {
+	if !errors.As(failureAt("asset.stat", errors.New("network failure")), &failure) || failure.ProviderCode() != "Unknown" || failure.ProviderHTTPStatus() != 0 {
 		t.Fatal("network failure produced provider metadata")
 	}
 }

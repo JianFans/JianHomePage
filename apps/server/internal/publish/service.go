@@ -43,23 +43,25 @@ type Repository interface {
 }
 
 type ServiceOptions struct {
-	Repository   Repository
-	BlobStore    ports.BlobStore
-	BuildTrigger ports.BuildTrigger
-	Notifier     ports.Notifier
-	Validator    SnapshotValidator
-	Now          func() time.Time
-	NewID        func(string) string
+	Repository    Repository
+	BlobStore     ports.BlobStore
+	SnapshotStore ports.SnapshotStore
+	BuildTrigger  ports.BuildTrigger
+	Notifier      ports.Notifier
+	Validator     SnapshotValidator
+	Now           func() time.Time
+	NewID         func(string) string
 }
 
 type Service struct {
-	repository   Repository
-	blobStore    ports.BlobStore
-	buildTrigger ports.BuildTrigger
-	notifier     ports.Notifier
-	validator    SnapshotValidator
-	now          func() time.Time
-	newID        func(string) string
+	repository    Repository
+	blobStore     ports.BlobStore
+	snapshotStore ports.SnapshotStore
+	buildTrigger  ports.BuildTrigger
+	notifier      ports.Notifier
+	validator     SnapshotValidator
+	now           func() time.Time
+	newID         func(string) string
 }
 
 type canonicalResult struct {
@@ -79,6 +81,7 @@ type snapshotAsset struct {
 
 var managedAssetPath = regexp.MustCompile(`(?:^|/)assets/(asset_[A-Za-z0-9_-]+)/((?:source)\.[A-Za-z0-9]+)$`)
 
+// NewService wires publish dependencies and supplies defaults for its clock and ID generator.
 func NewService(options ServiceOptions) *Service {
 	now := options.Now
 	if now == nil {
@@ -89,13 +92,14 @@ func NewService(options ServiceOptions) *Service {
 		newID = randomID
 	}
 	return &Service{
-		repository:   options.Repository,
-		blobStore:    options.BlobStore,
-		buildTrigger: options.BuildTrigger,
-		notifier:     options.Notifier,
-		validator:    options.Validator,
-		now:          now,
-		newID:        newID,
+		repository:    options.Repository,
+		blobStore:     options.BlobStore,
+		snapshotStore: options.SnapshotStore,
+		buildTrigger:  options.BuildTrigger,
+		notifier:      options.Notifier,
+		validator:     options.Validator,
+		now:           now,
+		newID:         newID,
 	}
 }
 
@@ -239,8 +243,7 @@ func (service *Service) Rollback(
 		return domain.PublishJob{}, domain.ErrInvalidTransition
 	}
 	stage = "history.lookup"
-	historical, err := service.repository.GetSuccessfulPublishByVersion(ctx, versionID)
-	if err != nil {
+	if _, err := service.repository.GetSuccessfulPublishByVersion(ctx, versionID); err != nil {
 		return domain.PublishJob{}, err
 	}
 	stage = "snapshot.validate"
@@ -255,14 +258,9 @@ func (service *Service) Rollback(
 	if err := service.validateManagedAssets(ctx, canonical.JSON, true); err != nil {
 		return domain.PublishJob{}, err
 	}
-	snapshotKey := historical.SnapshotKey
-	snapshotChecksum := historical.SnapshotChecksum
-	if historical.SnapshotChecksum != canonical.Checksum {
-		snapshotKey = fmt.Sprintf("snapshots/%s/%s.json", canonical.ReleaseID, canonical.Checksum)
-		if err := service.ensureSnapshot(ctx, snapshotKey, canonical); err != nil {
-			return domain.PublishJob{}, err
-		}
-		snapshotChecksum = canonical.Checksum
+	snapshotKey := fmt.Sprintf("snapshots/%s/%s.json", canonical.ReleaseID, canonical.Checksum)
+	if err := service.ensureSnapshot(ctx, snapshotKey, canonical); err != nil {
+		return domain.PublishJob{}, err
 	}
 
 	job := service.newJob(
@@ -272,7 +270,7 @@ func (service *Service) Rollback(
 		canonical.ReleaseID,
 		idempotencyKey,
 		snapshotKey,
-		snapshotChecksum,
+		canonical.Checksum,
 		version.Revision,
 	)
 	stage = "job.create"
@@ -520,29 +518,16 @@ func (service *Service) RefreshStatus(
 	return job, nil
 }
 
-// ensureSnapshot reuses matching immutable content or writes the first copy;
-// only a missing object permits creation, while provider failures propagate.
+// ensureSnapshot stores the canonical release input outside the media BlobStore.
 func (service *Service) ensureSnapshot(
 	ctx context.Context,
 	key string,
 	canonical canonicalResult,
 ) error {
-	metadata, err := service.blobStore.Stat(ctx, key)
-	if err == nil {
-		if metadata.Checksum != canonical.Checksum {
-			return failureAt("snapshot.verify", domain.ErrConflict)
-		}
-		return nil
+	if service.snapshotStore == nil {
+		return failureAt("snapshot.save", errors.New("publish snapshot store is not configured"))
 	}
-	if !errors.Is(err, domain.ErrNotFound) {
-		return failureAt("snapshot.stat", err)
-	}
-	err = service.blobStore.Put(ctx, key, bytes.NewReader(canonical.JSON), ports.BlobMetadata{
-		ContentType: "application/json",
-		Size:        int64(len(canonical.JSON)),
-		Checksum:    canonical.Checksum,
-	})
-	return failureAt("snapshot.put", err)
+	return failureAt("snapshot.save", service.snapshotStore.PutSnapshot(ctx, key, canonical.JSON))
 }
 
 func (service *Service) createJob(

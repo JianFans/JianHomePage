@@ -40,6 +40,14 @@ type BlobStore interface {
 	PublicURL(context.Context, string) (string, error)
 }
 
+// SnapshotStore persists immutable publish inputs separately from media blobs.
+type SnapshotStore interface {
+	PutSnapshot(context.Context, string, []byte) error
+	ReadSnapshot(context.Context, string) (io.ReadCloser, error)
+}
+
+const MaxPublishSnapshotBytes = 8 * 1024 * 1024
+
 type BuildRequest struct {
 	IdempotencyKey   string `json:"-"`
 	ReleaseID        string `json:"releaseId"`

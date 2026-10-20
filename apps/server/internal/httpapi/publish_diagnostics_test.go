@@ -20,45 +20,24 @@ import (
 	"yujian.me/server/internal/store/memory"
 )
 
-// TestPublishStorageFailuresHaveSafeDiagnostics follows the real publish service
-// through signed S3 HTTP operations, distinguishing provider failures from a
-// missing version and the normal first-write path for an absent snapshot.
-func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
+// TestPublishSnapshotPersistenceHasSafeDiagnostics proves publication stores
+// release data independently and never sends it to the configured media bucket.
+func TestPublishSnapshotPersistenceHasSafeDiagnostics(t *testing.T) {
 	for _, test := range []struct {
-		name, providerCode, stage, kind string
-		versionExists                   bool
-		status, headStatus, writes      int
-		loggedCode                      string
+		name, stage, kind string
+		versionExists     bool
+		status            int
+		snapshotError     bool
 	}{
-		{"missing bucket", "NoSuchBucket", "snapshot.put", "external_dependency", true, http.StatusInternalServerError, http.StatusNotFound, 1, "NoSuchBucket"},
-		{"storage access denied", "AccessDenied", "snapshot.put", "external_dependency", true, http.StatusInternalServerError, http.StatusNotFound, 1, "AccessDenied"},
-		{"snapshot stat denied", "AccessDenied", "snapshot.stat", "external_dependency", true, http.StatusInternalServerError, http.StatusForbidden, 0, "Forbidden"},
-		{"untrusted provider code", "provider-private-code", "snapshot.put", "external_dependency", true, http.StatusInternalServerError, http.StatusNotFound, 1, "Unknown"},
-		{"missing version", "", "version.lookup", "not_found", false, http.StatusNotFound, http.StatusNotFound, 0, ""},
-		{"new snapshot", "", "", "", true, http.StatusAccepted, http.StatusNotFound, 1, ""},
+		{"missing version", "version.lookup", "not_found", false, http.StatusNotFound, false},
+		{"snapshot database unavailable", "snapshot.save", "internal_error", true, http.StatusInternalServerError, true},
+		{"new snapshot", "", "", true, http.StatusAccepted, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			puts := 0
+			objectRequests := 0
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				if request.Method == http.MethodHead {
-					writer.WriteHeader(test.headStatus)
-					return
-				}
-				if request.Method != http.MethodPut {
-					t.Errorf("unexpected method %s", request.Method)
-				}
-				puts++
-				if test.providerCode == "" {
-					writer.WriteHeader(http.StatusOK)
-					return
-				}
-				writer.Header().Set("Content-Type", "application/xml")
-				status := http.StatusNotFound
-				if test.providerCode == "AccessDenied" {
-					status = http.StatusForbidden
-				}
-				writer.WriteHeader(status)
-				_, _ = io.WriteString(writer, "<Error><Code>"+test.providerCode+"</Code><Message>provider-secret https://secret.example/private?token=private</Message></Error>")
+				objectRequests++
+				writer.WriteHeader(http.StatusOK)
 			}))
 			defer provider.Close()
 			blobs, err := storage.NewBlobStore(storage.Config{Endpoint: provider.URL, PublicBaseURL: "https://media.example.test", Region: "test", Bucket: "private-bucket", AccessKeyID: "private-access", SecretAccessKey: "private-secret", UsePathStyle: true, HTTPClient: provider.Client()})
@@ -78,7 +57,11 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 				}
 			}
 			repository := memory.NewPublishRepository(state)
-			service := publish.NewService(publish.ServiceOptions{Repository: repository, BlobStore: blobs, BuildTrigger: diagnosticBuildTrigger{}, Validator: diagnosticValidator{}})
+			snapshots := &diagnosticSnapshotStore{}
+			if test.snapshotError {
+				snapshots.err = errors.New("private database detail")
+			}
+			service := publish.NewService(publish.ServiceOptions{Repository: repository, BlobStore: blobs, SnapshotStore: snapshots, BuildTrigger: diagnosticBuildTrigger{}, Validator: diagnosticValidator{}})
 			var logs bytes.Buffer
 			router := LoggingMiddleware(testRouter(t, nil, service), slog.New(slog.NewJSONHandler(&logs, nil)))
 			request := authenticatedRequest(http.MethodPost, "/api/v1/publishes", `{"versionId":"ver_private"}`, "publisher")
@@ -101,29 +84,20 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 						if entry["request_id"] != "req-test" || entry["stage"] != test.stage || entry["error_kind"] != test.kind || entry["actor_subject"] != "editor-1" {
 							t.Fatalf("incorrect failure diagnostics: %#v", entry)
 						}
-						if test.kind == "external_dependency" {
-							status := http.StatusNotFound
-							if test.providerCode == "AccessDenied" {
-								status = http.StatusForbidden
-							}
-							if entry["provider_error_code"] != test.loggedCode || entry["provider_http_status"] != float64(status) {
-								t.Fatalf("incorrect provider diagnostics: %#v", entry)
-							}
-						}
 					}
 				}
 				if !found {
 					t.Fatalf("missing publish failure log: %s", logs.String())
 				}
 			}
-			for _, secret := range []string{"provider-secret", "provider-private-code", "secret.example", "private-bucket", "private-access", "private-secret", "private-cookie", "private-idempotency", "ver_private", "rel_private", provider.URL} {
+			for _, secret := range []string{"private database detail", "private-cookie", "private-idempotency", "ver_private", "rel_private", provider.URL} {
 				if strings.Contains(logs.String()+recorder.Body.String(), secret) && test.status != http.StatusAccepted {
 					t.Fatalf("private detail leaked: %s", secret)
 				}
 			}
 			if test.versionExists {
-				if puts != test.writes {
-					t.Fatalf("snapshot writes = %d, expected %d", puts, test.writes)
+				if objectRequests != 0 {
+					t.Fatalf("publish accessed the media object store %d times", objectRequests)
 				}
 				version, err := versions.GetVersion(context.Background(), "ver_private")
 				if err != nil {
@@ -132,8 +106,8 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 				if test.status != http.StatusAccepted && (version.Status != domain.StatusInReview || !version.ReviewApproved || version.Revision != 3) {
 					t.Fatalf("failed storage operation changed reviewed version: %#v", version)
 				}
-			} else if puts != 0 {
-				t.Fatalf("missing version made %d storage writes", puts)
+			} else if snapshots.puts != 0 || objectRequests != 0 {
+				t.Fatalf("missing version performed snapshot or media writes: snapshots=%d media=%d", snapshots.puts, objectRequests)
 			}
 			if test.status != http.StatusAccepted {
 				if _, err := repository.GetActivePublishJob(context.Background()); !errors.Is(err, domain.ErrNotFound) {
@@ -142,6 +116,34 @@ func TestPublishStorageFailuresHaveSafeDiagnostics(t *testing.T) {
 			}
 		})
 	}
+}
+
+type diagnosticSnapshotStore struct {
+	err      error
+	puts     int
+	contents map[string][]byte
+}
+
+// PutSnapshot captures publish input or injects a storage failure for diagnostics tests.
+func (store *diagnosticSnapshotStore) PutSnapshot(_ context.Context, key string, content []byte) error {
+	store.puts++
+	if store.err != nil {
+		return store.err
+	}
+	if store.contents == nil {
+		store.contents = make(map[string][]byte)
+	}
+	store.contents[key] = append([]byte(nil), content...)
+	return nil
+}
+
+// ReadSnapshot returns the captured canonical bytes to the publisher test double.
+func (store *diagnosticSnapshotStore) ReadSnapshot(_ context.Context, key string) (io.ReadCloser, error) {
+	content, ok := store.contents[key]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return io.NopCloser(bytes.NewReader(content)), nil
 }
 
 type diagnosticValidator struct{}
