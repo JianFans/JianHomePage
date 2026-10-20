@@ -49,6 +49,7 @@ func LoggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 		*request = *request.WithContext(context.WithValue(ctx, requestLogKey{}, state))
 		started := time.Now()
 		response := &statusWriter{ResponseWriter: writer}
+		aborted := false
 		defer func() {
 			actorSubject := ""
 			if principal, ok := auth.PrincipalFromContext(request.Context()); ok {
@@ -58,6 +59,9 @@ func LoggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 			level := requestLevel(response.statusCode())
 			if response.statusCode() < 400 && (request.URL.Path == "/healthz" || isStaticRoute(request.URL.Path)) {
 				level = slog.LevelDebug
+			}
+			if aborted && level < slog.LevelWarn {
+				level = slog.LevelWarn
 			}
 			fields := []any{
 				"component", "http", "method", request.Method,
@@ -69,12 +73,16 @@ func LoggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 				"duration_ms", time.Since(started).Milliseconds(),
 			}
 			fields = append(fields, state.fields...)
+			if aborted {
+				fields = append(fields, "aborted", true)
+			}
 			logger.Log(request.Context(), level, "http request", fields...)
 		}()
 		// Recovery runs first; the independent request defer still runs if it re-panics.
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				if recovered == http.ErrAbortHandler {
+					aborted = true
 					panic(recovered)
 				}
 				stack := make([]byte, 16*1024)
@@ -82,6 +90,7 @@ func LoggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 				// Panic values may contain request bodies or credentials. The code stack identifies the fault.
 				observability.Logger(request.Context()).ErrorContext(request.Context(), "http handler panicked", "component", "http", "panic_type", fmt.Sprintf("%T", recovered), "stack", string(stack), "response_committed", response.wroteHeader)
 				if response.wroteHeader {
+					aborted = true
 					panic(http.ErrAbortHandler)
 				}
 				writeError(response, request, 500, "internal_error", "Service unavailable.")

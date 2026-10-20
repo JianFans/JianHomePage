@@ -206,47 +206,62 @@ func TestResourceFieldsOnlyLogApplicationOwnedIDs(t *testing.T) {
 
 // TestRequestPanicRecordsStackAndSafeFailure checks recovery and preservation of already committed responses.
 func TestRequestPanicRecordsStackAndSafeFailure(t *testing.T) {
-	for _, panicValue := range []any{"private-panic-payload", http.ErrAbortHandler} {
-		for _, committed := range []bool{false, true} {
-			var output bytes.Buffer
-			handler := LoggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if committed {
-					_, _ = w.Write([]byte("partial"))
+	for _, path := range []string{"/panic", "/healthz", "/_nuxt/entry.js"} {
+		for _, panicValue := range []any{"private-panic-payload", http.ErrAbortHandler} {
+			for _, committedStatus := range []int{0, http.StatusOK, http.StatusServiceUnavailable} {
+				committed := committedStatus != 0
+				var output bytes.Buffer
+				handler := LoggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if committed {
+						w.WriteHeader(committedStatus)
+						_, _ = w.Write([]byte("partial"))
+					}
+					panic(panicValue)
+				}), slog.New(slog.NewJSONHandler(&output, nil)))
+				w := httptest.NewRecorder()
+				var propagated any
+				func() {
+					defer func() { propagated = recover() }()
+					handler.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+				}()
+				if panicValue == http.ErrAbortHandler {
+					if propagated != http.ErrAbortHandler || strings.Contains(output.String(), "http handler panicked") {
+						t.Fatalf("abort semantics changed: %v %s", propagated, output.String())
+					}
+				} else if committed {
+					if propagated != http.ErrAbortHandler || w.Body.String() != "partial" {
+						t.Fatalf("committed response corrupted: %v %s", propagated, w.Body.String())
+					}
+				} else if propagated != nil || w.Code != 500 {
+					t.Fatalf("panic not recovered: %v %d", propagated, w.Code)
 				}
-				panic(panicValue)
-			}), slog.New(slog.NewJSONHandler(&output, nil)))
-			w := httptest.NewRecorder()
-			var propagated any
-			func() {
-				defer func() { propagated = recover() }()
-				handler.ServeHTTP(w, httptest.NewRequest("GET", "/panic", nil))
-			}()
-			if panicValue == http.ErrAbortHandler {
-				if propagated != http.ErrAbortHandler || strings.Contains(output.String(), "http handler panicked") {
-					t.Fatalf("abort semantics changed: %v %s", propagated, output.String())
+				if panicValue != http.ErrAbortHandler && (!strings.Contains(output.String(), "http handler panicked") || !strings.Contains(output.String(), "operational_logging_test.go") || strings.Contains(output.String(), "private-panic-payload")) {
+					t.Fatalf("missing or unsafe panic trace: %s", output.String())
 				}
-			} else if committed {
-				if propagated != http.ErrAbortHandler || w.Body.String() != "partial" {
-					t.Fatalf("committed response corrupted: %v %s", propagated, w.Body.String())
+				requestLogs := 0
+				for _, entry := range logEntries(t, &output) {
+					if entry["msg"] != "http request" {
+						continue
+					}
+					requestLogs++
+					if entry["status"] != float64(w.Code) || entry["response_bytes"] != float64(w.Body.Len()) || entry["method"] != "GET" || entry["request_id"] != w.Header().Get("X-Request-ID") {
+						t.Fatalf("incomplete panic request log: %#v", entry)
+					}
+					if panicValue == http.ErrAbortHandler || committed {
+						level := "WARN"
+						if w.Code >= 500 {
+							level = "ERROR"
+						}
+						if entry["aborted"] != true || entry["level"] != level {
+							t.Fatalf("aborted request lacks appropriate severity: %#v", entry)
+						}
+					} else if _, exists := entry["aborted"]; exists {
+						t.Fatalf("recovered response was marked aborted: %#v", entry)
+					}
 				}
-			} else if propagated != nil || w.Code != 500 {
-				t.Fatalf("panic not recovered: %v %d", propagated, w.Code)
-			}
-			if panicValue != http.ErrAbortHandler && (!strings.Contains(output.String(), "http handler panicked") || !strings.Contains(output.String(), "operational_logging_test.go") || strings.Contains(output.String(), "private-panic-payload")) {
-				t.Fatalf("missing or unsafe panic trace: %s", output.String())
-			}
-			requestLogs := 0
-			for _, entry := range logEntries(t, &output) {
-				if entry["msg"] != "http request" {
-					continue
+				if requestLogs != 1 {
+					t.Fatalf("expected one request log, got %d: %s", requestLogs, output.String())
 				}
-				requestLogs++
-				if entry["status"] != float64(w.Code) || entry["response_bytes"] != float64(w.Body.Len()) || entry["method"] != "GET" || entry["request_id"] != w.Header().Get("X-Request-ID") {
-					t.Fatalf("incomplete panic request log: %#v", entry)
-				}
-			}
-			if requestLogs != 1 {
-				t.Fatalf("expected one request log, got %d: %s", requestLogs, output.String())
 			}
 		}
 	}
