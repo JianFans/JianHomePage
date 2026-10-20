@@ -68,3 +68,65 @@ VALUES ('build_new', 'new-key', '{}'::jsonb, '{}'::jsonb, 'queued')`); err != ni
 		})
 	}
 }
+
+// TestPostgresSnapshotMigrationRejectsPendingJobs covers the window before a
+// publisher build exists, preserving terminal history and post-upgrade restarts.
+func TestPostgresSnapshotMigrationRejectsPendingJobs(t *testing.T) {
+	for _, operation := range []string{"publish", "rollback"} {
+		for _, status := range []string{"pending", "succeeded", "failed"} {
+			t.Run(operation+"/"+status, func(t *testing.T) {
+				db := assetIntegrationDatabase(t)
+				ctx := t.Context()
+				if _, err := db.ExecContext(ctx, `
+DELETE FROM schema_migrations WHERE version = '0009_publish_snapshots';
+DROP TABLE publish_snapshots;
+INSERT INTO content_versions
+  (id, status, revision, snapshot, checksum, created_by, updated_by, created_at, updated_at)
+VALUES ('ver_legacy', 'published', 1, '{"releaseId":"rel_legacy"}'::jsonb,
+        'sha256:' || repeat('a', 64), 'test', 'test', now(), now())`); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.ExecContext(ctx, `
+INSERT INTO publish_jobs
+  (id, idempotency_key, operation, version_id, release_id, snapshot_key,
+   snapshot_checksum, target_revision, status, requested_by, created_at, updated_at)
+VALUES ('job_legacy', 'legacy-key', $1, 'ver_legacy', 'rel_legacy',
+        'snapshots/legacy.json', 'sha256:' || repeat('a', 64), 1, $2, 'test', now(), now())`, operation, status); err != nil {
+					t.Fatal(err)
+				}
+				err := Migrate(ctx, db)
+				pending := status == "pending"
+				if pending && (err == nil || !strings.Contains(err.Error(), "cannot upgrade publish snapshot storage")) {
+					t.Fatalf("expected pending-job migration rejection without a build, got %v", err)
+				}
+				if !pending && err != nil {
+					t.Fatalf("terminal job blocked migration: %v", err)
+				}
+				var applied, tableExists bool
+				var storedStatus string
+				if err := db.QueryRowContext(ctx, `
+SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '0009_publish_snapshots'),
+       EXISTS (SELECT 1 FROM information_schema.tables
+               WHERE table_schema = current_schema() AND table_name = 'publish_snapshots'),
+       (SELECT status FROM publish_jobs WHERE id = 'job_legacy')`).Scan(&applied, &tableExists, &storedStatus); err != nil {
+					t.Fatal(err)
+				}
+				if applied != !pending || tableExists != !pending || storedStatus != status {
+					t.Fatalf("unexpected migration state: applied=%v table=%v status=%q", applied, tableExists, storedStatus)
+				}
+				if _, err := db.ExecContext(ctx, `UPDATE publish_jobs SET status = 'failed' WHERE id = 'job_legacy'`); err != nil {
+					t.Fatal(err)
+				}
+				if err := Migrate(ctx, db); err != nil {
+					t.Fatalf("retry after pending job completes: %v", err)
+				}
+				if _, err := db.ExecContext(ctx, `UPDATE publish_jobs SET status = 'pending' WHERE id = 'job_legacy'`); err != nil {
+					t.Fatal(err)
+				}
+				if err := Migrate(ctx, db); err != nil {
+					t.Fatalf("already-applied migration blocked pending job restart: %v", err)
+				}
+			})
+		}
+	}
+}

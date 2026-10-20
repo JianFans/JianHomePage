@@ -250,7 +250,7 @@ Authorization: Bearer <session-token>
 - 普通 API 保持 15 秒读写期限。本地 `/local-upload/*` 只有在签名、有效期、MIME、声明大小和校验头通过后，才将本次连接的读写期限延长为 15 分钟；仍按声明大小流式校验，不全量缓存文件。生产素材直接上传到对象存储，不经过该本地路由。
 - 开发素材保存在临时文件中，正常关闭会等待活动写入并清理文件；超过 `SHUTDOWN_TIMEOUT` 时先断开在途连接，再释放依赖。Windows 媒体读取句柄允许共享删除，删除后新的读取失败，已有下载可继续读完；Range 请求仍可用。开发上传不作为持久化生产存储。
 - `MEDIA_PUBLIC_BASE_URL` 应指向 EdgeOne 加速的 COS 公开读取域名。内容快照只保存该稳定地址，不保存短期签名 URL 或服务商内部端点。更换 COS 或其他对象存储源站时应保留该公开域名，避免历史快照失效。
-- `0009_publish_snapshots` 在 PostgreSQL 创建有大小上限的不可变构建快照表；不从旧 COS 复制快照。回滚输入来自保留的 `content_versions` 快照。首次应用迁移时，若 `publisher_builds` 存在 `queued`、`building`、`submitting` 或 `deployed` 任务，迁移事务回滚，服务拒绝启动。先用旧二进制完成或核实恢复活动发布，再切换到新版本；已应用迁移后的正常重启不受此检查影响。无需为媒体桶授予 `snapshots/` 权限。
+- `0009_publish_snapshots` 在 PostgreSQL 创建有大小上限的不可变构建快照表；不从旧 COS 复制快照。回滚输入来自保留的 `content_versions` 快照。首次应用迁移时，若 `publisher_builds` 存在 `queued`、`building`、`submitting` 或 `deployed` 任务，或 `publish_jobs` 存在 `pending` 任务，迁移事务回滚，服务拒绝启动。先用旧二进制完成或核实恢复活动发布，再切换到新版本；已应用迁移后的正常重启不受此检查影响。无需为媒体桶授予 `snapshots/` 权限。
 - 首次部署包含 `0003_publish_target_freeze` 的版本前，应等待 `pending`、`building` 发布任务结束。迁移会自动冻结 checksum 一致的单个活跃任务；如果检测到多个任务或历史数字格式导致 checksum 不一致，服务会拒绝启动。此时应先用旧版本确认并结束活跃任务，再重新部署；不得手改 checksum 或跳过迁移。
 - `0004_asset_source_url` 会在同一迁移事务中锁定缺少公开地址的旧素材，使用当前对象存储适配器的 `PublicURL` 回填，并拒绝非 `NULL` 的空字符串。升级期间必须保持 `MEDIA_PUBLIC_BASE_URL` 为旧内容正在使用的稳定域名；解析或并发回填失败时服务会回滚迁移并拒绝启动。为兼容滚动升级中的旧实例和旧二进制回滚，本版本允许 `source_url` 为 `NULL`；旧实例全部退出并度过回滚窗口后，后续迁移必须再次回填期间产生的 `NULL`，再设置 `NOT NULL`。
 - 滚动升级期间，旧实例仍可能写入没有 `source_url` 的素材。新实例读取素材列表时只补全实际返回页中缺少的地址，并原子持久化首次胜出的地址；不改写状态、元数据或已存在的地址。解析或持久化失败会使该次列表请求失败，不返回空 `src`。旧实例退出前应保持稳定公开域名，不能借滚动升级更换历史素材的域名。

@@ -21,7 +21,7 @@
 
 - 保留已有审核、版本冻结、checksum、幂等键、回滚和审计语义。
 - 不可变构建快照存于 PostgreSQL `publish_snapshots`；S3/COS 适配器兼容安全的历史媒体键，不要求 `assets/` 前缀，拒绝路径穿越和 `snapshots`／`snapshots/` 快照键。
-- 原 `publisher_builds` 表继续保存排队、生成、提交、云端部署和最终结果。现有发布记录可读取，未结束任务升级前必须处理完。首次应用 `0009_publish_snapshots` 时，在同一事务内拒绝 `queued`、`building`、`submitting` 或 `deployed` 任务；已应用迁移后的正常重启不受此检查影响。
+- 原 `publisher_builds` 表继续保存排队、生成、提交、云端部署和最终结果。现有发布记录可读取，未结束任务升级前必须处理完。首次应用 `0009_publish_snapshots` 时，在同一事务内拒绝 `publisher_builds` 中的 `queued`、`building`、`submitting` 或 `deployed` 任务，以及 `publish_jobs` 中的 `pending` 任务；已应用迁移后的正常重启不受此检查影响。
 - 发布器成为 Go 内部服务，实现原 `ports.BuildTrigger`，不再需要共享口令、发布网关域名或第二个进程。
 - Pages 使用官方 SDK 对应的公开 HTTP 协议：验证直接上传项目、取得临时上传凭据、上传 ZIP、创建 Production 部署、查询部署。创建部署不自动重试。
 - 上传开始前持久化 `submitting`。结果未知时保留记录，管理员核实后绑定部署或确认没有部署；不得自动重复创建。
