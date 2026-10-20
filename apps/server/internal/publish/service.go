@@ -475,6 +475,7 @@ func (service *Service) RefreshStatus(
 	stage = "job.finalize"
 	alreadyFinalized := false
 	finalizationFailed := false
+	beforeFinalize := job
 	err = service.repository.WithinTransaction(ctx, func(repository Repository) error {
 		if err := repository.LockPublishSlot(ctx, productionSlot); err != nil {
 			return err
@@ -556,6 +557,9 @@ func (service *Service) RefreshStatus(
 		return repository.AppendAudit(ctx, publishAudit(actor, action, job.ID, service.now().UTC()))
 	})
 	if err != nil {
+		// Transaction-local terminal states did not commit; keep failure logs
+		// anchored to the last job state read outside the transaction.
+		job = beforeFinalize
 		return domain.PublishJob{}, err
 	}
 	if alreadyFinalized {

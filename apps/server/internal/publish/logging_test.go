@@ -266,6 +266,39 @@ func TestRefreshFailureLogsRetainJobIdentity(t *testing.T) {
 	}
 }
 
+// TestFinalizeWriteFailureLogsPersistedState excludes terminal states that failed to persist.
+func TestFinalizeWriteFailureLogsPersistedState(t *testing.T) {
+	for _, targetChanged := range []bool{false, true} {
+		t.Run(fmt.Sprintf("targetChanged=%t", targetChanged), func(t *testing.T) {
+			repository := newMemoryRepository()
+			repository.versions["ver_new"] = approvedVersion("ver_new", "rel_new")
+			trigger := &buildTriggerFake{statuses: make(map[string]ports.BuildRun)}
+			service := publishServiceForTest(repository, newBlobStoreFake(), trigger)
+			job, err := service.Publish(t.Context(), publisher(), "ver_new", "finalize-write-failure")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if targetChanged {
+				target := repository.versions[job.VersionID]
+				target.Revision++
+				repository.versions[job.VersionID] = target
+			}
+			trigger.statuses[job.BuildID] = ports.BuildRun{Status: domain.PublishSucceeded}
+			repository.updateFailures = 1
+			repository.updateErr = errors.New("database unavailable")
+			ctx, output := publishLogContext(t)
+			result, err := service.RefreshStatus(ctx, publisher(), job.ID)
+			if err == nil || result.ID != "" || repository.jobs[job.ID].Status != domain.PublishBuilding {
+				t.Fatalf("unexpected failed transaction result: %#v, %v", result, err)
+			}
+			event := requirePublishEvent(t, output, "publish operation failed", "ERROR")
+			if event["stage"] != "job.finalize" || event["status"] != string(domain.PublishBuilding) {
+				t.Fatalf("failure log used unpersisted state: %#v", event)
+			}
+		})
+	}
+}
+
 // TestUnclassifiedPublishFailuresDoNotReuseHTTPEventNames keeps service and request diagnostics distinguishable.
 func TestUnclassifiedPublishFailuresDoNotReuseHTTPEventNames(t *testing.T) {
 	ctx, output := publishLogContext(t)
