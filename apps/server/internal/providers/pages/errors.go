@@ -7,7 +7,7 @@ import (
 	"regexp"
 )
 
-var safeRequestID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+var safeRequestID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}={0,2}$`)
 
 type cloudError struct {
 	action, code, requestID string
