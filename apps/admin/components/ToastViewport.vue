@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Check, CircleAlert, Info, TriangleAlert, X } from '@lucide/vue'
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUpdated } from 'vue'
 import type { ToastMessage } from '../composables/useToasts'
 import type { AdminLocale } from '../utils/admin-locale'
 
@@ -9,19 +9,35 @@ const emit = defineEmits<{
   dismiss: [id: string]
   pause: [id: string, reason: string]
   resume: [id: string, reason: string]
+  pauseAll: [reason: string]
+  resumeAll: [reason: string]
   visibility: [hidden: boolean]
 }>()
 const icons = { success: Check, info: Info, warning: TriangleAlert, error: CircleAlert }
 const closeLabel = computed(() => props.locale === 'en' ? 'Dismiss message' : '关闭提示')
 
-/** 聚焦在同一条消息内移动时继续暂停，离开整条消息后才恢复。 */
-function focusOut(id: string, event: FocusEvent) {
-  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) emit('resume', id, 'focus')
+let focusedViewport: HTMLElement | null = null
+/** 聚焦视口或任意关闭按钮时暂停全部消息，也覆盖期间新到达的提示。 */
+function focusIn(event: FocusEvent) {
+  focusedViewport = event.currentTarget as HTMLElement
+  emit('pauseAll', 'focus')
 }
+/** 只释放焦点暂停原因，不影响页面隐藏或单条悬停暂停。 */
+function resumeFocus() {
+  if (!focusedViewport) return
+  focusedViewport = null
+  emit('resumeAll', 'focus')
+}
+/** 焦点在视口内部移动时保持暂停，离开整个区域后才恢复。 */
+function focusOut(event: FocusEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) resumeFocus()
+}
+// 淘汰聚焦的消息不一定触发 focusout，更新后重新核对，避免计时永久暂停。
+onUpdated(() => { if (focusedViewport && !focusedViewport.contains(document.activeElement)) resumeFocus() })
 /** 隐藏页面暂停计时，恢复后不丢失消息的剩余展示时间。 */
 function visibilityChanged() { emit('visibility', document.hidden) }
 onMounted(() => { document.addEventListener('visibilitychange', visibilityChanged); visibilityChanged() })
-onBeforeUnmount(() => document.removeEventListener('visibilitychange', visibilityChanged))
+onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibilityChanged); resumeFocus() })
 </script>
 
 <template>
@@ -33,6 +49,8 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', visibilit
     role="region"
     :aria-label="locale === 'en' ? 'Messages' : '消息提示'"
     :tabindex="items.length ? 0 : -1"
+    @focusin="focusIn"
+    @focusout="focusOut"
   >
     <article
       v-for="item in items"
@@ -41,8 +59,6 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', visibilit
       :class="`toast-message--${item.tone}`"
       @pointerenter="emit('pause', item.id, 'pointer')"
       @pointerleave="emit('resume', item.id, 'pointer')"
-      @focusin="emit('pause', item.id, 'focus')"
-      @focusout="focusOut(item.id, $event)"
     >
       <component
         :is="icons[item.tone]"

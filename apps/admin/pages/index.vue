@@ -516,6 +516,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
           @dismiss="toasts.dismiss"
           @pause="toasts.pause"
           @resume="toasts.resume"
+          @pause-all="toasts.pauseAll"
+          @resume-all="toasts.resumeAll"
           @visibility="hidden => hidden ? toasts.pauseAll('hidden') : toasts.resumeAll('hidden')"
         />
       </template>
