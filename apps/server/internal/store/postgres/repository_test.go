@@ -180,15 +180,39 @@ func TestContentRepositoryCanonicalizesJSONBReadback(t *testing.T) {
 	}
 }
 
+// TestContentRepositoryRejectsSnapshotChecksumMismatch keeps storage corruption
+// distinct from concurrency conflicts without returning unverified content.
 func TestContentRepositoryRejectsSnapshotChecksumMismatch(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"ver_1", "draft", int64(2), []byte(`{"schemaVersion":"1.0.0"}`), "sha256:wrong", false,
+		"ver_1", "draft", int64(2), []byte(`{"title":"private-snapshot-title"}`), "sha256:wrong", false,
 		"editor-1", "editor-1", now, now,
 	}}}
 
-	if _, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_1"); !errors.Is(err, domain.ErrConflict) {
-		t.Fatalf("expected checksum conflict, got %v", err)
+	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_1")
+	if !errors.Is(err, domain.ErrDataIntegrity) || errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected stored snapshot integrity classification, got %v", err)
+	}
+	if len(version.Snapshot) != 0 || strings.Contains(err.Error(), "private-snapshot-title") {
+		t.Fatal("unverified snapshot content escaped repository validation")
+	}
+}
+
+// TestContentRepositoryClassifiesUnparseableStoredSnapshotAsIntegrityError
+// ensures malformed stored content produces a safe, actionable diagnostic.
+func TestContentRepositoryClassifiesUnparseableStoredSnapshotAsIntegrityError(t *testing.T) {
+	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	executor := &recordingExecutor{row: recordingRow{values: []any{
+		"ver_1", "draft", int64(2), []byte(`{"title":"private-snapshot-title","schemaVersion":`), "sha256:stored", false,
+		"editor-1", "editor-1", now, now,
+	}}}
+
+	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_1")
+	if !errors.Is(err, domain.ErrDataIntegrity) || errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("expected unparseable stored snapshot integrity classification, got %v", err)
+	}
+	if len(version.Snapshot) != 0 || strings.Contains(err.Error(), "private-snapshot-title") {
+		t.Fatal("unverified snapshot content escaped repository validation")
 	}
 }
 

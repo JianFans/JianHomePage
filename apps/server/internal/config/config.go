@@ -19,6 +19,7 @@ var (
 )
 
 type Config struct {
+	Log                   LoggingConfig
 	Environment           string
 	Address               string
 	DatabaseURL           string
@@ -79,6 +80,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if !isEnvironment(config.Environment) {
 		return Config{}, fmt.Errorf("%w: APP_ENV must be development, test, or production", ErrInvalidConfig)
 	}
+	logging, err := loadLogging(getenv)
+	if err != nil {
+		return Config{}, err
+	}
+	config.Log = logging
 	roleNames, err := config.OIDCRoleNames.WithDefaults()
 	if err != nil {
 		return Config{}, err
@@ -97,14 +103,14 @@ func Load(getenv func(string) string) (Config, error) {
 	if raw := strings.TrimSpace(getenv("ALLOW_DEV_IDENTITY")); raw != "" {
 		allowed, err := strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("%w: ALLOW_DEV_IDENTITY: %v", ErrInvalidConfig, err)
+			return Config{}, fmt.Errorf("%w: ALLOW_DEV_IDENTITY must be true or false", ErrInvalidConfig)
 		}
 		config.AllowDevIdentity = allowed
 	}
 	if raw := strings.TrimSpace(getenv("S3_USE_PATH_STYLE")); raw != "" {
 		usePathStyle, err := strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("%w: S3_USE_PATH_STYLE: %v", ErrInvalidConfig, err)
+			return Config{}, fmt.Errorf("%w: S3_USE_PATH_STYLE must be true or false", ErrInvalidConfig)
 		}
 		config.S3UsePathStyle = usePathStyle
 	}

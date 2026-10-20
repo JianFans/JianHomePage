@@ -2,21 +2,21 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"yujian.me/server/internal/assets"
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/observability"
 	"yujian.me/server/internal/publish"
 )
 
@@ -173,12 +173,12 @@ func NewRouter(options RouterOptions) http.Handler {
 
 	api := http.NewServeMux()
 	register := func(pattern string, permission auth.Permission, endpoint http.HandlerFunc) {
-		api.Handle(pattern, middleware.Require(permission, endpoint))
+		api.Handle(pattern, routeHandler(func(w http.ResponseWriter, r *http.Request) { middleware.Require(permission, endpoint).ServeHTTP(w, r) }))
 	}
 	register("POST /api/v1/versions", auth.PermissionEditDraft, handler.createVersion)
 	register("GET /api/v1/versions", auth.PermissionReadContent, handler.listVersions)
 	register("POST /api/v1/versions/{versionId}/clone", auth.PermissionEditDraft, handler.cloneVersion)
-	api.Handle("GET /api/v1/versions/{versionId}", http.HandlerFunc(handler.getVersion))
+	api.Handle("GET /api/v1/versions/{versionId}", routeHandler(handler.getVersion))
 	register("PUT /api/v1/versions/{versionId}", auth.PermissionEditDraft, handler.updateVersion)
 	register("POST /api/v1/versions/{versionId}/review", auth.PermissionSubmitReview, handler.submitReview)
 	register("POST /api/v1/versions/{versionId}/approve", auth.PermissionReview, handler.approveReview)
@@ -208,9 +208,8 @@ func NewRouter(options RouterOptions) http.Handler {
 	root.Handle("/api/", middleware.Authenticate(handler.withBodyLimit(api)))
 	requestID := options.RequestID
 	if requestID == nil {
-		var sequence atomic.Uint64
 		requestID = func(*http.Request) string {
-			return fmt.Sprintf("req-%d", sequence.Add(1))
+			return "req-" + rand.Text()
 		}
 	}
 	return requestIDMiddleware(corsMiddleware(root, options.AllowedOrigins), requestID)
@@ -223,17 +222,26 @@ func (handler *Handler) withBodyLimit(next http.Handler) http.Handler {
 	})
 }
 
+// requestIDMiddleware keeps accepted external UUIDs or uses the configured
+// generator, replacing provisional logging IDs so headers and operation logs
+// share one validated identifier without accepting arbitrary client secrets.
 func requestIDMiddleware(next http.Handler, generator func(*http.Request) string) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requestID := strings.TrimSpace(request.Header.Get("X-Request-ID"))
-		if requestID == "" {
+		state, _ := request.Context().Value(requestLogKey{}).(*requestLog)
+		if !validExternalRequestID(requestID) || (state != nil && state.generatedByLogging) {
 			requestID = strings.TrimSpace(generator(request))
 		}
-		if requestID == "" {
+		if !validRequestID(requestID) {
 			requestID = "req-unknown"
 		}
 		request.Header.Set("X-Request-ID", requestID)
 		writer.Header().Set("X-Request-ID", requestID)
+		if state != nil && state.generatedByLogging {
+			state.generatedByLogging = false
+			ctx := observability.WithLogger(request.Context(), state.logger.With("request_id", requestID))
+			*request = *request.WithContext(ctx)
+		}
 		next.ServeHTTP(writer, request)
 	})
 }
@@ -642,24 +650,39 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(writer).Encode(value)
 }
 
+// writeDomainError uses the shared domain mapping for both diagnostic severity
+// and the public response, preserving internal causes only in server logs.
 func writeDomainError(writer http.ResponseWriter, request *http.Request, err error) {
+	status, code, message := domainErrorResponse(err)
+	logOperation(request, err, status, "domain_error", "management operation failed")
+	writeError(writer, request, status, code, message)
+}
+
+// domainErrorResponse defines the shared public contract and precedence for domain errors.
+func domainErrorResponse(err error) (status int, code, message string) {
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
-		writeError(writer, request, http.StatusForbidden, "forbidden", "Permission denied.")
+		return http.StatusForbidden, "forbidden", "Permission denied."
 	case errors.Is(err, domain.ErrNotFound):
-		writeError(writer, request, http.StatusNotFound, "not_found", "Resource not found.")
+		return http.StatusNotFound, "not_found", "Resource not found."
 	case errors.Is(err, domain.ErrConflict):
-		writeError(writer, request, http.StatusConflict, "conflict", "Resource was modified by another request.")
+		return http.StatusConflict, "conflict", "Resource was modified by another request."
 	case errors.Is(err, domain.ErrInvalidTransition):
-		writeError(writer, request, http.StatusConflict, "invalid_state", "The requested state transition is not allowed.")
+		return http.StatusConflict, "invalid_state", "The requested state transition is not allowed."
 	case errors.Is(err, domain.ErrInvalidInput):
-		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Request data is invalid.")
+		return http.StatusBadRequest, "invalid_request", "Request data is invalid."
 	default:
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Service unavailable.")
+		return http.StatusInternalServerError, "internal_error", "Service unavailable."
 	}
 }
 
+// writeError emits the request-correlated public error and logs its rejection
+// only when the request has not already recorded a more specific failure.
 func writeError(writer http.ResponseWriter, request *http.Request, status int, code, message string) {
+	state, _ := request.Context().Value(requestLogKey{}).(*requestLog)
+	if state == nil || !state.failed {
+		logOperation(request, nil, status, code, "management request rejected", "reason", message)
+	}
 	writeJSON(writer, status, errorResponse{Code: code, Message: message, RequestID: request.Header.Get("X-Request-ID")})
 }
 

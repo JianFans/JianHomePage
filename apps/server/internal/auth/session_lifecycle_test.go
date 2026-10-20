@@ -108,6 +108,7 @@ func TestCookieSessionReadFailuresRemainRetryable(t *testing.T) {
 		{"invalid", domain.ErrForbidden, http.StatusUnauthorized},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			logs := captureAuthLogs(t)
 			store.readErr = test.err
 			for _, endpoint := range []string{"protected", "logout"} {
 				var handler http.Handler = protected
@@ -120,7 +121,15 @@ func TestCookieSessionReadFailuresRemainRetryable(t *testing.T) {
 					r.Header.Set("X-CSRF-Token", "csrf")
 				}
 				response := httptest.NewRecorder()
+				r.Header.Set("X-Request-ID", "req-auth-test")
 				handler.ServeHTTP(response, r)
+				if endpoint == "protected" {
+					reason, level := "session_rejected", "WARN"
+					if test.status == http.StatusServiceUnavailable {
+						reason, level = "store_unavailable", "ERROR"
+					}
+					assertAuthLog(t, logs, "cookie.verify", reason, level)
+				}
 				if response.Code != test.status || strings.Contains(response.Body.String(), "private") || len(response.Result().Cookies()) != 0 {
 					t.Errorf("%s: got %d %s, want safe %d without cookie changes", endpoint, response.Code, response.Body.String(), test.status)
 				}

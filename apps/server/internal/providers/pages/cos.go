@@ -61,7 +61,7 @@ func (c *Client) upload(ctx context.Context, u uploadCredentials, key string, ar
 	checksum := md5.Sum(archive)
 	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(checksum[:]))
 	req.Header.Set("Authorization", cosAuthorization(req, u.Credentials.ID, u.Credentials.Secret, time.Now()))
-	_, err = c.send(req)
+	_, _, err = c.send(req, "COSUpload")
 	return err
 }
 

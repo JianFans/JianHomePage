@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"strings"
@@ -48,6 +49,7 @@ type OIDCProvider struct {
 	maxTokenSize int
 	requireHTTPS bool
 	rolesByName  map[string]domain.Role
+	roleNames    []string
 
 	mu                 sync.Mutex
 	jwksURL            string
@@ -124,8 +126,13 @@ func NewOIDCProvider(config OIDCConfig) (*OIDCProvider, error) {
 			roleNames.Editor: domain.RoleEditor, roleNames.Reviewer: domain.RoleReviewer,
 			roleNames.Publisher: domain.RolePublisher, roleNames.Admin: domain.RoleAdmin,
 		},
-		keys: make(map[string]*rsa.PublicKey),
+		roleNames: []string{roleNames.Editor, roleNames.Reviewer, roleNames.Publisher, roleNames.Admin},
+		keys:      make(map[string]*rsa.PublicKey),
 	}, nil
+}
+
+func (provider *OIDCProvider) expectedRoleNames() []string {
+	return append([]string(nil), provider.roleNames...)
 }
 
 func oidcHTTPClient(client *http.Client, requireHTTPS bool) *http.Client {
@@ -149,22 +156,22 @@ func oidcHTTPClient(client *http.Client, requireHTTPS bool) *http.Client {
 func (provider *OIDCProvider) Authenticate(ctx context.Context, token string) (domain.Principal, error) {
 	token = strings.TrimSpace(token)
 	if token == "" || len(token) > provider.maxTokenSize {
-		return domain.Principal{}, errors.New("invalid bearer token")
+		return domain.Principal{}, rejected("token_format", "invalid bearer token")
 	}
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return domain.Principal{}, errors.New("invalid bearer token")
+		return domain.Principal{}, rejected("token_format", "invalid bearer token")
 	}
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return domain.Principal{}, errors.New("invalid bearer token")
+		return domain.Principal{}, rejected("token_header", "invalid bearer token")
 	}
 	var header struct {
 		Algorithm string `json:"alg"`
 		KeyID     string `json:"kid"`
 	}
 	if err := json.Unmarshal(headerBytes, &header); err != nil || header.Algorithm != "RS256" || header.KeyID == "" {
-		return domain.Principal{}, errors.New("unsupported bearer token")
+		return domain.Principal{}, rejected("token_algorithm", "unsupported bearer token")
 	}
 	publicKey, err := provider.key(ctx, header.KeyID)
 	if err != nil {
@@ -174,24 +181,24 @@ func (provider *OIDCProvider) Authenticate(ctx context.Context, token string) (d
 	digest := sha256Digest([]byte(signed))
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil || rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, digest, signature) != nil {
-		return domain.Principal{}, errors.New("invalid bearer token")
+		return domain.Principal{}, rejected("signature_invalid", "invalid bearer token")
 	}
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return domain.Principal{}, errors.New("invalid bearer token")
+		return domain.Principal{}, rejected("token_payload", "invalid bearer token")
 	}
 	var claims map[string]any
 	decoder := json.NewDecoder(strings.NewReader(string(payloadBytes)))
 	decoder.UseNumber()
 	if err := decoder.Decode(&claims); err != nil {
-		return domain.Principal{}, errors.New("invalid bearer token")
+		return domain.Principal{}, rejected("token_payload", "invalid bearer token")
 	}
 	if err := provider.validateClaims(claims); err != nil {
 		return domain.Principal{}, err
 	}
 	roles, err := provider.rolesFromClaims(claims["roles"])
 	if err != nil {
-		return domain.Principal{}, err
+		return domain.Principal{}, rejectedWith("roles_invalid", "token roles are invalid", slog.Any("expected_roles", provider.expectedRoleNames()))
 	}
 	subject, _ := claims["sub"].(string)
 	principal := domain.Principal{Subject: subject, Roles: roles}
@@ -220,21 +227,21 @@ func (provider *OIDCProvider) Authenticate(ctx context.Context, token string) (d
 func (provider *OIDCProvider) validateClaims(claims map[string]any) error {
 	issuer, _ := claims["iss"].(string)
 	if issuer != provider.issuer {
-		return errors.New("invalid token issuer")
+		return rejectedWith("issuer_mismatch", "invalid token issuer", slog.String("expected_issuer", provider.issuer))
 	}
 	subject, _ := claims["sub"].(string)
 	if strings.TrimSpace(subject) == "" {
-		return errors.New("token subject is required")
+		return rejected("subject_missing", "token subject is required")
 	}
 	if !audienceContains(claims["aud"], provider.audience) {
-		return errors.New("invalid token audience")
+		return rejectedWith("audience_mismatch", "invalid token audience", slog.String("expected_audience", provider.audience))
 	}
 	exp, ok := numericClaim(claims["exp"])
 	if !ok || provider.now().After(time.Unix(int64(exp), 0).Add(provider.clockSkew)) {
-		return errors.New("token is expired")
+		return rejected("token_expired", "token is expired")
 	}
 	if nbf, ok := numericClaim(claims["nbf"]); ok && provider.now().Before(time.Unix(int64(nbf), 0).Add(-provider.clockSkew)) {
-		return errors.New("token is not active")
+		return rejected("token_not_active", "token is not active")
 	}
 	return nil
 }
@@ -251,7 +258,7 @@ func (provider *OIDCProvider) key(ctx context.Context, keyID string) (*rsa.Publi
 		if keyWasCached {
 			return key, nil
 		}
-		return nil, errors.New("signing key not found")
+		return nil, rejected("signing_key_missing", "signing key not found")
 	}
 	provider.lastRefreshAttempt = now
 	if err := provider.refreshKeysLocked(ctx); err != nil {
@@ -262,7 +269,7 @@ func (provider *OIDCProvider) key(ctx context.Context, keyID string) (*rsa.Publi
 	}
 	key, ok := provider.keys[keyID]
 	if !ok {
-		return nil, errors.New("signing key not found")
+		return nil, rejected("signing_key_missing", "signing key not found")
 	}
 	provider.lastRefreshAttempt = time.Time{}
 	return key, nil
@@ -276,14 +283,14 @@ func (provider *OIDCProvider) refreshKeysLocked(ctx context.Context) error {
 	}
 	var discovery oidcDiscovery
 	if err := json.Unmarshal(body, &discovery); err != nil || discovery.JWKSURI == "" || discovery.Issuer != provider.issuer {
-		return errors.New("invalid OIDC discovery document")
+		return unavailable("discovery_invalid", "invalid OIDC discovery document", nil)
 	}
 	parsed, err := httpurl.ParseAbsolute(discovery.JWKSURI)
 	if err != nil {
-		return errors.New("invalid OIDC JWKS URL")
+		return unavailable("jwks_url_invalid", "invalid OIDC JWKS URL", nil)
 	}
 	if provider.requireHTTPS && parsed.Scheme != "https" {
-		return errors.New("OIDC JWKS URL must use HTTPS")
+		return unavailable("jwks_url_insecure", "OIDC JWKS URL must use HTTPS", nil)
 	}
 	body, err = provider.fetch(ctx, discovery.JWKSURI)
 	if err != nil {
@@ -291,7 +298,7 @@ func (provider *OIDCProvider) refreshKeysLocked(ctx context.Context) error {
 	}
 	var document jwksDocument
 	if err := json.Unmarshal(body, &document); err != nil {
-		return errors.New("invalid OIDC JWKS document")
+		return unavailable("jwks_invalid", "invalid OIDC JWKS document", nil)
 	}
 	keys := make(map[string]*rsa.PublicKey, len(document.Keys))
 	for _, value := range document.Keys {
@@ -317,7 +324,7 @@ func (provider *OIDCProvider) refreshKeysLocked(ctx context.Context) error {
 		keys[value.Kid] = &rsa.PublicKey{N: new(big.Int).SetBytes(modulus), E: exponent}
 	}
 	if len(keys) == 0 {
-		return errors.New("OIDC JWKS contains no usable RSA keys")
+		return unavailable("jwks_keys_missing", "OIDC JWKS contains no usable RSA keys", nil)
 	}
 	provider.jwksURL = discovery.JWKSURI
 	provider.keys = keys
@@ -328,20 +335,20 @@ func (provider *OIDCProvider) refreshKeysLocked(ctx context.Context) error {
 func (provider *OIDCProvider) fetch(ctx context.Context, endpoint string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, errors.New("OIDC request could not be created")
+		return nil, unavailable("provider_request_invalid", "OIDC request could not be created", nil)
 	}
 	request.Header.Set("Accept", "application/json")
 	response, err := provider.httpClient.Do(request)
 	if err != nil {
-		return nil, errors.New("OIDC provider unavailable")
+		return nil, unavailable("provider_unavailable", "OIDC provider unavailable", err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, defaultOIDCResponseBytes+1))
 	if err != nil || len(body) > defaultOIDCResponseBytes {
-		return nil, errors.New("OIDC provider response invalid")
+		return nil, unavailable("provider_response_invalid", "OIDC provider response invalid", err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("OIDC provider returned status %d", response.StatusCode)
+		return nil, unavailable("provider_http_error", fmt.Sprintf("OIDC provider returned status %d", response.StatusCode), nil)
 	}
 	return body, nil
 }

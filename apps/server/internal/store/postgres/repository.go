@@ -455,6 +455,9 @@ func compareAndSwapResult(ctx context.Context, exec Executor, result ExecResult,
 	return domain.ErrConflict
 }
 
+// scanVersion restores canonical snapshot bytes after JSONB readback and verifies
+// their checksum, distinguishing missing rows from stored corruption without
+// exposing persisted content through parser diagnostics.
 func scanVersion(row Row) (domain.ContentVersion, error) {
 	var version domain.ContentVersion
 	var status string
@@ -470,10 +473,11 @@ func scanVersion(row Row) (domain.ContentVersion, error) {
 	version.Status = domain.ContentStatus(status)
 	canonical, err := snapshotdata.CanonicalJSON(snapshot)
 	if err != nil {
-		return domain.ContentVersion{}, fmt.Errorf("%w: canonicalize stored snapshot: %v", domain.ErrConflict, err)
+		// Parser diagnostics can contain stored content; keep only the fixed failure reason.
+		return domain.ContentVersion{}, fmt.Errorf("%w: stored snapshot cannot be canonicalized", domain.ErrDataIntegrity)
 	}
 	if snapshotdata.Checksum(canonical) != version.Checksum {
-		return domain.ContentVersion{}, fmt.Errorf("%w: stored snapshot checksum mismatch", domain.ErrConflict)
+		return domain.ContentVersion{}, fmt.Errorf("%w: stored snapshot checksum mismatch", domain.ErrDataIntegrity)
 	}
 	version.Snapshot = append(json.RawMessage(nil), canonical...)
 	return version, nil
