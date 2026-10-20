@@ -17,6 +17,9 @@ const maxAttributes = 32
 const maxRecordBytes = 16 << 10
 const maxRecordAttributes = 128
 
+// Allow eight cause/index group pairs, their leaf fields and an Any error wrapper.
+const maxAttributeDepth = 18
+
 var urlPattern = regexp.MustCompile(`(?i)(?:https?|postgres(?:ql)?|redis|mysql)://[^\s<>"']+`)
 var bearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[^\s,;"']+`)
 var jwtPattern = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
@@ -134,7 +137,7 @@ func (redactor *redactor) attr(attr slog.Attr, depth int, budget *recordBudget) 
 	if secretKey(attr.Key) {
 		return slog.String(attr.Key, budget.take(redactor, "[REDACTED]"))
 	}
-	if depth > 8 {
+	if depth > maxAttributeDepth {
 		return slog.String(attr.Key, budget.take(redactor, "[truncated]"))
 	}
 	value := attr.Value.Resolve()

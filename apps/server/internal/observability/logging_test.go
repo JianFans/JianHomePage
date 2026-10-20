@@ -140,6 +140,44 @@ func TestErrorDiagnosticsKeepClassificationWithoutProviderOrDatabasePayloads(t *
 	}
 }
 
+// TestWrappedDatabaseErrorsKeepSQLSTATE preserves deep error classifications without exposing database payloads or bypassing the cause limit.
+func TestWrappedDatabaseErrorsKeepSQLSTATE(t *testing.T) {
+	for _, wrappers := range []int{5, 7, 8} {
+		for _, anyValue := range []bool{false, true} {
+			t.Run(fmt.Sprintf("wrappers=%d/any=%t", wrappers, anyValue), func(t *testing.T) {
+				var wrapped error = &pgconn.PgError{Code: "23505", Message: "private-table-value", Detail: "private-row-data", InternalQuery: "private-sql"}
+				for i := 0; i < wrappers; i++ {
+					wrapped = fmt.Errorf("context %d: %w", i, wrapped)
+				}
+				var output bytes.Buffer
+				logger, closeLog, err := New(Options{Format: "json", Console: &output})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = closeLog() })
+				attr := Error(wrapped)
+				if anyValue {
+					attr = slog.Any("error", wrapped)
+				}
+				logger.Error("database operation failed", attr)
+				text := output.String()
+				if !json.Valid(bytes.TrimSpace(output.Bytes())) || strings.Contains(text, "[truncated]") {
+					t.Fatalf("supported error groups were truncated: %s", text)
+				}
+				if strings.Contains(text, `"sqlstate":"23505"`) != (wrappers < 8) ||
+					strings.Contains(text, "[cause limit reached]") != (wrappers == 8) {
+					t.Fatalf("diagnostic classification or cause limit changed: %s", text)
+				}
+				for _, secret := range []string{"private-table-value", "private-row-data", "private-sql"} {
+					if strings.Contains(text, secret) {
+						t.Fatalf("database payload leaked: %s", text)
+					}
+				}
+			})
+		}
+	}
+}
+
 type safeProviderDiagnostic struct{}
 
 func (safeProviderDiagnostic) Error() string            { return "client_secret=private-value" }
