@@ -44,6 +44,7 @@ func TestCanTransitionContentStatus(t *testing.T) {
 	}{
 		{StatusDraft, StatusInReview, false, true},
 		{StatusInReview, StatusDraft, false, true},
+		{StatusInReview, StatusDraft, true, false},
 		{StatusInReview, StatusPublished, false, false},
 		{StatusInReview, StatusPublished, true, true},
 		{StatusInReview, StatusPublishing, false, false},

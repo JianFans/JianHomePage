@@ -214,6 +214,8 @@ Authorization: Bearer <session-token>
 
 ## 发布状态机
 
+审核通过的待发布版本仍使用 `status: "in_review"` 和 `reviewApproved: true`，管理端显示「审核通过」。通过后拒绝重复批准或退回，返回 `409 invalid_state`；需要修改时应克隆为新草稿，原版本继续保持只读。
+
 1. 读取已通过审核的 `in_review` 版本。
 2. 重新校验快照并规范化 JSON。
 3. 将快照原文写入 PostgreSQL `publish_snapshots`，按 release ID 与 SHA-256 不可变寻址。

@@ -10,7 +10,7 @@ import MomentWorkbench from './MomentWorkbench.vue'
 import SnapshotInsights from './SnapshotInsights.vue'
 import type { StudioWorkspace } from '../composables/useStudioWorkspace'
 import type { AdminLocale } from '../utils/admin-locale'
-import type { StudioModule } from '../utils/studio-copy'
+import { studioVersionStatus, type StudioModule } from '../utils/studio-copy'
 
 const props = defineProps<{ studio: StudioWorkspace; locale: AdminLocale }>()
 const emit = defineEmits<{ navigate: [module: StudioModule]; workflow: [mode: 'review' | 'publish' | 'rollback']; assetBusy: [value: boolean]; assetDirty: [value: boolean] }>()
@@ -89,9 +89,9 @@ function navigate(module: StudioModule) { emit('navigate', module) }
           >
             <span
               class="studio-status-dot"
-              :data-status="item.status"
+              :data-status="studioVersionStatus(item)"
               aria-hidden="true"
-            /><span>{{ item.name || item.id }}</span><small>{{ copy.statuses[item.status] }}</small><ArrowRight
+            /><span>{{ item.name || item.id }}</span><small>{{ copy.statuses[studioVersionStatus(item)] }}</small><ArrowRight
               :size="16"
               aria-hidden="true"
             />
@@ -219,9 +219,9 @@ function navigate(module: StudioModule) { emit('navigate', module) }
           >
             <span
               class="studio-status-dot"
-              :data-status="item.status"
+              :data-status="studioVersionStatus(item)"
               aria-hidden="true"
-            /><span>{{ item.name || item.id }}<small v-if="item.sourceVersionId">{{ copy.source }} {{ item.sourceVersionId }}</small></span><small>{{ copy.statuses[item.status] }} · {{ copy.revision }} {{ item.revision }}</small><ArrowRight
+            /><span>{{ item.name || item.id }}<small v-if="item.sourceVersionId">{{ copy.source }} {{ item.sourceVersionId }}</small></span><small>{{ copy.statuses[studioVersionStatus(item)] }} · {{ copy.revision }} {{ item.revision }}</small><ArrowRight
               :size="16"
               aria-hidden="true"
             />
@@ -259,7 +259,7 @@ function navigate(module: StudioModule) { emit('navigate', module) }
             v-if="studio.canReview"
             class="button"
             type="button"
-            :disabled="workspace.version.status !== 'in_review' || workspace.busy || studio.unsaved"
+            :disabled="!workspace.canApprove || studio.unsaved"
             @click="emit('workflow', 'review')"
           >
             {{ copy.approve }} / {{ copy.reject }}

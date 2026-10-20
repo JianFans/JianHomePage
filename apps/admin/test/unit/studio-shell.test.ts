@@ -6,9 +6,9 @@ import AdminPage from '../../pages/index.vue'
 import type { StudioWorkspace } from '../../composables/useStudioWorkspace'
 
 /** 模拟真实 HTTP 边界，不替代页面的表单、事务和版本状态。 */
-function backend(options: { authenticated?: boolean; status?: string; roles?: string[]; failSave?: boolean; failList?: boolean; empty?: boolean; paginated?: boolean; logout?: Promise<Response> } = {}) {
+function backend(options: { authenticated?: boolean; status?: string; reviewApproved?: boolean; roles?: string[]; failSave?: boolean; failList?: boolean; empty?: boolean; paginated?: boolean; logout?: Promise<Response> } = {}) {
   const records = new Map([
-    ['ver_current', { id: 'ver_current', name: '工作草稿', status: options.status || 'draft', revision: 4, snapshot: structuredClone(fixture), checksum: 'sha256:test' }],
+    ['ver_current', { id: 'ver_current', name: '工作草稿', status: options.status || 'draft', reviewApproved: options.reviewApproved, revision: 4, snapshot: structuredClone(fixture), checksum: 'sha256:test' }],
     ['ver_history', { id: 'ver_history', name: '之前版本', status: 'archived', revision: 2, snapshot: structuredClone(fixture), checksum: 'sha256:history' }],
   ])
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -27,7 +27,7 @@ function backend(options: { authenticated?: boolean; status?: string; roles?: st
       if (options.paginated) return json(url.searchParams.has('cursor')
         ? { items: [records.get('ver_current')] }
         : { items: [records.get('ver_history')], nextCursor: 'older-page' })
-      return json({ items: options.empty ? [] : [...records.values()].map(record => ({ id: record.id, name: record.name, status: record.status, revision: record.revision, checksum: record.checksum })) })
+      return json({ items: options.empty ? [] : [...records.values()].map(record => ({ id: record.id, name: record.name, status: record.status, reviewApproved: record.reviewApproved, revision: record.revision, checksum: record.checksum })) })
     }
     if (path.endsWith('/clone')) return json({ ...records.get('ver_history'), id: 'ver_copy', name: '复制版本', sourceVersionId: 'ver_history', status: 'draft', revision: 1 })
     const id = path.split('/').at(-1)!
@@ -55,6 +55,23 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 }
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
+
+it('shows approved review consistently and prevents reopening review decisions', async () => {
+  const { wrapper } = await mountStudio({ status: 'in_review', reviewApproved: true })
+  try {
+    expect(wrapper.get('.studio-meta').text()).toContain('Approved')
+    expect(wrapper.get('[data-testid="version-ver_current"]').text()).toContain('Approved')
+    expect(wrapper.get('.studio-version-select').text()).toContain('Approved')
+    expect(wrapper.get('.studio-history-list').text()).toContain('Approved')
+    await wrapper.get('[data-testid="nav-history"]').trigger('click')
+    expect(wrapper.get('.studio-history-list').text()).toContain('Approved')
+    const reviewButton = wrapper.findAll('.studio-workflow-actions button').find(button => button.text().includes('Approve'))!
+    expect(reviewButton.attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('.studio-workflow-actions button').find(button => button.text() === 'Publish')!.attributes('disabled')).toBeUndefined()
+    await wrapper.get('button[aria-label="切换中文"]').trigger('click')
+    expect(wrapper.get('.studio-meta').text()).toContain('审核通过')
+  } finally { wrapper.unmount() }
+})
 
 it('opens a usable first draft without importing test content or writing to the server', async () => {
   const { wrapper, fetcher } = await mountStudio({ empty: true })
