@@ -5,10 +5,9 @@ export type ToastTone = 'info' | 'success' | 'warning' | 'error'
 export interface ToastMessage { id: string; message: string; tone: ToastTone }
 interface Lifetime { remaining: number; started: number; timer?: ReturnType<typeof setTimeout>; pauses: Set<string> }
 
-/** 管理独立的消息队列；暂停原因分别计数，防止指针移出恢复仍在聚焦的消息。 */
+/** 最新提示立即可见，超过三条时淘汰最旧提示；每条独立维护暂停原因。 */
 export function useToasts() {
   const items = ref<ToastMessage[]>([])
-  const queue: ToastMessage[] = []
   const lifetimes = new Map<string, Lifetime>()
   const globalPauses = new Set<string>()
   let disposed = false
@@ -29,34 +28,23 @@ export function useToasts() {
     life.remaining = Math.max(0, life.remaining - (Date.now() - life.started))
   }
 
-  /** 按到达顺序补位；队列中的消息尚未开始消耗展示时间。 */
-  function fill() {
-    while (!disposed && items.value.length < 3 && queue.length) {
-      const item = queue.shift()!
-      items.value.push(item)
-      start(item.id)
-    }
-  }
-
   /** 创建文本消息，错误提示保留更长阅读时间。 */
   function notify(message: string, tone: ToastTone = 'info'): string {
     const id = createEntityId('toast_')
     if (disposed) return id
     lifetimes.set(id, { remaining: tone === 'error' ? 7000 : 5000, started: 0, pauses: new Set() })
-    queue.push({ id, message, tone })
-    fill()
+    if (items.value.length >= 3) dismiss(items.value.at(-1)!.id)
+    items.value.unshift({ id, message, tone })
+    start(id)
     return id
   }
 
-  /** 关闭指定消息，并释放其计时资源和队列位置。 */
+  /** 关闭或淘汰指定消息并释放计时资源，迟到交互不会恢复已删除的提示。 */
   function dismiss(id: string) {
     const life = lifetimes.get(id)
     if (life) stop(life)
     lifetimes.delete(id)
     items.value = items.value.filter(item => item.id !== id)
-    const queued = queue.findIndex(item => item.id === id)
-    if (queued >= 0) queue.splice(queued, 1)
-    fill()
   }
 
   /** 每种交互独立暂停，重复进入同一原因不重置时间。 */
@@ -89,7 +77,6 @@ export function useToasts() {
     disposed = true
     for (const life of lifetimes.values()) stop(life)
     lifetimes.clear()
-    queue.length = 0
     items.value = []
   })
   return { items: readonly(items), notify, dismiss, pause, resume, pauseAll, resumeAll }

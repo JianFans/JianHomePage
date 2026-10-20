@@ -68,8 +68,8 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', visibilit
 </template>
 
 <style scoped>
-.toast-viewport { position: fixed; z-index: 120; bottom: max(1.25rem, env(safe-area-inset-bottom)); right: max(1.25rem, env(safe-area-inset-right)); width: min(24rem, calc(100vw - 2rem)); display: grid; gap: .65rem; pointer-events: none; max-height: calc(100dvh - 3rem); overflow: auto; padding: .25rem; }
-.toast-message { --toast-accent: var(--info, #a7bfd5); pointer-events: auto; display: grid; grid-template-columns: 1.15rem minmax(0, 1fr) 2.75rem; align-items: center; gap: .7rem; padding: .6rem .6rem .6rem 1rem; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-left: 3px solid var(--toast-accent); border-radius: .7rem; box-shadow: 0 8px 32px #0005; }
+.toast-viewport { position: fixed; z-index: 120; bottom: max(1.25rem, env(safe-area-inset-bottom)); right: max(1rem, env(safe-area-inset-right)); display: flex; flex-direction: column; align-items: flex-end; gap: .65rem; pointer-events: none; }
+.toast-message { --toast-accent: var(--info, #a7bfd5); box-sizing: border-box; inline-size: max-content; max-inline-size: min(28rem, calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right))); pointer-events: auto; display: grid; grid-template-columns: 1.15rem minmax(0, 1fr) 2.75rem; align-items: center; gap: .7rem; padding: .6rem .6rem .6rem 1rem; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-left: 3px solid var(--toast-accent); border-radius: .7rem; box-shadow: 0 8px 32px #0005; }
 .toast-message > svg { color: var(--toast-accent); }
 .toast-message p { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
 .toast-message--success { --toast-accent: var(--accent, #9ebdb5); }
@@ -77,7 +77,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', visibilit
 .toast-message--error { --toast-accent: var(--danger, #dcaaa2); }
 .toast-message .icon-tool { border: 0; border-radius: .4rem; }
 .toast-enter-active, .toast-leave-active, .toast-move { transition: opacity 180ms ease, transform 220ms ease; }
-.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(1rem); }
-.toast-leave-active { position: absolute; width: calc(100% - .5rem); }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(.5rem); }
+.toast-leave-active { position: absolute; right: 0; }
 @media (prefers-reduced-motion: reduce) { .toast-enter-active, .toast-leave-active, .toast-move { transition: none; } }
 </style>
