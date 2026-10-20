@@ -54,7 +54,7 @@ install -m 755 yujian-server-0.1.0-linux-amd64 ./yujian-server
 | `MEDIA_PUBLIC_BASE_URL` | 必填 | 稳定 HTTPS 素材域名，如 `https://media.yujian.me`，经 EdgeOne 回源 COS |
 | `PAGES_API_TOKEN` | 必填 | EdgeOne Pages 控制台的 API Token 页面创建，见 [官方说明](https://edgeone.cloud.tencent.com/pages/document/176921267881082880)；不是 CAM SecretKey |
 | `PAGES_PROJECT_ID` | 必填 | Pages **Direct Upload** 项目的 ID，从项目详情获取；不是项目名称 |
-| `PAGES_REGION` | 必填 | 中国站 `china`，国际站 `global`；项目、Token 与站点一致，不是 COS 地域 |
+| `PAGES_REGION` | 必填 | API／账号所属站点：中国站控制台 `china`，国际站控制台 `global`；不是创建项目时选择的部署区域，也不是 COS 地域。项目与 Token 必须来自同一站点 |
 | `PAGES_PUBLIC_URL` | 必填 | Pages 绑定的公开站地址，如 `https://yujian.me`，须与内容快照 canonical URL 一致 |
 | `SHUTDOWN_TIMEOUT` | 默认 `10s` | 优雅停止超时 |
 | `LOG_LEVEL` | 默认 `info` | `debug`、`info`、`warn` 或 `error`；同时过滤控制台和文件日志 |
@@ -126,6 +126,14 @@ Casdoor 普通、非共享应用可按以下方式配置，其他 OIDC 服务遵
 - 数据库迁移在启动时自动执行。健康检查为 `GET /healthz`。首次部署验证 OIDC 登录、素材直传、预览、发布与回滚，以及公开站的媒体、`robots.txt`、`sitemap.xml`。
 
 ## 更新与故障恢复
+
+后台「概览」和「版本历史」显示最新发布任务、真实构建阶段与部署 ID；页面重新打开后自动恢复跟踪。活动任务每 5 秒读取一次服务端状态；worker 默认每 15 秒对账云端结果，因此云端成功后可能稍晚才显示成功。读取失败不会重新创建部署，可手动「刷新状态」。
+
+- 「发布失败」：修正配置或内容后，点击「重试任务」并确认，为原任务版本创建新任务，保留失败记录与审核约束。
+- 「部署结果待核实」：管理员在原 EdgeOne 项目检查部署记录，再点「核实部署结果」。已创建则填写部署 ID；确实未创建则选择「未创建部署」。两种操作均需核实说明，失败时保留输入。
+- 配置变更后旧任务仍绑定原目标。绑定已有部署必须恢复原配置；核实原项目确实未创建时，即使配置已变也可结束旧任务，再重试。不要删除数据库或把结果不明的部署直接重发。
+- `PAGES_REGION` 选错导致 `DescribePagesProjects` 失败时，先核对账号站点。`china` 调用 `pages-api.cloud.tencent.com/v1`，`global` 调用 `pages-api.edgeone.ai/v1`。云端创建前的准备失败会明确结束任务；已经尝试创建但结果不明的任务保留等待核实。
+- 启动日志的错误链包含 `migration` 字段及 SQLSTATE 时，按该迁移的升级前置条件处理。`P0001` 只是迁移主动拒绝的代码，不能据此判断需要清库；完整限制见服务端 README。
 
 - 首次应用 `0010_uuid_ids` 是不兼容的停服升级：先停止所有旧版服务实例和写入流量，再启动新版；迁移成功后不得重启旧二进制。迁移只检查执行时业务表是否为空，不会阻止旧实例之后写入旧格式 ID。`content_versions`、`assets`、`publish_jobs`、`publish_pointer`、`publisher_builds` 或 `publish_snapshots` 任一表有记录时，迁移会回滚并拒绝启动，不会删除数据。预发布环境应改用空数据库；迁移会保留审计行并将其主键转为 UUID。该迁移不检查或清理 COS 对象；旧素材对象不会自动关联到新素材记录。升级失败时保持服务停止；回退必须同时恢复升级前的数据库备份和旧二进制。
 - 发布请求失败时，用响应中的 `requestId` 查服务日志 `publish request failed` 和同 ID 的 `http request`。`stage` 区分版本查询、素材校验、快照读取／写入和发布器提交；外部故障另含白名单 `provider_error_code`、`provider_http_status`，如 `NoSuchBucket`／404、`AccessDenied`／403。`Unknown`／0 表示没有可用分类；日志不记录服务商原文或凭据。版本确实不存在时返回 404，对象存储的桶或上传故障返回服务错误。
