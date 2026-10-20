@@ -407,6 +407,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     publishJob,
     publishRefreshing: publishMonitor.refreshing,
     publishReadError: publishMonitor.error,
+    refreshPublishStatus: publishMonitor.refresh,
     restorePublish: publishMonitor.restore,
     editorText,
     rejectReason,

@@ -15,7 +15,8 @@ for (const selectedPrevious of [false, true]) test(`发布及刷新同步新旧�
     record.revision++
     return route.fulfill({ status: 202, json: job })
   })
-  await page.route('**/api/v1/publishes/pub_d12f724e-a67b-4212-ae95-44b9aa602de8/refresh', route => {
+  await page.route('**/api/v1/publishes/pub_d12f724e-a67b-4212-ae95-44b9aa602de8', route => {
+    expect(route.request().method()).toBe('GET')
     record.status = 'published'
     record.revision++
     job.status = 'succeeded'
@@ -42,6 +43,30 @@ for (const selectedPrevious of [false, true]) test(`发布及刷新同步新旧�
   await expect(page.getByTestId('version-ver_14cea400-a42f-4560-9770-3de88cae9d5a')).toContainText('Published')
   await expect(page.getByTestId('version-ver_8bb3a437-061d-4dcd-805e-7d5e6f716921')).toContainText('Archived')
   await expect(page.getByRole('button', { name: 'Rollback', exact: true })).toBeEnabled()
+})
+
+for (const module of ['overview', 'history'] as const) test(`${module} 面板手动刷新只读状态，不发送发布写请求`, async ({ page }) => {
+  const api = await backend(page)
+  const job = task()
+  job.build = { phase: 'submitting', error: 'Deployment outcome unknown', configurationMismatch: true }
+  api.records.get(job.versionId)!.status = 'publishing'
+  await page.addInitScript(() => localStorage.setItem('yujian:admin-locale', 'en'))
+  await page.route('**/api/v1/publishes/latest', route => route.fulfill({ json: job }))
+  await page.route(`**/api/v1/publishes/${job.id}`, route => {
+    expect(route.request().method()).toBe('GET')
+    return route.fulfill({ json: { ...job, build: { phase: 'deployed', deploymentId: 'dp-read-only', configurationMismatch: false } } })
+  })
+  await page.goto('/')
+  await expect(page.getByTestId('studio-version-name')).toHaveText('Working draft')
+  await expect(page.getByTestId('studio-preview')).toBeEnabled()
+  await expect(page.getByTestId('publish-status')).toContainText('Verification required')
+  if (module === 'history') {
+    await navigate(page, module)
+    await expect(page.locator('[data-module="history"]')).toBeVisible()
+  }
+  await page.getByTestId('publish-refresh').click()
+  await expect(page.getByTestId('publish-status')).toContainText('dp-read-only')
+  expect(api.writes).toHaveLength(0)
 })
 
 /** 云端仅替换 HTTP 边界，任务恢复、表单和轮询由真实管理端驱动。 */

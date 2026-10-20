@@ -77,7 +77,7 @@ function navigate(module: StudioModule) { emit('navigate', module) }
           :can-recover="Boolean(session.principal?.roles.includes('admin'))"
           :refreshing="workspace.publishRefreshing"
           :read-error="workspace.publishReadError"
-          @refresh="workspace.publishJob ? workspace.refreshPublish() : workspace.restorePublish()"
+          @refresh="workspace.publishJob ? workspace.refreshPublishStatus() : workspace.restorePublish()"
           @retry="workspace.retryPublish"
           @recover="workspace.recoverPublish"
         />
@@ -231,7 +231,7 @@ function navigate(module: StudioModule) { emit('navigate', module) }
           :can-recover="Boolean(session.principal?.roles.includes('admin'))"
           :refreshing="workspace.publishRefreshing"
           :read-error="workspace.publishReadError"
-          @refresh="workspace.publishJob ? workspace.refreshPublish() : workspace.restorePublish()"
+          @refresh="workspace.publishJob ? workspace.refreshPublishStatus() : workspace.restorePublish()"
           @retry="workspace.retryPublish"
           @recover="workspace.recoverPublish"
         />
