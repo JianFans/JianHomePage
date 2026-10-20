@@ -287,6 +287,21 @@ test('Toast 视口和关闭按钮聚焦期间暂停，离开视口后自动关�
   await expect(viewport.locator('.toast-message')).toHaveCount(0)
 })
 
+test('关闭聚焦的 Toast 后，离场动画结束会恢复剩余消息计时', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.clock.install()
+  const api = await startStudio(page)
+  const viewport = page.getByTestId('toast-viewport')
+  api.conflict = true
+  await page.getByTestId('snapshot-save').click()
+  await expect(viewport.locator('.toast-message')).toHaveCount(2)
+  await viewport.getByRole('button', { name: 'Dismiss message' }).first().click()
+  await page.mouse.move(0, 0)
+  await expect(viewport.locator('.toast-message')).toHaveCount(1)
+  await page.clock.fastForward(5000)
+  await expect(viewport.locator('.toast-message')).toHaveCount(0)
+})
+
 test('窄屏长 Toast 保持在视口内，可滚动阅读并用键盘关闭', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 420 })
   await page.emulateMedia({ reducedMotion: 'no-preference' })

@@ -71,6 +71,26 @@ describe('Toast viewport', () => {
     } finally { wrapper.unmount(); outside.remove() }
   })
 
+  it('离场结束后复查焦点，无 focusout 时释放暂停，焦点仍在区域内时保持暂停', () => {
+    const wrapper = mount(ToastViewport, { attachTo: document.body, props: {
+      items: [{ id: 'toast_550e8400-e29b-41d4-a716-446655440000', message: 'Closing', tone: 'info' }], locale: 'en',
+    } })
+    try {
+      const button = wrapper.get('button').element as HTMLElement
+      button.focus()
+      const transition = wrapper.findComponent({ name: 'TransitionGroup' })
+      transition.vm.$emit('afterLeave')
+      expect(wrapper.emitted('resumeAll')).toBeUndefined()
+      // 模拟节点移除未向视口冒泡 focusout 的浏览器行为。
+      button.addEventListener('focusout', event => event.stopPropagation(), { once: true })
+      button.remove()
+      expect(wrapper.element.contains(document.activeElement)).toBe(false)
+      expect(wrapper.emitted('resumeAll')).toBeUndefined()
+      transition.vm.$emit('afterLeave')
+      expect(wrapper.emitted('resumeAll')).toEqual([['focus']])
+    } finally { wrapper.unmount() }
+  })
+
   it('reports page visibility and removes its listener when unmounted', async () => {
     const spy = vi.spyOn(document, 'removeEventListener')
     const wrapper = mount(ToastViewport, { props: { items: [], locale: 'zh-CN' } })

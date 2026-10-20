@@ -32,8 +32,11 @@ function resumeFocus() {
 function focusOut(event: FocusEvent) {
   if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) resumeFocus()
 }
-// 淘汰聚焦的消息不一定触发 focusout，更新后重新核对，避免计时永久暂停。
-onUpdated(() => { if (focusedViewport && !focusedViewport.contains(document.activeElement)) resumeFocus() })
+/** 聚焦节点移除后可能没有 focusout；更新及离场结束后核对，避免永久暂停。 */
+function recheckFocus() {
+  if (focusedViewport && !focusedViewport.contains(document.activeElement)) resumeFocus()
+}
+onUpdated(recheckFocus)
 /** 隐藏页面暂停计时，恢复后不丢失消息的剩余展示时间。 */
 function visibilityChanged() { emit('visibility', document.hidden) }
 onMounted(() => { document.addEventListener('visibilitychange', visibilityChanged); visibilityChanged() })
@@ -51,6 +54,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
     :tabindex="items.length ? 0 : -1"
     @focusin="focusIn"
     @focusout="focusOut"
+    @after-leave="recheckFocus"
   >
     <article
       v-for="item in items"
