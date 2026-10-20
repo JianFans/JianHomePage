@@ -80,11 +80,11 @@ func (middleware *Middleware) authenticate(request *http.Request) (domain.Princi
 		if _, err := request.Cookie(sessionCookieName); err == nil {
 			principal, authErr := middleware.sessions.authenticateCookie(request)
 			if authErr != nil {
-				level := slog.LevelWarn
+				reason, level := "session_rejected", slog.LevelWarn
 				if !errors.Is(authErr, domain.ErrForbidden) && !errors.Is(authErr, domain.ErrNotFound) && !errors.Is(authErr, errCSRF) {
-					level = slog.LevelError
+					reason, level = "store_unavailable", slog.LevelError
 				}
-				reason, level := authReason(authErr, "session_rejected", level)
+				reason, level = authReason(authErr, reason, level)
 				logAuthentication(request, level, "cookie.verify", reason, "", authErr)
 			} else {
 				logAuthentication(request, slog.LevelDebug, "cookie.verify", "authenticated", principal.Subject, nil)
