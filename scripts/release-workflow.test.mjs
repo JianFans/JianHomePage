@@ -8,6 +8,7 @@ import test from 'node:test'
 import { parse } from 'yaml'
 
 const workflow = parse(await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8'))
+const preparation = parse(await readFile(new URL('../.github/workflows/release-prepare.yml', import.meta.url), 'utf8'))
 const publish = workflow.jobs.publish.steps.find(step => step.run).run
 const sha = 'a'.repeat(40)
 const bash = process.platform === 'win32'
@@ -44,7 +45,7 @@ async function preparationFixture(t) {
   git(['push', 'origin', 'HEAD:master'])
   const initial = git(['rev-parse', 'HEAD'])
   const output = join(directory, 'output.txt')
-  const script = workflow.jobs.prepare.steps.find(step => step.id === 'version').run
+  const script = preparation.jobs.prepare.steps.find(step => step.id === 'version').run
   return {
     git, remote, checkout, initial,
     run: (body = script, overrides = {}) => spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', body], {
@@ -117,6 +118,39 @@ test('推送时默认分支已被更新，不留下孤立的版本标签', async
   assert.equal(release.git(['--git-dir', release.remote, 'tag', '--list']), '')
 })
 
+test('发布从事件标签解析提交及文件版本，兼容附注标签', async (t) => {
+  const release = await preparationFixture(t)
+  assert.equal(release.run().status, 0)
+  const outputs = await release.outputs()
+  const script = workflow.jobs.prepare.steps.find(step => step.id === 'version').run
+  for (const tag of ['v0.1.0', 'annotated']) {
+    if (tag === 'annotated') {
+      release.git(['tag', '-a', 'v0.1.1', '-m', 'wrong version'])
+      // The tag points to valid source but its version must match the files.
+      const mismatch = release.run(script, { GITHUB_REF: 'refs/tags/v0.1.1', GITHUB_SHA: outputs.sha })
+      assert.notEqual(mismatch.status, 0)
+      assert.match(mismatch.stderr, /不一致/)
+      release.git(['tag', '-d', 'v0.1.0'])
+      release.git(['tag', '-a', 'v0.1.0', '-m', 'release'])
+    }
+    const result = release.run(script, { GITHUB_REF: 'refs/tags/v0.1.0', GITHUB_SHA: outputs.sha })
+    assert.equal(result.status, 0, result.stderr)
+    assert.deepEqual(await release.outputs(), outputs)
+  }
+})
+
+test('发布拒绝分支、非稳定标签和事件 SHA 不匹配，不写远端', async (t) => {
+  const release = await preparationFixture(t)
+  assert.equal(release.run().status, 0)
+  const outputs = await release.outputs()
+  const script = workflow.jobs.prepare.steps.find(step => step.id === 'version').run
+  for (const ref of ['refs/heads/master', 'refs/tags/v01.0.0', 'refs/tags/v0.1.0-rc.1', 'refs/tags/v0.1.0']) {
+    const result = release.run(script, { GITHUB_REF: ref, GITHUB_SHA: release.initial })
+    assert.notEqual(result.status, 0, ref)
+  }
+  assert.equal(release.git(['--git-dir', release.remote, 'rev-parse', 'master']), outputs.sha)
+})
+
 // Simulate only the GitHub CLI boundary; execute the real workflow's Bash unchanged.
 const githubStub = `#!/usr/bin/env node
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -126,7 +160,14 @@ const path = process.env.RELEASE_TEST_STATE;
 const state = JSON.parse(readFileSync(path, 'utf8'));
 const value = flag => args[args.indexOf(flag) + 1];
 const save = () => writeFileSync(path, JSON.stringify(state));
-if (args[0] === 'api') { console.log(state.sha); process.exit(0); }
+if (args[0] === 'workflow') {
+  state.dispatches = [...(state.dispatches || []), args]; save();
+  process.exit(state.failDispatch ? 1 : 0);
+}
+if (args[0] === 'api') {
+  if (args[1] !== 'repos/example/site/commits/refs/tags/v0.1.0' || value('--jq') !== '.sha') process.exit(90);
+  console.log(state.sha); process.exit(0);
+}
 if (args[0] !== 'release') process.exit(90);
 switch (args[1]) {
   case 'view':
@@ -181,12 +222,29 @@ async function fixture(t, overrides = {}) {
     assets,
     directory,
     state: async () => JSON.parse(await readFile(statePath, 'utf8')),
-    run: () => spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', `export PATH="${bashDirectory}/bin:$PATH"\n${publish}`], {
+    run: (body = publish) => spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', `export PATH="${bashDirectory}/bin:$PATH"\n${body}`], {
       cwd: directory, encoding: 'utf8',
-      env: { ...process.env, RELEASE_TEST_STATE: statePath, RELEASE_TAG: 'v0.1.0', RELEASE_VERSION: '0.1.0', RELEASE_SHA: sha, RELEASE_IMAGE: 'ghcr.io/example/site', GH_REPO: 'example/site', RUNNER_TEMP: bashDirectory },
+      env: { ...process.env, RELEASE_TEST_STATE: statePath, RELEASE_TAG: 'v0.1.0', RELEASE_VERSION: '0.1.0', RELEASE_SHA: sha, RELEASE_IMAGE: 'ghcr.io/example/site', GH_REPO: 'example/site', RUNNER_TEMP: bashDirectory, GITHUB_STEP_SUMMARY: join(directory, 'summary.md') },
     }),
   }
 }
+
+test('dispatch 使用准备好的标签启动独立运行，失败时可仅重跑触发步骤', async (t) => {
+  const release = await fixture(t, { failDispatch: true })
+  const script = preparation.jobs.dispatch.steps[0].run
+  assert.notEqual(release.run(script).status, 0)
+  const state = await release.state()
+  assert.deepEqual(state.dispatches, [['workflow', 'run', 'release.yml', '--ref', 'v0.1.0', '--repo', 'example/site']])
+  state.failDispatch = false
+  await writeFile(join(release.directory, 'state.json'), JSON.stringify(state))
+  const result = release.run(script)
+  assert.equal(result.status, 0, result.stderr)
+  const after = await release.state()
+  assert.deepEqual(after.dispatches[1], state.dispatches[0])
+  assert.equal(after.creates, 0)
+  assert.deepEqual(after.uploads, [])
+  assert.match(await readFile(join(release.directory, 'summary.md'), 'utf8'), /v0\.1\.0/)
+})
 
 test('首次发布先创建草稿，上传完整文件后才公开', async (t) => {
   const release = await fixture(t, { exists: false })

@@ -1,0 +1,84 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        required: true
+        default: patch
+        options: [patch, minor, major]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Commit and tag synchronized release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout dispatch commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: true
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+      - name: Synchronize versions and atomically push release commit and tag
+        id: version
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BUMP: ${{ inputs.bump }}
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo 'Release must run on the default branch.' >&2
+            exit 1
+          fi
+          git fetch origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" --tags
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$DEFAULT_BRANCH")" ]; then
+            echo 'Default branch changed; start a new release run.' >&2
+            exit 1
+          fi
+          version=$(node scripts/release-version.mjs "$BUMP")
+          node scripts/set-release-version.mjs "$version"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json apps/web/package.json apps/admin/package.json packages/schema/package.json apps/server/cmd/api/version.go
+          git commit -m "chore(发布): 同步 v$version 版本"
+          git tag "v$version"
+          git push --atomic origin "HEAD:refs/heads/$DEFAULT_BRANCH" "refs/tags/v$version"
+          printf 'version=%s\ntag=v%s\nsha=%s\nimage=ghcr.io/%s\n' "$version" "$version" "$(git rev-parse HEAD)" "${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+  dispatch:
+    name: Start release on the pushed tag
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch release workflow on the version tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          # GITHUB_TOKEN pushes do not trigger push workflows; workflow_dispatch does.
+          gh workflow run release.yml --ref "$RELEASE_TAG" --repo "$GH_REPO"
+          printf '### Release requested\n\nTag: `%s`\n\n[View release runs](https://github.com/%s/actions/workflows/release.yml)\n' "$RELEASE_TAG" "$GH_REPO" >> "$GITHUB_STEP_SUMMARY"

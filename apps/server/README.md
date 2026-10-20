@@ -2,7 +2,7 @@
 
 该 Go 服务内嵌「遇健我」管理端，并提供内容版本、审核、素材、Vue 静态生成和 Pages 自动发布。业务层通过明确接口接入 PostgreSQL、对象存储、身份提供器和 Pages，运行时不需要 Node.js 或外部构建进程。
 
-第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)：在 GitHub Actions 手动运行 `Release`，从 Releases 下载编译好的单程序包，再配置账号登录、数据库和云服务。本地电脑与服务器都无需编译。本文用于查完整参数及 API 行为。
+第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)：在 GitHub Actions 手动运行 `Prepare Release`，自动触发 tag 对应的 `Release`，从 Releases 下载编译好的单程序包，再配置账号登录、数据库和云服务。本地电脑与服务器都无需编译。本文用于查完整参数及 API 行为。
 
 ## 当前边界
 
@@ -108,7 +108,7 @@ go run ./cmd/api
 
 服务入口提供管理页面 `/`、隔离预览 `/preview` 和 `GET /healthz`。开发模式的签名上传 URL 由同一进程的 `/local-upload/*` PUT 路由接收并校验 MIME、大小和 SHA-256；上传成功后可通过与内容契约一致的 `/media/*` 路径读取，便于本地 API 调试和内容快照引用。生产环境不会自动降级到内存仓储；启动时加载配置、探测 PostgreSQL、校验 S3、事务执行迁移，并校验 Pages、发布仓储和内嵌资源后注册路由。任一步失败都会关闭已打开的数据库并拒绝启动。
 
-正式部署使用 Releases 中的 Linux amd64／arm64 裸二进制及 `SHA256SUMS.txt`，`--version` 查看应用版本。`Check Code` 的二进制制品保留 7 天；`Release` 先同步 Node／Go 版本并原子推送 commit 和 tag，再检查与构建该提交。工具链版本与内容 Schema 版本独立；配置、启动和失败恢复见 [部署说明](../../docs/DEPLOYMENT.md)。
+正式部署使用 Releases 中的 Linux amd64／arm64 裸二进制及 `SHA256SUMS.txt`，`--version` 查看应用版本。`Check Code` 的二进制制品保留 7 天；`Prepare Release` 同步 Node／Go 版本并原子推送 commit 和 tag，独立的 `Release` 由该 tag 触发，检查与构建关联的版本提交。工具链版本与内容 Schema 版本独立；配置、启动和失败恢复见 [部署说明](../../docs/DEPLOYMENT.md)。
 
 仅开发时需要自行编译：在仓库根目录运行 `pnpm build:server`，输出 `dist/yujian-server`，Windows 为 `dist/yujian-server.exe`。此命令生成前端资源并编译 Go，不自动运行测试。交付二进制已包含管理端、SSR 渲染器和公开浏览器资源，目标机器无需安装 Node.js。`GOOS`、`GOARCH` 可用于指定编译目标。
 
