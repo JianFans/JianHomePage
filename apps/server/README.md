@@ -2,7 +2,7 @@
 
 该 Go 服务内嵌「遇健我」管理端，并提供内容版本、审核、素材、Vue 静态生成和 Pages 自动发布。业务层通过明确接口接入 PostgreSQL、对象存储、身份提供器和 Pages，运行时不需要 Node.js 或外部构建进程。
 
-第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)：在 GitHub Actions 手动运行 `Prepare Release`，自动触发 tag 对应的 `Release`，从 Releases 下载编译好的单程序包，再配置账号登录、数据库和云服务。本地电脑与服务器都无需编译。本文用于查完整参数及 API 行为。
+第一次部署先看 [部署操作指南](../../docs/DEPLOYMENT.md)：配置仓库 Secret `RELEASE_TOKEN` 后，在 GitHub Actions 手动运行 `Prepare Release`，由 tag push 自动触发 `Release`，从 Releases 下载编译好的单程序包，再配置账号登录、数据库和云服务。本地电脑与服务器都无需编译。本文用于查完整参数及 API 行为。
 
 ## 当前边界
 

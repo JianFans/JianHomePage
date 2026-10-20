@@ -22,17 +22,23 @@ jobs:
     name: Commit and tag synchronized release version
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: write
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
     steps:
+      - name: Require credentials that can trigger tag push workflows
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo '::error::Configure RELEASE_TOKEN with repository Contents read/write permission. GITHUB_TOKEN pushes cannot trigger the tag release workflow.'
+            exit 1
+          fi
       - name: Checkout dispatch commit
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: true
+          token: ${{ secrets.RELEASE_TOKEN }}
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -62,23 +68,3 @@ jobs:
           git tag "v$version"
           git push --atomic origin "HEAD:refs/heads/$DEFAULT_BRANCH" "refs/tags/v$version"
           printf 'version=%s\ntag=v%s\nsha=%s\nimage=ghcr.io/%s\n' "$version" "$version" "$(git rev-parse HEAD)" "${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-
-  dispatch:
-    name: Start release on the pushed tag
-    needs: prepare
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Dispatch release workflow on the version tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-        shell: bash
-        run: |
-          # GITHUB_TOKEN pushes do not trigger push workflows; workflow_dispatch does.
-          gh workflow run release.yml --ref "$RELEASE_TAG" --repo "$GH_REPO"
-          printf '### Release requested\n\nTag: `%s`\n\n[View release runs](https://github.com/%s/actions/workflows/release.yml)\n' "$RELEASE_TAG" "$GH_REPO" >> "$GITHUB_STEP_SUMMARY"

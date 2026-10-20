@@ -160,10 +160,6 @@ const path = process.env.RELEASE_TEST_STATE;
 const state = JSON.parse(readFileSync(path, 'utf8'));
 const value = flag => args[args.indexOf(flag) + 1];
 const save = () => writeFileSync(path, JSON.stringify(state));
-if (args[0] === 'workflow') {
-  state.dispatches = [...(state.dispatches || []), args]; save();
-  process.exit(state.failDispatch ? 1 : 0);
-}
 if (args[0] === 'api') {
   if (args[1] !== 'repos/example/site/commits/refs/tags/v0.1.0' || value('--jq') !== '.sha') process.exit(90);
   console.log(state.sha); process.exit(0);
@@ -229,21 +225,17 @@ async function fixture(t, overrides = {}) {
   }
 }
 
-test('dispatch 使用准备好的标签启动独立运行，失败时可仅重跑触发步骤', async (t) => {
-  const release = await fixture(t, { failDispatch: true })
-  const script = preparation.jobs.dispatch.steps[0].run
-  assert.notEqual(release.run(script).status, 0)
-  const state = await release.state()
-  assert.deepEqual(state.dispatches, [['workflow', 'run', 'release.yml', '--ref', 'v0.1.0', '--repo', 'example/site']])
-  state.failDispatch = false
-  await writeFile(join(release.directory, 'state.json'), JSON.stringify(state))
-  const result = release.run(script)
-  assert.equal(result.status, 0, result.stderr)
-  const after = await release.state()
-  assert.deepEqual(after.dispatches[1], state.dispatches[0])
-  assert.equal(after.creates, 0)
-  assert.deepEqual(after.uploads, [])
-  assert.match(await readFile(join(release.directory, 'summary.md'), 'utf8'), /v0\.1\.0/)
+test('准备阶段缺少独立推送凭据时提前失败，不创建提交或标签', async (t) => {
+  const release = await preparationFixture(t)
+  const guard = preparation.jobs.prepare.steps[0].run
+  assert.equal(typeof guard, 'string')
+  const missing = release.run(guard, { RELEASE_TOKEN: '' })
+  assert.notEqual(missing.status, 0)
+  assert.match(missing.stdout + missing.stderr, /RELEASE_TOKEN/)
+  const configured = release.run(guard, { RELEASE_TOKEN: 'test-push-credential' })
+  assert.equal(configured.status, 0, configured.stderr)
+  assert.equal(release.git(['rev-parse', 'HEAD']), release.initial)
+  assert.equal(release.git(['--git-dir', release.remote, 'tag', '--list']), '')
 })
 
 test('首次发布先创建草稿，上传完整文件后才公开', async (t) => {
