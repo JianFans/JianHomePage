@@ -274,12 +274,15 @@ func TestConcurrentFileRotationAndBoundedRecords(t *testing.T) {
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		files, _ := filepath.Glob(filepath.Join(directory, "*.log"))
-		if len(files) <= 2 {
+		files, err := filepath.Glob(filepath.Join(directory, "server-*.jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(files) > 0 && len(files) <= 2 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("too many backup files: %v", files)
+			t.Fatalf("expected one or two backup files after rotation: %v", files)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
