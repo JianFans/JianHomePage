@@ -32,6 +32,36 @@ func logEntries(t *testing.T, output *bytes.Buffer) []map[string]any {
 	return entries
 }
 
+// TestRouterDefaultRequestIDsDoNotRepeatAcrossInstances guards correlation after process restarts.
+func TestRouterDefaultRequestIDsDoNotRepeatAcrossInstances(t *testing.T) {
+	seen := make(map[string]bool)
+	for range 2 {
+		router := NewRouter(RouterOptions{})
+		for range 2 {
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+			id := w.Header().Get("X-Request-ID")
+			if !validRequestID(id) || id == "req-unknown" || seen[id] {
+				t.Fatalf("invalid or reused default request ID: %q", id)
+			}
+			seen[id] = true
+		}
+	}
+}
+
+// TestRouterHonorsConfiguredRequestID keeps explicit generators authoritative inside logging middleware.
+func TestRouterHonorsConfiguredRequestID(t *testing.T) {
+	var output bytes.Buffer
+	router := NewRouter(RouterOptions{RequestID: func(*http.Request) string { return "req-custom" }})
+	handler := LoggingMiddleware(router, slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	entries := logEntries(t, &output)
+	if w.Header().Get("X-Request-ID") != "req-custom" || len(entries) != 1 || entries[0]["request_id"] != "req-custom" {
+		t.Fatalf("configured request ID lost: header=%q logs=%s", w.Header().Get("X-Request-ID"), output.String())
+	}
+}
+
 // TestRequestLogsClassifyStatusAndSuppressProbeNoise checks useful request context without query/header disclosure.
 func TestRequestLogsClassifyStatusAndSuppressProbeNoise(t *testing.T) {
 	for _, tc := range []struct {

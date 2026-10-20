@@ -2,15 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"yujian.me/server/internal/assets"
@@ -209,9 +208,8 @@ func NewRouter(options RouterOptions) http.Handler {
 	root.Handle("/api/", middleware.Authenticate(handler.withBodyLimit(api)))
 	requestID := options.RequestID
 	if requestID == nil {
-		var sequence atomic.Uint64
 		requestID = func(*http.Request) string {
-			return fmt.Sprintf("req-%d", sequence.Add(1))
+			return "req-" + rand.Text()
 		}
 	}
 	return requestIDMiddleware(corsMiddleware(root, options.AllowedOrigins), requestID)

@@ -69,7 +69,7 @@ install -m 755 yujian-server-0.1.0-linux-amd64 ./yujian-server
 例如将 `LOG_FILE` 设为 `/var/log/yujian/server.jsonl` 后，可按请求 ID 查看完整事件：
 
 ```bash
-grep 'req-123' /var/log/yujian/server.jsonl
+jq --arg id 'req-example' 'select(.request_id == $id)' /var/log/yujian/server.jsonl
 tail -F /var/log/yujian/server.jsonl
 ```
 
