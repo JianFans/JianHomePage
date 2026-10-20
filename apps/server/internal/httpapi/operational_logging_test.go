@@ -173,29 +173,100 @@ func TestResourceFieldsOnlyLogApplicationOwnedIDs(t *testing.T) {
 
 // TestRequestPanicRecordsStackAndSafeFailure checks recovery and preservation of already committed responses.
 func TestRequestPanicRecordsStackAndSafeFailure(t *testing.T) {
-	for _, committed := range []bool{false, true} {
-		var output bytes.Buffer
-		handler := LoggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if committed {
-				_, _ = w.Write([]byte("partial"))
+	for _, panicValue := range []any{"private-panic-payload", http.ErrAbortHandler} {
+		for _, committed := range []bool{false, true} {
+			var output bytes.Buffer
+			handler := LoggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if committed {
+					_, _ = w.Write([]byte("partial"))
+				}
+				panic(panicValue)
+			}), slog.New(slog.NewJSONHandler(&output, nil)))
+			w := httptest.NewRecorder()
+			var propagated any
+			func() {
+				defer func() { propagated = recover() }()
+				handler.ServeHTTP(w, httptest.NewRequest("GET", "/panic", nil))
+			}()
+			if panicValue == http.ErrAbortHandler {
+				if propagated != http.ErrAbortHandler || strings.Contains(output.String(), "http handler panicked") {
+					t.Fatalf("abort semantics changed: %v %s", propagated, output.String())
+				}
+			} else if committed {
+				if propagated != http.ErrAbortHandler || w.Body.String() != "partial" {
+					t.Fatalf("committed response corrupted: %v %s", propagated, w.Body.String())
+				}
+			} else if propagated != nil || w.Code != 500 {
+				t.Fatalf("panic not recovered: %v %d", propagated, w.Code)
 			}
-			panic("private-panic-payload")
-		}), slog.New(slog.NewJSONHandler(&output, nil)))
-		w := httptest.NewRecorder()
-		var propagated any
-		func() {
-			defer func() { propagated = recover() }()
-			handler.ServeHTTP(w, httptest.NewRequest("GET", "/panic", nil))
-		}()
-		if committed {
-			if propagated != http.ErrAbortHandler || w.Body.String() != "partial" {
-				t.Fatalf("committed response corrupted: %v %s", propagated, w.Body.String())
+			if panicValue != http.ErrAbortHandler && (!strings.Contains(output.String(), "http handler panicked") || !strings.Contains(output.String(), "operational_logging_test.go") || strings.Contains(output.String(), "private-panic-payload")) {
+				t.Fatalf("missing or unsafe panic trace: %s", output.String())
 			}
-		} else if propagated != nil || w.Code != 500 {
-			t.Fatalf("panic not recovered: %v %d", propagated, w.Code)
+			requestLogs := 0
+			for _, entry := range logEntries(t, &output) {
+				if entry["msg"] != "http request" {
+					continue
+				}
+				requestLogs++
+				if entry["status"] != float64(w.Code) || entry["response_bytes"] != float64(w.Body.Len()) || entry["method"] != "GET" || entry["request_id"] != w.Header().Get("X-Request-ID") {
+					t.Fatalf("incomplete panic request log: %#v", entry)
+				}
+			}
+			if requestLogs != 1 {
+				t.Fatalf("expected one request log, got %d: %s", requestLogs, output.String())
+			}
 		}
-		if !strings.Contains(output.String(), "http handler panicked") || !strings.Contains(output.String(), "operational_logging_test.go") || strings.Contains(output.String(), "private-panic-payload") {
-			t.Fatalf("missing or unsafe panic trace: %s", output.String())
+	}
+}
+
+// TestDomainErrorDiagnosticsMatchResponses keeps the public contract and log
+// status consistent, including errors that match more than one domain sentinel.
+func TestDomainErrorDiagnosticsMatchResponses(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		err     error
+		status  int
+		code    string
+		message string
+	}{
+		{"forbidden", domain.ErrForbidden, 403, "forbidden", "Permission denied."},
+		{"missing", domain.ErrNotFound, 404, "not_found", "Resource not found."},
+		{"conflict", domain.ErrConflict, 409, "conflict", "Resource was modified by another request."},
+		{"transition", domain.ErrInvalidTransition, 409, "invalid_state", "The requested state transition is not allowed."},
+		{"input", domain.ErrInvalidInput, 400, "invalid_request", "Request data is invalid."},
+		{"internal", errors.New("private failure"), 500, "internal_error", "Service unavailable."},
+		{"joined", errors.Join(domain.ErrNotFound, domain.ErrConflict), 404, "not_found", "Resource not found."},
+	} {
+		for _, handler := range []struct {
+			name  string
+			write func(http.ResponseWriter, *http.Request, error)
+		}{
+			{"domain", writeDomainError},
+			{"publish", writePublishError},
+		} {
+			t.Run(handler.name+"/"+tc.name, func(t *testing.T) {
+				var output bytes.Buffer
+				response := httptest.NewRecorder()
+				LoggingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					handler.write(w, r, tc.err)
+				}), slog.New(slog.NewJSONHandler(&output, nil))).ServeHTTP(response, httptest.NewRequest("POST", "/api/v1/publishes", nil))
+				var body errorResponse
+				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if response.Code != tc.status || body.Code != tc.code || body.Message != tc.message {
+					t.Fatalf("unexpected error response: %d %#v", response.Code, body)
+				}
+				entries := logEntries(t, &output)
+				if len(entries) != 2 {
+					t.Fatalf("unexpected diagnostics: %s", output.String())
+				}
+				for _, entry := range entries {
+					if entry["status"] != float64(tc.status) {
+						t.Fatalf("diagnostic disagrees with response: %#v", entry)
+					}
+				}
+			})
 		}
 	}
 }

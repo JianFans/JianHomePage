@@ -50,19 +50,6 @@ func LoggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 		started := time.Now()
 		response := &statusWriter{ResponseWriter: writer}
 		defer func() {
-			if recovered := recover(); recovered != nil {
-				if recovered == http.ErrAbortHandler {
-					panic(recovered)
-				}
-				stack := make([]byte, 16*1024)
-				stack = stack[:runtime.Stack(stack, false)]
-				// Panic values may contain request bodies or credentials. The code stack identifies the fault.
-				observability.Logger(request.Context()).ErrorContext(request.Context(), "http handler panicked", "component", "http", "panic_type", fmt.Sprintf("%T", recovered), "stack", string(stack), "response_committed", response.wroteHeader)
-				if response.wroteHeader {
-					panic(http.ErrAbortHandler)
-				}
-				writeError(response, request, 500, "internal_error", "Service unavailable.")
-			}
 			actorSubject := ""
 			if principal, ok := auth.PrincipalFromContext(request.Context()); ok {
 				actorSubject = principal.Subject
@@ -83,6 +70,22 @@ func LoggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 			}
 			fields = append(fields, state.fields...)
 			logger.Log(request.Context(), level, "http request", fields...)
+		}()
+		// Recovery runs first; the independent request defer still runs if it re-panics.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if recovered == http.ErrAbortHandler {
+					panic(recovered)
+				}
+				stack := make([]byte, 16*1024)
+				stack = stack[:runtime.Stack(stack, false)]
+				// Panic values may contain request bodies or credentials. The code stack identifies the fault.
+				observability.Logger(request.Context()).ErrorContext(request.Context(), "http handler panicked", "component", "http", "panic_type", fmt.Sprintf("%T", recovered), "stack", string(stack), "response_committed", response.wroteHeader)
+				if response.wroteHeader {
+					panic(http.ErrAbortHandler)
+				}
+				writeError(response, request, 500, "internal_error", "Service unavailable.")
+			}
 		}()
 		next.ServeHTTP(response, request)
 	})
