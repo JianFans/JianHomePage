@@ -444,7 +444,7 @@ func (manager *Sessions) callback(w http.ResponseWriter, r *http.Request) {
 			reason = "token_exchange_" + code
 		}
 		if response.StatusCode >= http.StatusInternalServerError {
-			fail(reason, unavailable("token_exchange_failed", "OIDC token exchange failed", nil))
+			fail(reason, unavailable(reason, "OIDC token exchange failed", nil))
 		} else {
 			fail(reason, nil)
 		}
@@ -498,7 +498,8 @@ func (manager *Sessions) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	token, csrf := randomToken(), randomToken()
 	if token == "" || csrf == "" {
-		fail("session.entropy", unavailable("random_unavailable", "Session entropy unavailable", nil))
+		stage = "callback.session.entropy"
+		fail("random_unavailable", unavailable("random_unavailable", "Session entropy unavailable", nil))
 		return
 	}
 	roles := make([]string, len(principal.Roles))

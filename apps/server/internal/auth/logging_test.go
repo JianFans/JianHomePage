@@ -370,11 +370,56 @@ func TestSuccessfulLogoutLogsVerifiedSubject(t *testing.T) {
 	}
 }
 
+// TestCallbackExchangeFailuresKeepOAuthReasons distinguishes provider faults
+// without copying untrusted error descriptions or unknown error codes to logs.
+func TestCallbackExchangeFailuresKeepOAuthReasons(t *testing.T) {
+	for _, tc := range []struct {
+		code   string
+		reason string
+	}{
+		{"server_error", "token_exchange_server_error"},
+		{"temporarily_unavailable", "token_exchange_temporarily_unavailable"},
+		{"private-provider-code", "token_exchange_rejected"},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			logs := captureAuthLogs(t)
+			manager, callbackURL, flowCookie, state := newLoggingTestFlowWithTokenHandler(t, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": tc.code, "error_description": "private-description"})
+			})
+			callback := httptest.NewRequest("GET", callbackURL+"?code=private-code&state="+url.QueryEscape(state), nil)
+			callback.Header.Set("X-Request-ID", "req-auth-test")
+			callback.AddCookie(flowCookie)
+			response := httptest.NewRecorder()
+			manager.ServeHTTP(response, callback)
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("callback status = %d", response.Code)
+			}
+			assertAuthLog(t, logs, "callback.exchange.response", tc.reason, "ERROR")
+			for _, secret := range []string{"private-description", "private-provider-code", "private-code", state, flowCookie.Value} {
+				if strings.Contains(logs.String(), secret) {
+					t.Fatalf("OAuth exchange detail leaked: %s", secret)
+				}
+			}
+		})
+	}
+}
+
 func newLoggingTestFlow(t *testing.T) (*auth.Sessions, string, *http.Cookie, string) {
+	t.Helper()
+	return newLoggingTestFlowWithTokenHandler(t, http.NotFound)
+}
+
+// newLoggingTestFlowWithTokenHandler starts a real login flow with a controlled provider response.
+func newLoggingTestFlowWithTokenHandler(t *testing.T, tokenHandler http.HandlerFunc) (*auth.Sessions, string, *http.Cookie, string) {
 	t.Helper()
 	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/openid-configuration" {
 			_ = json.NewEncoder(w).Encode(map[string]string{"issuer": "http://" + r.Host, "authorization_endpoint": "http://" + r.Host + "/authorize", "token_endpoint": "http://" + r.Host + "/token"})
+			return
+		}
+		if r.URL.Path == "/token" {
+			tokenHandler(w, r)
 			return
 		}
 		http.NotFound(w, r)
