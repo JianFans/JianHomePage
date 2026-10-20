@@ -206,7 +206,11 @@ func (s *Service) Inspect(ctx context.Context, id string) (Task, error) {
 		if errors.Is(err, domain.ErrNotFound) {
 			level = slog.LevelWarn
 		}
-		taskLog(ctx, level, "publisher task lookup failed", "task.lookup", task, time.Time{}, err)
+		loggedTask := task
+		if loggedTask.ID == "" && identifier.MatchString(id) {
+			loggedTask.ID = id
+		}
+		taskLog(ctx, level, "publisher task lookup failed", "task.lookup", loggedTask, time.Time{}, err)
 	}
 	return task, safeError(err)
 }
@@ -348,7 +352,11 @@ func (s *Service) Recover(ctx context.Context, id string, input RecoveryInput) (
 	previousPhase := "submitting"
 	var recovered Task
 	if !validRecovery(input) {
-		taskLog(ctx, slog.LevelWarn, "publisher recovery rejected", stage, Task{}, started, domain.ErrInvalidInput)
+		loggedTask := recovered
+		if identifier.MatchString(id) {
+			loggedTask.ID = id
+		}
+		taskLog(ctx, slog.LevelWarn, "publisher recovery rejected", stage, loggedTask, started, domain.ErrInvalidInput)
 		return recovered, domain.ErrInvalidInput
 	}
 	err := s.options.Repository.WithLock(ctx, func(repository Repository) error {
@@ -387,7 +395,11 @@ func (s *Service) Recover(ctx context.Context, id string, input RecoveryInput) (
 		err = domain.ErrConflict
 	}
 	if err != nil {
-		taskLog(ctx, slog.LevelError, "publisher recovery failed", stage, recovered, started, err)
+		loggedTask := recovered
+		if loggedTask.ID == "" && identifier.MatchString(id) {
+			loggedTask.ID = id
+		}
+		taskLog(ctx, slog.LevelError, "publisher recovery failed", stage, loggedTask, started, err)
 	} else {
 		taskLog(ctx, slog.LevelInfo, "publisher recovery recorded", "recovery.complete", recovered, started, nil, "actor_subject", input.ActorSubject, "confirmed_absent", input.ConfirmedAbsent != nil, "previous_phase", previousPhase)
 	}

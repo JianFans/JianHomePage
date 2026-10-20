@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/aws/smithy-go"
+	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/observability"
 	"yujian.me/server/internal/providers/pages"
 )
@@ -21,6 +23,60 @@ func publisherLogContext(t *testing.T) (context.Context, *bytes.Buffer) {
 	var output bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	return observability.WithLogger(t.Context(), logger), &output
+}
+
+// TestPublisherFailureLogsRetainRequestedBuildID keeps safe lookup identities in diagnostics without changing error results.
+func TestPublisherFailureLogsRetainRequestedBuildID(t *testing.T) {
+	for _, operation := range []string{"inspect", "recover", "invalid-recovery"} {
+		for _, identity := range []struct {
+			name, value string
+			safe        bool
+		}{
+			{"valid", "build_missing", true},
+			{"single", "a", true},
+			{"maximum", strings.Repeat("a", 256), true},
+			{"unsafe", "build/private-token", false},
+			{"invalid start", "_build", false},
+			{"oversized", strings.Repeat("a", 257), false},
+			{"empty", "", false},
+		} {
+			t.Run(operation+"/"+identity.name, func(t *testing.T) {
+				service, repository, _, _ := publisherFixture(t)
+				original := Task{ID: "build_existing"}
+				repository.task = original
+				ctx, output := publisherLogContext(t)
+				var task Task
+				var err error
+				message, level, wantErr := "publisher task lookup failed", "WARN", domain.ErrNotFound
+				if operation == "inspect" {
+					task, err = service.Inspect(ctx, identity.value)
+				} else {
+					yes := true
+					input := RecoveryInput{ConfirmedAbsent: &yes, Note: "verified absent", ActorSubject: "admin-1"}
+					message, level = "publisher recovery failed", "ERROR"
+					if operation == "invalid-recovery" {
+						input = RecoveryInput{}
+						message, level, wantErr = "publisher recovery rejected", "WARN", domain.ErrInvalidInput
+					}
+					task, err = service.Recover(ctx, identity.value, input)
+				}
+				if !errors.Is(err, wantErr) || !reflect.DeepEqual(task, Task{}) || !reflect.DeepEqual(repository.task, original) {
+					t.Fatalf("failure logging changed task results or storage: %#v, %v", task, err)
+				}
+				var event map[string]any
+				if err := json.NewDecoder(output).Decode(&event); err != nil {
+					t.Fatal(err)
+				}
+				wantID := ""
+				if identity.safe {
+					wantID = identity.value
+				}
+				if event["msg"] != message || event["level"] != level || event["build_id"] != wantID {
+					t.Fatalf("missing or unsafe failure identity: %#v", event)
+				}
+			})
+		}
+	}
 }
 
 type diagnosticPagesError struct {
