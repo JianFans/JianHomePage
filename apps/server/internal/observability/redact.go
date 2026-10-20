@@ -22,6 +22,8 @@ const maxAttributeDepth = 18
 
 var urlPattern = regexp.MustCompile(`(?i)(?:https?|postgres(?:ql)?|redis|mysql)://[^\s<>"']+`)
 var bearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[^\s,;"']+`)
+var basicPattern = regexp.MustCompile(`(?i)\bBasic[\t ]+[^\s,;"']+`)
+var credentialHeaderPattern = regexp.MustCompile(`(?i)\b(proxy-authorization|authorization|set-cookie|cookie)["']?[\t ]*[:=][^\r\n]*`)
 var jwtPattern = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
 var credentialPattern = regexp.MustCompile(`(?i)\b(password|passwd|pwd|client[_-]?secret|secret[_-]?access[_-]?key|access[_-]?key[_-]?id|token|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|cookie|set-cookie)["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&]+)`)
 var queryCodePattern = regexp.MustCompile(`(?i)\bcode=(?:"(?:\\.|[^"\\\r\n])*"|'[^'\r\n]*'|[^\s,;&"'<>]+)`)
@@ -73,6 +75,8 @@ func (redactor *redactor) sanitize(value string) string {
 		parsed.RawFragment = ""
 		return parsed.String()
 	})
+	value = credentialHeaderPattern.ReplaceAllString(value, "$1=[REDACTED]")
+	value = basicPattern.ReplaceAllString(value, "Basic [REDACTED]")
 	value = bearerPattern.ReplaceAllString(value, "Bearer [REDACTED]")
 	value = jwtPattern.ReplaceAllString(value, "[REDACTED JWT]")
 	value = credentialPattern.ReplaceAllString(value, "$1=[REDACTED]")

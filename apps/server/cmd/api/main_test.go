@@ -173,7 +173,7 @@ func TestOperationalLoggerUsesConfiguredOutputsAndRedactsConfiguredSecrets(t *te
 	if err != nil {
 		t.Fatalf("create operational logger: %v", err)
 	}
-	logger.Debug("configured diagnostics", "dsn", settings.DatabaseURL, "provider", settings.PagesAPIToken)
+	logger.Debug("configured diagnostics", "dsn", settings.DatabaseURL, "provider", settings.PagesAPIToken, "diagnostic_value", "database-password")
 	if err := closeLog(); err != nil {
 		t.Fatalf("close operational logger: %v", err)
 	}

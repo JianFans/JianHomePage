@@ -6,6 +6,31 @@ import (
 	"unicode/utf8"
 )
 
+// TestAuthenticationTextRedaction removes complete credentials and header values while retaining following lines.
+func TestAuthenticationTextRedaction(t *testing.T) {
+	for _, input := range []string{
+		"Authorization: Basic dXNlcjpwYXNz",
+		"Proxy-Authorization: Basic dXNlcjpwYXNz",
+		"Basic dXNlcjpwYXNz",
+		"request failed: Authorization: Basic dXNlcjpwYXNz",
+		"Cookie: session=private-session; theme=private-theme",
+		"Set-Cookie: session=private-session; Path=/; Secure; another=private-theme",
+		"authorization: Custom private-session private-theme",
+	} {
+		t.Run(input, func(t *testing.T) {
+			got := newRedactor(nil).text(input + "\r\nX-Request-ID: public-id")
+			for _, secret := range []string{"dXNlcjpwYXNz", "private-session", "private-theme"} {
+				if strings.Contains(got, secret) {
+					t.Fatalf("credential remains in sanitized text: %q", got)
+				}
+			}
+			if !strings.Contains(got, "[REDACTED]") || !strings.Contains(got, "X-Request-ID: public-id") {
+				t.Fatalf("redaction removed unrelated lines: %q", got)
+			}
+		})
+	}
+}
+
 // TestCodeRedactionPreservesStatusDescriptions distinguishes diagnostics from OAuth authorization codes.
 func TestCodeRedactionPreservesStatusDescriptions(t *testing.T) {
 	redactor := newRedactor(nil)
