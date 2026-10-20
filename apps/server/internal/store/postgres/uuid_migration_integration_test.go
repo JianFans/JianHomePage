@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,6 +166,80 @@ func TestPostgresUUIDMigrationRejectsLegacySnapshots(t *testing.T) {
 	var retained []byte
 	if err := database.QueryRowContext(ctx, `SELECT content FROM publish_snapshots WHERE snapshot_key = $1`, key).Scan(&retained); err != nil || string(retained) != string(raw) {
 		t.Fatalf("failed migration changed legacy snapshot: %s %v", retained, err)
+	}
+}
+
+func TestPostgresUUIDMigrationWaitsForInFlightLegacyWrites(t *testing.T) {
+	database := legacyUUIDMigrationDatabase(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	writer, err := database.BeginTx(ctx)
+	if err != nil {
+		t.Fatal("begin concurrent legacy write: ", err)
+	}
+	defer func() { _ = writer.Rollback(context.Background()) }()
+	snapshot := []byte(`{"releaseId":"rel_legacy"}`)
+	checksum := snapshotdata.Checksum(snapshot)
+	key := "snapshots/rel_legacy/" + checksum + ".json"
+	if _, err := writer.ExecContext(ctx, `
+INSERT INTO publish_snapshots (snapshot_key, release_id, checksum, content)
+VALUES ($1, 'rel_legacy', $2, $3)`, key, checksum, snapshot); err != nil {
+		t.Fatal("write uncommitted legacy snapshot: ", err)
+	}
+
+	migrationDone := make(chan error, 1)
+	go func() { migrationDone <- Migrate(ctx, database) }()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.NewTimer(5 * time.Second)
+	defer timeout.Stop()
+	blocked := false
+	for !blocked {
+		select {
+		case err := <-migrationDone:
+			if err == nil {
+				t.Fatal("UUID migration committed while a legacy write was uncommitted")
+			}
+			t.Fatalf("UUID migration returned before waiting for the legacy write: %v", err)
+		case <-ticker.C:
+			var waitingMode string
+			if err := database.QueryRowContext(ctx, `
+SELECT COALESCE((
+	SELECT locks.mode FROM pg_locks AS locks
+	JOIN pg_class AS relations ON relations.oid = locks.relation
+	JOIN pg_namespace AS namespaces ON namespaces.oid = relations.relnamespace
+	WHERE namespaces.nspname = current_schema()
+	  AND relations.relname = 'publish_snapshots'
+	  AND locks.locktype = 'relation'
+	  AND NOT locks.granted
+	LIMIT 1
+), '')`).Scan(&waitingMode); err != nil {
+				t.Fatal("check migration snapshot-table lock: ", err)
+			}
+			if waitingMode != "" {
+				if waitingMode != "ShareLock" {
+					t.Fatalf("UUID migration waited for %s instead of ShareLock before checking empty tables", waitingMode)
+				}
+				blocked = true
+			}
+		case <-timeout.C:
+			t.Fatal("UUID migration did not wait for the concurrent legacy write")
+		}
+	}
+
+	if err := writer.Commit(ctx); err != nil {
+		t.Fatal("commit in-flight legacy write: ", err)
+	}
+	if err := <-migrationDone; err == nil || !strings.Contains(err.Error(), "0010_uuid_ids requires empty content") {
+		t.Fatalf("UUID migration must reject the committed legacy write, got %v", err)
+	}
+	var retained int
+	if err := database.QueryRowContext(ctx, `SELECT count(*) FROM publish_snapshots WHERE snapshot_key = $1`, key).Scan(&retained); err != nil {
+		t.Fatal("check retained concurrent snapshot: ", err)
+	}
+	if retained != 1 {
+		t.Fatalf("migration changed the committed legacy row, count = %d", retained)
 	}
 }
 

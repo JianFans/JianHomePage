@@ -1,3 +1,5 @@
+LOCK TABLE content_versions, assets, publish_jobs, publish_pointer, publisher_builds, publish_snapshots IN SHARE MODE;
+
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM content_versions LIMIT 1)
