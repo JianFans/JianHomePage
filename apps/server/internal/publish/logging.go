@@ -60,6 +60,8 @@ func lifecycleError(ctx context.Context, actor domain.Principal, job domain.Publ
 	kind := "internal"
 	if failure.External() {
 		kind = "dependency"
+	} else if errors.Is(err, domain.ErrDataIntegrity) {
+		kind = "data_integrity"
 	} else if errors.Is(err, domain.ErrForbidden) || errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrConflict) ||
 		errors.Is(err, domain.ErrInvalidInput) || errors.Is(err, domain.ErrInvalidTransition) {
 		level = slog.LevelWarn

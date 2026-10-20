@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -234,6 +235,7 @@ func TestDomainErrorDiagnosticsMatchResponses(t *testing.T) {
 		{"conflict", domain.ErrConflict, 409, "conflict", "Resource was modified by another request."},
 		{"transition", domain.ErrInvalidTransition, 409, "invalid_state", "The requested state transition is not allowed."},
 		{"input", domain.ErrInvalidInput, 400, "invalid_request", "Request data is invalid."},
+		{"data integrity", fmt.Errorf("stored snapshot checksum mismatch: %w", domain.ErrDataIntegrity), 500, "internal_error", "Service unavailable."},
 		{"internal", errors.New("private failure"), 500, "internal_error", "Service unavailable."},
 		{"joined", errors.Join(domain.ErrNotFound, domain.ErrConflict), 404, "not_found", "Resource not found."},
 	} {
@@ -265,6 +267,9 @@ func TestDomainErrorDiagnosticsMatchResponses(t *testing.T) {
 					if entry["status"] != float64(tc.status) {
 						t.Fatalf("diagnostic disagrees with response: %#v", entry)
 					}
+				}
+				if errors.Is(tc.err, domain.ErrDataIntegrity) && (!strings.Contains(output.String(), "stored snapshot checksum mismatch") || entries[0]["error"] == nil || strings.Contains(response.Body.String(), "stored snapshot")) {
+					t.Fatalf("data integrity failure was not retained in operation diagnostics: %s", output.String())
 				}
 			})
 		}

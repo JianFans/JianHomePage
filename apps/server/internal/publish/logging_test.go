@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -48,6 +49,21 @@ func TestExternalNotFoundIsLoggedAsDependencyFailure(t *testing.T) {
 	event := requirePublishEvent(t, output, "publish operation failed", "ERROR")
 	if event["error_kind"] != "dependency" || event["stage"] != "asset.stat" {
 		t.Fatalf("external not-found was misclassified: %#v", event)
+	}
+}
+
+// TestStoredSnapshotIntegrityFailureKeepsActionablePublishDiagnostics verifies
+// corrupted persisted content is logged as an internal integrity failure.
+func TestStoredSnapshotIntegrityFailureKeepsActionablePublishDiagnostics(t *testing.T) {
+	ctx, output := publishLogContext(t)
+	job := domain.PublishJob{ID: "pub_1", VersionID: "ver_1", Status: domain.PublishFailed}
+	err := failureAt("version.lookup", fmt.Errorf("stored snapshot checksum mismatch: %w", domain.ErrDataIntegrity))
+
+	lifecycleError(ctx, publisher(), job, err)
+	event := requirePublishEvent(t, output, "publish operation failed", "ERROR")
+	if event["stage"] != "version.lookup" || event["error_kind"] != "data_integrity" || event["error"] == nil ||
+		!strings.Contains(output.String(), "stored snapshot checksum mismatch") {
+		t.Fatalf("stored snapshot integrity diagnostic is missing or misclassified: %#v output=%s", event, output.String())
 	}
 }
 
