@@ -39,6 +39,33 @@ it('自动读取最新状态，不重叠请求，终态停止轮询', async () =
   expect(vi.getTimerCount()).toBe(0)
 })
 
+it.each(['succeeded', 'failed'] as const)('配置变化不阻止已结束构建 %s 的领域状态同步', async (phase) => {
+  vi.useFakeTimers()
+  const scope = effectScope()
+  const job = ref<AdminPublishJob | null>({ ...task(), build: { phase, configurationMismatch: true } })
+  const read = vi.fn().mockResolvedValue({ ...task(phase), build: { phase, configurationMismatch: true } })
+  scope.run(() => usePublishMonitor({ job, read, latest: async () => null, updated: async () => {} }))
+  try {
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(job.value?.status).toBe(phase)
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(read).toHaveBeenCalledTimes(1)
+  } finally { scope.stop() }
+})
+
+it.each(['queued', 'building', 'submitting', 'deployed'] as const)('活动构建 %s 的配置变化仍暂停自动读取', async (phase) => {
+  vi.useFakeTimers()
+  const scope = effectScope()
+  const job = ref<AdminPublishJob | null>({ ...task(), build: { phase, configurationMismatch: true } })
+  const read = vi.fn()
+  scope.run(() => usePublishMonitor({ job, read, latest: async () => null, updated: async () => {} }))
+  try {
+    await vi.advanceTimersByTimeAsync(20000)
+    expect(read).not.toHaveBeenCalled()
+  } finally { scope.stop() }
+})
+
 it('恢复持久任务；退出会话后迟到响应不能写回，保留错误并允许重试', async () => {
   vi.useFakeTimers()
   const scope = effectScope()

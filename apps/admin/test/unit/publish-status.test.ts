@@ -9,6 +9,17 @@ function uncertainJob(): AdminPublishJob {
 }
 
 describe('发布状态操作', () => {
+  it.each(['succeeded', 'failed'] as const)('已结束构建 %s 优先显示结果同步，不要求恢复旧配置', async (phase) => {
+    const wrapper = mount(PublishStatusPanel, { props: { job: { ...uncertainJob(), build: { phase, configurationMismatch: true } }, locale: 'zh-CN', busy: false, unsaved: false, canRecover: true, readError: false, refreshing: false } })
+    try {
+      expect(wrapper.get('[role="status"]').text()).toBe('同步发布结果中')
+      expect(wrapper.text()).not.toContain('恢复原配置')
+      await wrapper.setProps({ job: { ...uncertainJob(), status: phase, build: { phase, configurationMismatch: true } } })
+      expect(wrapper.get('[role="status"]').text()).toBe(phase === 'succeeded' ? '发布成功' : '发布失败')
+      expect(wrapper.text()).not.toContain('恢复原配置')
+    } finally { wrapper.unmount() }
+  })
+
   it('显示真实阶段，限制恢复权限，并为终态失败提供单独确认的重试', async () => {
     const wrapper = mount(PublishStatusPanel, { props: { job: uncertainJob(), locale: 'en', busy: false, unsaved: false, canRecover: false, readError: false, refreshing: false } })
     expect(wrapper.text()).toContain('Verification required')

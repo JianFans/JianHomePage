@@ -74,6 +74,28 @@ test('重新进入恢复持久任务并自动显示部署终态，不创建新�
   expect(api.writes).toHaveLength(0)
 })
 
+for (const phase of ['succeeded', 'failed'] as const) test(`配置变化不阻止已结束构建 ${phase} 的结果同步`, async ({ page }) => {
+  const api = await backend(page)
+  const job = task()
+  job.build = { phase, configurationMismatch: true }
+  const record = api.records.get(job.versionId)!
+  record.status = 'publishing'
+  await page.addInitScript(() => localStorage.setItem('yujian:admin-locale', 'en'))
+  await page.route('**/api/v1/publishes/latest', route => route.fulfill({ json: job }))
+  await page.route(`**/api/v1/publishes/${job.id}`, route => {
+    job.status = phase
+    record.status = phase === 'succeeded' ? 'published' : 'in_review'
+    return route.fulfill({ json: job })
+  })
+  await page.goto('/')
+  const panel = page.getByTestId('publish-status')
+  await expect(panel.getByRole('status')).toHaveText('Synchronizing publish result')
+  await expect(panel).not.toContainText('Restore its original configuration')
+  await expect(panel.getByRole('status')).toHaveText(phase === 'succeeded' ? 'Published' : 'Failed', { timeout: 12000 })
+  await expect(panel).not.toContainText('Restore its original configuration')
+  expect(api.writes).toHaveLength(0)
+})
+
 test('失败任务确认后以新幂等键重试，保留旧版本选择', async ({ page }) => {
   const api = await backend(page)
   const job = task()

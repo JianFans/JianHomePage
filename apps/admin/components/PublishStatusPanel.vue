@@ -20,8 +20,8 @@ const phase = computed(() => {
   if (!job) return ''
   if (job.status === 'failed' || job.status === 'succeeded') return job.status
   if (uncertain.value) return 'uncertain'
-  if (job.build?.configurationMismatch) return 'mismatch'
   if (job.build?.phase === 'succeeded' || job.build?.phase === 'failed') return 'syncing'
+  if (job.build?.configurationMismatch) return 'mismatch'
   if (!job.build && job.status === 'building') return 'processing'
   return job.build?.phase || job.status
 })
@@ -86,7 +86,7 @@ function confirm() {
         {{ job.build.error }}
       </p>
       <p
-        v-if="job.build?.configurationMismatch"
+        v-if="job.build?.configurationMismatch && !['syncing', 'succeeded', 'failed'].includes(phase)"
         class="studio-muted"
       >
         {{ en ? 'The current target differs from the frozen task. Restore its original configuration to continue; confirm absence only after checking the original project.' : '当前配置与任务冻结目标不一致。继续部署需恢复原配置；确认未创建前，必须先检查原项目。' }}

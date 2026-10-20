@@ -38,7 +38,8 @@ export function usePublishMonitor(options: MonitorOptions) {
     if (disposed || options.active?.value === false || refreshing.value || !job) return
     const active = ['pending', 'building'].includes(job.status)
     if (!active && !syncPending) return
-    if (active && (job.build?.configurationMismatch || (job.build?.phase === 'submitting' && job.build.error))) return
+    const buildEnded = job.build?.phase === 'succeeded' || job.build?.phase === 'failed'
+    if (active && !buildEnded && (job.build?.configurationMismatch || (job.build?.phase === 'submitting' && job.build.error))) return
     timer = setTimeout(() => { void refresh() }, 5000)
   }
 
@@ -81,7 +82,7 @@ export function usePublishMonitor(options: MonitorOptions) {
   async function refresh() { await fetchStatus(false) }
   /** 初次进入或显式重试时恢复服务端最新任务。 */
   async function restore() { await fetchStatus(true) }
-  watch(() => [options.job.value?.id, options.job.value?.status], schedule, { flush: 'sync', immediate: true })
+  watch(() => [options.job.value?.id, options.job.value?.status, options.job.value?.build?.phase, options.job.value?.build?.configurationMismatch, options.job.value?.build?.error], schedule, { flush: 'sync', immediate: true })
   if (options.paused) watch(options.paused, paused => { if (!paused) schedule() }, { flush: 'sync' })
   if (options.active) watch(options.active, active => { if (!active) stop(); else schedule() }, { flush: 'sync' })
   onScopeDispose(() => { disposed = true; stop() })
