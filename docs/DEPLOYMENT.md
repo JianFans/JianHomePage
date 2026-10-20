@@ -29,7 +29,7 @@ install -m 755 yujian-server-0.1.0-linux-amd64 ./yujian-server
 | --- | --- | --- |
 | `APP_ENV` | 必填 | `production` |
 | `HTTP_ADDRESS` | 默认 `127.0.0.1:8080` | HTTP 监听地址 |
-| `DATABASE_URL` | 必填 | PostgreSQL 连接串，由数据库服务提供；密码中的保留字符需 URL 编码；使用直连或会话级连接池 |
+| `DATABASE_URL` | 必填 | PostgreSQL 13+ 连接串，由数据库服务提供；密码中的保留字符需 URL 编码；使用直连或会话级连接池 |
 | `OIDC_ISSUER` | 必填 | OIDC 服务的 issuer，须与 discovery 文档一致 |
 | `OIDC_AUDIENCE` | 必填 | 身份服务为本 API 配置的 access token audience |
 | `OIDC_ROLE_EDITOR` | 默认 `editor` | 身份服务中对应本站内容编辑权限的角色名 |
