@@ -14,7 +14,7 @@ import (
 	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
-// legacyUUIDMigrationDatabase creates an isolated schema at migration 0008.
+// legacyUUIDMigrationDatabase creates an isolated schema before the UUID upgrade.
 func legacyUUIDMigrationDatabase(t *testing.T) *Database {
 	t.Helper()
 	connection := os.Getenv("YUJIAN_TEST_POSTGRES_URL")
@@ -63,6 +63,7 @@ func legacyUUIDMigrationDatabase(t *testing.T) *Database {
 		"0006_admin_sessions.sql",
 		"0007_version_library.sql",
 		"0008_publisher_builds.sql",
+		"0009_publish_snapshots.sql",
 	} {
 		statement, err := migrationFiles.ReadFile("migrations/" + name)
 		if err != nil {
@@ -110,7 +111,7 @@ VALUES ('ver_legacy', 'draft', 1, $1::jsonb, $2, false, 'test', 'test', now(), n
 	if err := database.QueryRowContext(ctx, `SELECT count(*) FROM audit_log WHERE actor_sub = 'test'`).Scan(&auditCount); err != nil {
 		t.Fatal("check retained audit row: ", err)
 	}
-	if err := database.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '0009_uuid_ids')`).Scan(&migrationApplied); err != nil {
+	if err := database.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '0010_uuid_ids')`).Scan(&migrationApplied); err != nil {
 		t.Fatal("check failed migration marker: ", err)
 	}
 	if contentCount != 1 || auditCount != 1 || migrationApplied {
@@ -144,6 +145,26 @@ VALUES ('ver_550e8400-e29b-41d4-a716-446655440000', 'draft', 1, $1::jsonb, $2, f
 	var retainedAuditID string
 	if err := database.QueryRowContext(ctx, `SELECT id::text FROM audit_log WHERE actor_sub = 'test'`).Scan(&retainedAuditID); err != nil || retainedAuditID != auditID {
 		t.Fatalf("restart changed the migrated audit ID: %q %v", retainedAuditID, err)
+	}
+}
+
+// TestPostgresUUIDMigrationRejectsLegacySnapshots protects immutable inputs even
+// when no content version, job, or build still references them.
+func TestPostgresUUIDMigrationRejectsLegacySnapshots(t *testing.T) {
+	database := legacyUUIDMigrationDatabase(t)
+	ctx := t.Context()
+	raw := []byte(`{"releaseId":"rel_legacy"}`)
+	checksum := snapshotdata.Checksum(raw)
+	key := "snapshots/rel_legacy/" + checksum + ".json"
+	if _, err := database.ExecContext(ctx, `INSERT INTO publish_snapshots (snapshot_key,release_id,checksum,content) VALUES ($1,'rel_legacy',$2,$3)`, key, checksum, raw); err != nil {
+		t.Fatal("insert legacy snapshot: ", err)
+	}
+	if err := Migrate(ctx, database); err == nil {
+		t.Fatal("UUID migration accepted existing publish snapshots")
+	}
+	var retained []byte
+	if err := database.QueryRowContext(ctx, `SELECT content FROM publish_snapshots WHERE snapshot_key = $1`, key).Scan(&retained); err != nil || string(retained) != string(raw) {
+		t.Fatalf("failed migration changed legacy snapshot: %s %v", retained, err)
 	}
 }
 

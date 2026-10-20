@@ -92,6 +92,7 @@ func (row migrationBoolRow) Scan(dest ...any) error {
 	return nil
 }
 
+// TestMigrateLocksTransactionAndRunsInitialSchema verifies ordered migrations include snapshots.
 func TestMigrateLocksTransactionAndRunsInitialSchema(t *testing.T) {
 	fake := &execFake{}
 	if err := Migrate(context.Background(), fake); err != nil {
@@ -118,10 +119,13 @@ func TestMigrateLocksTransactionAndRunsInitialSchema(t *testing.T) {
 		!strings.Contains(statements, "RAISE EXCEPTION") {
 		t.Fatal("active publish jobs are not safely upgraded or rejected")
 	}
-	if !strings.Contains(statements, "0009_uuid_ids requires empty content, asset, publish, and publisher tables") ||
+	if !strings.Contains(statements, "0010_uuid_ids requires empty content, asset, publish, and publisher tables") ||
 		!strings.Contains(statements, "ALTER TABLE audit_log ALTER COLUMN id TYPE uuid USING gen_random_uuid()") ||
 		!strings.Contains(statements, "ALTER TABLE audit_log ALTER COLUMN id SET DEFAULT gen_random_uuid()") {
 		t.Fatal("UUID migration does not guard legacy business records and upgrade audit IDs")
+	}
+	if !strings.Contains(statements, "CREATE TABLE IF NOT EXISTS publish_snapshots") || !strings.Contains(statements, "octet_length(content) BETWEEN 1 AND 8388608") {
+		t.Fatal("immutable PostgreSQL publish snapshots are not part of the schema")
 	}
 	if !fake.tx.committed || fake.tx.rolledBack {
 		t.Fatalf("expected committed transaction, got %#v", fake.tx)
@@ -134,19 +138,19 @@ func TestMigrateSkipsUUIDMigrationAfterItWasApplied(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	statements := strings.Join(fake.tx.calls, "\n")
-	if strings.Contains(statements, "0009_uuid_ids requires empty content") ||
+	if strings.Contains(statements, "0010_uuid_ids requires empty content") ||
 		strings.Contains(statements, "ALTER TABLE audit_log ALTER COLUMN id TYPE uuid") {
 		t.Fatal("already-applied UUID migration ran again")
 	}
 }
 
 func TestUUIDMigrationPreservesAuditRowsAndNeverDeletesBusinessData(t *testing.T) {
-	statement, err := migrationFiles.ReadFile("migrations/0009_uuid_ids.sql")
+	statement, err := migrationFiles.ReadFile("migrations/0010_uuid_ids.sql")
 	if err != nil {
 		t.Fatalf("read UUID migration: %v", err)
 	}
 	source := strings.ToLower(string(statement))
-	for _, table := range []string{"content_versions", "assets", "publish_jobs", "publish_pointer", "publisher_builds"} {
+	for _, table := range []string{"content_versions", "assets", "publish_jobs", "publish_pointer", "publisher_builds", "publish_snapshots"} {
 		if !strings.Contains(source, "from "+table) {
 			t.Errorf("UUID migration does not guard %s", table)
 		}

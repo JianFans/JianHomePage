@@ -2,10 +2,7 @@ package postgres
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
-	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -14,9 +11,34 @@ import (
 	"yujian.me/server/internal/ports"
 	"yujian.me/server/internal/providers/pages"
 	"yujian.me/server/internal/publisher"
+	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
 type publisherIntegrationPages struct{ creates int }
+
+// publisherIntegrationBuildInput shares canonical bytes between unit and database tests.
+func publisherIntegrationBuildInput(t *testing.T) ([]byte, ports.BuildRequest) {
+	t.Helper()
+	raw, err := snapshotdata.CanonicalJSON([]byte(`{"releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f","site":{"canonicalUrl":"https://site.example/"},"assets":[{"src":"https://media.example/image.webp"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ports.BuildRequest{
+		IdempotencyKey:   "opaque-key",
+		ReleaseID:        "rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f",
+		SnapshotChecksum: snapshotdata.Checksum(raw),
+	}
+	request.SnapshotKey = "snapshots/" + request.ReleaseID + "/" + request.SnapshotChecksum + ".json"
+	return raw, request
+}
+
+// TestPublisherIntegrationBuildInputIsCanonical validates the input before database setup.
+func TestPublisherIntegrationBuildInputIsCanonical(t *testing.T) {
+	raw, request := publisherIntegrationBuildInput(t)
+	if _, _, err := validateStoredSnapshot(request.SnapshotKey, raw); err != nil {
+		t.Fatalf("publisher integration input is not a valid stored snapshot: %v", err)
+	}
+}
 
 // Deploy simulates an ambiguous successful HTTP submission whose response was lost.
 func (p *publisherIntegrationPages) Deploy(context.Context, string, map[string][]byte) (pages.Deployment, error) {
@@ -38,16 +60,16 @@ func TestPostgresPublisherRestartAndRecovery(t *testing.T) {
 	if err := repo.Health(ctx); err != nil {
 		t.Fatal(err)
 	}
-	raw := []byte(`{"releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f","site":{"canonicalUrl":"https://site.example/"},"assets":[{"src":"https://media.example/image.webp"}]}`)
-	request := ports.BuildRequest{IdempotencyKey: "opaque-key", ReleaseID: "rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f", SnapshotChecksum: fmt.Sprintf("sha256:%x", sha256.Sum256(raw))}
-	request.SnapshotKey = "snapshots/" + request.ReleaseID + "/" + request.SnapshotChecksum + ".json"
+	raw, request := publisherIntegrationBuildInput(t)
 	target := publisher.Target{ProjectID: "project", Region: "global", CodeRevision: strings.Repeat("a", 64), PublicURL: "https://site.example/"}
 	cloud := &publisherIntegrationPages{}
+	snapshots := NewSnapshotStore(db)
+	if err := snapshots.PutSnapshot(ctx, request.SnapshotKey, raw); err != nil {
+		t.Fatalf("persist immutable build input: %v", err)
+	}
 	options := publisher.Options{Repository: repo, Target: target, Pages: cloud, Generate: func(context.Context, []byte) (map[string][]byte, error) {
 		return map[string][]byte{"index.html": []byte("rendered")}, nil
-	}, ReadSnapshot: func(context.Context, string) (io.ReadCloser, error) {
-		return io.NopCloser(strings.NewReader(string(raw))), nil
-	}}
+	}, ReadSnapshot: snapshots.ReadSnapshot}
 	service, err := publisher.NewService(options)
 	if err != nil {
 		t.Fatal(err)

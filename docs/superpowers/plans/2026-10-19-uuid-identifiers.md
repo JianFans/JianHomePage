@@ -61,7 +61,7 @@
 ### 任务 4：数据库迁移和运维说明
 
 **文件：**
-- 创建：`apps/server/internal/store/postgres/migrations/0009_uuid_ids.sql`
+- 创建：`apps/server/internal/store/postgres/migrations/0010_uuid_ids.sql`
 - 修改：`apps/server/internal/store/postgres/migrate_test.go`
 - 修改：`apps/server/internal/store/postgres/migrations` 相关契约测试
 - 修改：`apps/server/README.md`、`docs/DEPLOYMENT.md`

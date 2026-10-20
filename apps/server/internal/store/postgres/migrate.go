@@ -15,7 +15,7 @@ import (
 
 const publishFreezeMigration = "0003_publish_target_freeze.sql"
 const assetSourceURLMigration = "0004_asset_source_url.sql"
-const uuidIDsMigration = "0009_uuid_ids.sql"
+const uuidIDsMigration = "0010_uuid_ids.sql"
 
 type MigrationOptions struct {
 	ResolveAssetSourceURL func(context.Context, string) (string, error)
