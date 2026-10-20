@@ -19,9 +19,9 @@ func writePublishError(writer http.ResponseWriter, request *http.Request, err er
 	}
 	status, code, message := domainErrorResponse(err)
 	kind := code
-	// A storage/build adapter's missing object is not a missing site version or
-	// job, even if it uses the same sentinel as the domain repository.
-	if external && (status == http.StatusNotFound || status == http.StatusInternalServerError) {
+	// Adapter failures are dependency failures, even when they wrap a sentinel
+	// used for internal business rejections.
+	if external {
 		status, code, message = domainErrorResponse(nil)
 		kind = "external_dependency"
 	}

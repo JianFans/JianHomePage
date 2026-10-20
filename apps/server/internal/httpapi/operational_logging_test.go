@@ -270,12 +270,16 @@ func TestRequestPanicRecordsStackAndSafeFailure(t *testing.T) {
 // TestDomainErrorDiagnosticsMatchResponses keeps the public contract and log
 // status consistent, including errors that match more than one domain sentinel.
 func TestDomainErrorDiagnosticsMatchResponses(t *testing.T) {
-	repository := memory.NewPublishRepository(memory.NewState())
-	if err := repository.CreatePublishJob(t.Context(), domain.PublishJob{ID: "pub_external", Status: domain.PublishBuilding, BuildID: "build_missing"}); err != nil {
-		t.Fatal(err)
+	externalError := func(cause error) error {
+		repository := memory.NewPublishRepository(memory.NewState())
+		if err := repository.CreatePublishJob(t.Context(), domain.PublishJob{ID: "pub_external", Status: domain.PublishBuilding, BuildID: "build_missing"}); err != nil {
+			t.Fatal(err)
+		}
+		service := publish.NewService(publish.ServiceOptions{Repository: repository, BuildTrigger: diagnosticBuildTrigger{statusErr: cause}})
+		_, err := service.RefreshStatus(t.Context(), domain.Principal{Subject: "publisher-1", Roles: []domain.Role{domain.RolePublisher}}, "pub_external")
+		return err
 	}
-	service := publish.NewService(publish.ServiceOptions{Repository: repository, BuildTrigger: diagnosticBuildTrigger{statusErr: domain.ErrNotFound}})
-	_, externalErr := service.RefreshStatus(t.Context(), domain.Principal{Subject: "publisher-1", Roles: []domain.Role{domain.RolePublisher}}, "pub_external")
+	externalErr := externalError(domain.ErrNotFound)
 	var externalFailure *publish.Failure
 	if !errors.As(externalErr, &externalFailure) || !externalFailure.External() || !errors.Is(externalErr, domain.ErrNotFound) {
 		t.Fatalf("expected an external not-found failure, got %v", externalErr)
@@ -290,6 +294,10 @@ func TestDomainErrorDiagnosticsMatchResponses(t *testing.T) {
 		{"forbidden", domain.ErrForbidden, 403, "forbidden", "Permission denied."},
 		{"missing", domain.ErrNotFound, 404, "not_found", "Resource not found."},
 		{"external missing", externalErr, 404, "not_found", "Resource not found."},
+		{"external forbidden", externalError(domain.ErrForbidden), 403, "forbidden", "Permission denied."},
+		{"external conflict", externalError(domain.ErrConflict), 409, "conflict", "Resource was modified by another request."},
+		{"external transition", externalError(domain.ErrInvalidTransition), 409, "invalid_state", "The requested state transition is not allowed."},
+		{"external input", externalError(domain.ErrInvalidInput), 400, "invalid_request", "Request data is invalid."},
 		{"conflict", domain.ErrConflict, 409, "conflict", "Resource was modified by another request."},
 		{"transition", domain.ErrInvalidTransition, 409, "invalid_state", "The requested state transition is not allowed."},
 		{"input", domain.ErrInvalidInput, 400, "invalid_request", "Request data is invalid."},
@@ -306,7 +314,8 @@ func TestDomainErrorDiagnosticsMatchResponses(t *testing.T) {
 		} {
 			t.Run(handler.name+"/"+tc.name, func(t *testing.T) {
 				status, code, message := tc.status, tc.code, tc.message
-				if handler.name == "publish" && tc.name == "external missing" {
+				isExternalPublish := handler.name == "publish" && strings.HasPrefix(tc.name, "external ")
+				if isExternalPublish {
 					status, code, message = 500, "internal_error", "Service unavailable."
 				}
 				var output bytes.Buffer
@@ -322,6 +331,9 @@ func TestDomainErrorDiagnosticsMatchResponses(t *testing.T) {
 					t.Fatalf("unexpected error response: %d %#v", response.Code, body)
 				}
 				entries := logEntries(t, &output)
+				if isExternalPublish && len(entries) > 0 && entries[0]["error_kind"] != "external_dependency" {
+					t.Fatalf("external failure misclassified: %s", output.String())
+				}
 				if len(entries) != 2 {
 					t.Fatalf("unexpected diagnostics: %s", output.String())
 				}
