@@ -79,6 +79,7 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
   assert.match(offline.run, /for attempt in \{1\.\.20\}/)
   assert.match(offline.run, /docker logs yujian-server-offline/)
   assert.match(offline.run, /State\.Status/)
+  assert.match(offline.run, /docker run[^\n]*--env LOG_FORMAT=json/)
   const integration = workflow.jobs['publisher-integration']
   assert.ok(integration.services.postgres.image.startsWith('postgres:'))
   assert.ok(integration.env.YUJIAN_TEST_POSTGRES_URL)
