@@ -24,6 +24,23 @@ type MigrationOptions struct {
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
+// migrationError preserves a trusted embedded filename without exposing database error text.
+type migrationError struct {
+	name  string
+	cause error
+}
+
+// Error preserves the internal wrapped-error contract; logging must use observability.Error.
+func (err *migrationError) Error() string {
+	return fmt.Sprintf("execute migration %s: %v", err.name, err.cause)
+}
+
+// Unwrap retains SQLSTATE and errors.Is compatibility for controlled diagnostics.
+func (err *migrationError) Unwrap() error { return err.cause }
+
+// MigrationName is sourced exclusively from the embedded migrations directory.
+func (err *migrationError) MigrationName() string { return err.name }
+
 // Migrate executes all embedded migrations in filename order in one database
 // transaction. The advisory lock prevents two application instances from
 // applying the same schema concurrently.
@@ -87,7 +104,7 @@ func Migrate(ctx context.Context, db Executor, migrationOptions ...MigrationOpti
 			}
 		}
 		if _, err := tx.ExecContext(ctx, string(statement)); err != nil {
-			return fmt.Errorf("execute migration %s: %w", name, err)
+			return &migrationError{name: name, cause: err}
 		}
 		if name == assetSourceURLMigration && !migrationWasApplied {
 			if err := upgradeLegacyAssetSourceURLs(ctx, tx, options.ResolveAssetSourceURL); err != nil {
