@@ -2,4 +2,4 @@
 package main
 
 // Version identifies the application release, independently of the Go toolchain.
-const Version = "0.0.5"
+const Version = "0.0.6"

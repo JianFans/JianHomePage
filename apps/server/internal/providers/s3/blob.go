@@ -49,25 +49,6 @@ type BlobStore struct {
 
 const defaultHTTPTimeout = 30 * time.Second
 
-// ReadSnapshot reads immutable release data through the authenticated storage
-// adapter. The publisher owns the returned body and enforces size and checksum.
-func (store *BlobStore) ReadSnapshot(ctx context.Context, key string) (io.ReadCloser, error) {
-	if err := validateKey(key); err != nil {
-		return nil, err
-	}
-	if !strings.HasPrefix(key, "snapshots/") {
-		return nil, domain.ErrInvalidInput
-	}
-	result, err := store.client.GetObject(ctx, &awss3.GetObjectInput{Bucket: aws.String(store.bucket), Key: aws.String(key)})
-	if err != nil {
-		return nil, mapReadError(err)
-	}
-	if result.Body == nil {
-		return nil, errors.New("object storage returned no snapshot body")
-	}
-	return result.Body, nil
-}
-
 func NewBlobStore(config Config) (*BlobStore, error) {
 	if err := validateConfig(config); err != nil {
 		return nil, err
@@ -259,8 +240,9 @@ func parsePublicBaseURL(value string, requireHTTPS bool) (*url.URL, error) {
 	return publicBaseURL, nil
 }
 
+// validateKey accepts safe legacy object keys but reserves snapshots for the publish store.
 func validateKey(key string) error {
-	if key == "" || strings.HasPrefix(key, "/") || strings.Contains(key, "\\") || path.Clean(key) != key || key == "." {
+	if key == "snapshots" || strings.HasPrefix(key, "snapshots/") || strings.HasPrefix(key, "/") || strings.Contains(key, "\\") || path.Clean(key) != key || key == "." {
 		return domain.ErrInvalidInput
 	}
 	for _, segment := range strings.Split(key, "/") {

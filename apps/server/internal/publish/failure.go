@@ -27,7 +27,7 @@ func (failure *Failure) Stage() string { return failure.stage }
 // Missing snapshots during HEAD are handled before an error reaches this point.
 func (failure *Failure) External() bool {
 	switch failure.stage {
-	case "snapshot.stat", "snapshot.put", "asset.stat", "asset.public_url", "build.trigger", "build.status":
+	case "asset.stat", "asset.public_url", "build.trigger", "build.status":
 		return true
 	default:
 		return false

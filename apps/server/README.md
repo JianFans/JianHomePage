@@ -8,7 +8,7 @@
 
 - `internal/content`：草稿、乐观锁、审核状态和审计。
 - `internal/assets`：图片、动图、音频、视频的 MIME、扩展名、大小、签名上传校验与素材游标分页。
-- `internal/publish`：不可变快照、SHA-256、发布幂等、构建状态、原子指针切换和回滚。
+- `internal/publish`：审核版本的不可变快照、SHA-256、发布幂等、构建状态、原子指针切换和回滚。
 - `internal/store/postgres`：pgx 标准库驱动、嵌入式迁移、事务锁和可替换 SQL 执行器。
 - `internal/httpapi`：标准库 `net/http` 管理 API，统一错误体、`ETag`、`If-Match` 和 `Idempotency-Key`。
 - `internal/publisher`：持久化发布 worker、固定目标、幂等和人工恢复。
@@ -16,7 +16,7 @@
 - `internal/sitegen`：Goja 执行内嵌 Vue SSR，生成 HTML、robots 和 sitemap。
 - `internal/webassets`：内嵌管理端、渲染器和带内容哈希的公开浏览器资源。
 - `internal/adminweb`：同源管理端 `/`、隔离预览 `/preview` 与静态资源服务。
-- `internal/providers/s3`：S3 兼容对象存储适配器，可配置腾讯云 COS 端点。
+- `internal/providers/s3`：S3 兼容媒体存储适配器，可配置腾讯云 COS 端点；兼容安全的历史媒体键，不要求 `assets/` 前缀，拒绝路径穿越和 `snapshots`／`snapshots/` 快照键。
 
 公开首页不依赖该服务在线。发布时只读取已经审核的不可变快照；服务停止时，已上传 Pages 的 HTML 和浏览器资源仍可独立分发。
 
@@ -50,7 +50,7 @@
 | `LOG_MAX_BACKUPS` | `5` | 保留的轮转文件数，范围为 1–100；备份文件不压缩。 |
 | `S3_ENDPOINT` | 空 | S3 兼容 HTTPS 端点，例如腾讯云 COS 地域端点。 |
 | `S3_REGION` | 空 | 对象存储地域，例如 `ap-singapore`。 |
-| `S3_BUCKET` | 空 | 素材与不可变发布快照所在桶。 |
+| `S3_BUCKET` | 空 | 媒体素材桶；不存储网站快照或构建产物。 |
 | `S3_ACCESS_KEY_ID` | 空 | 对象存储访问密钥 ID。 |
 | `S3_SECRET_ACCESS_KEY` | 空 | 对象存储访问密钥；不得写入日志。 |
 | `S3_SESSION_TOKEN` | 空 | 可选临时凭据 Token。 |
@@ -216,11 +216,11 @@ Authorization: Bearer <session-token>
 
 1. 读取已通过审核的 `in_review` 版本。
 2. 重新校验快照并规范化 JSON。
-3. 写入不可变对象 `snapshots/<releaseId>/<sha256>.json`。
+3. 将快照原文写入 PostgreSQL `publish_snapshots`，按 release ID 与 SHA-256 不可变寻址。
 4. 通过进程内 `BuildTrigger` 创建持久化 worker 任务，发布任务进入 `building`。
 5. 构建成功后，在同一事务内归档旧版本、发布新版本、切换 `production` 指针并写审计。
 6. 构建失败只标记任务失败，保留上一成功指针。
-7. 回滚重新触发历史快照，不覆盖历史对象。
+7. 回滚从保留的内容版本重新校验并写入同一不可变快照仓库，不读取或写入 COS 快照。
 
 服务启动后每 15 秒先运行发布 worker，再对账内容发布任务：`pending` 任务按原幂等键关联同一构建，`building` 任务自动更新部署结果并完成指针切换。管理端的手动刷新接口仅用于即时查看，不是发布完成的必要条件。
 
@@ -230,7 +230,7 @@ Authorization: Bearer <session-token>
 
 `internal/publisher` 与 API 在同一个 Go 进程运行。任务沿用 `0008_publisher_builds` 创建的 `publisher_builds` 表，阶段为 `queued`、`building`、`submitting`、`deployed`、`succeeded` 或 `failed`。固定 PostgreSQL 连接持有全局 worker 锁，网络请求期间不持有数据库事务；服务重启后继续读取持久化任务。
 
-每个任务冻结项目 ID、地域、公开 URL 和完整 Go 二进制的 SHA-256。身份包含 Go 逻辑与内嵌资源，无需额外代码版本环境变量。worker 校验下载快照的 checksum、release ID、canonical 契约及生产素材地址，使用 Goja 渲染页面，再通过 Pages Direct Upload 创建 Production 部署。目标漂移时不会用新配置继续旧任务。
+每个任务冻结项目 ID、地域、公开 URL 和完整 Go 二进制的 SHA-256。身份包含 Go 逻辑与内嵌资源，无需额外代码版本环境变量。worker 从 PostgreSQL 读取快照，并校验 checksum、release ID、canonical 契约及生产素材地址，使用 Goja 渲染页面，再通过 [Makers Direct Upload](https://pages.edgeone.ai/zh/document/direct-upload) 创建 Production 部署。构建包交给 Makers 的临时上传目标由 Makers API 提供；`S3_*` 配置只供媒体管理使用。目标漂移时不会用新配置继续旧任务。
 
 调用云端创建前持久化 `submitting`。超时、断连或响应无法确认时保留该阶段，不自动重试创建；先在腾讯云核实部署，再由 `admin` 角色恢复：
 
@@ -261,6 +261,7 @@ Authorization: Bearer <session-token>
 - 普通 API 保持 15 秒读写期限。本地 `/local-upload/*` 只有在签名、有效期、MIME、声明大小和校验头通过后，才将本次连接的读写期限延长为 15 分钟；仍按声明大小流式校验，不全量缓存文件。生产素材直接上传到对象存储，不经过该本地路由。
 - 开发素材保存在临时文件中，正常关闭会等待活动写入并清理文件；超过 `SHUTDOWN_TIMEOUT` 时先断开在途连接，再释放依赖。Windows 媒体读取句柄允许共享删除，删除后新的读取失败，已有下载可继续读完；Range 请求仍可用。开发上传不作为持久化生产存储。
 - `MEDIA_PUBLIC_BASE_URL` 应指向 EdgeOne 加速的 COS 公开读取域名。内容快照只保存该稳定地址，不保存短期签名 URL 或服务商内部端点。更换 COS 或其他对象存储源站时应保留该公开域名，避免历史快照失效。
+- `0009_publish_snapshots` 在 PostgreSQL 创建有大小上限的不可变构建快照表；不从旧 COS 复制快照。回滚输入来自保留的 `content_versions` 快照。首次应用迁移时，若 `publisher_builds` 存在 `queued`、`building`、`submitting` 或 `deployed` 任务，或 `publish_jobs` 存在 `pending` 任务，迁移事务回滚，服务拒绝启动。先用旧二进制完成或核实恢复活动发布，再切换到新版本；已应用迁移后的正常重启不受此检查影响。无需为媒体桶授予 `snapshots/` 权限。
 - 首次部署包含 `0003_publish_target_freeze` 的版本前，应等待 `pending`、`building` 发布任务结束。迁移会自动冻结 checksum 一致的单个活跃任务；如果检测到多个任务或历史数字格式导致 checksum 不一致，服务会拒绝启动。此时应先用旧版本确认并结束活跃任务，再重新部署；不得手改 checksum 或跳过迁移。
 - `0004_asset_source_url` 会在同一迁移事务中锁定缺少公开地址的旧素材，使用当前对象存储适配器的 `PublicURL` 回填，并拒绝非 `NULL` 的空字符串。升级期间必须保持 `MEDIA_PUBLIC_BASE_URL` 为旧内容正在使用的稳定域名；解析或并发回填失败时服务会回滚迁移并拒绝启动。为兼容滚动升级中的旧实例和旧二进制回滚，本版本允许 `source_url` 为 `NULL`；旧实例全部退出并度过回滚窗口后，后续迁移必须再次回填期间产生的 `NULL`，再设置 `NOT NULL`。
 - 滚动升级期间，旧实例仍可能写入没有 `source_url` 的素材。新实例读取素材列表时只补全实际返回页中缺少的地址，并原子持久化首次胜出的地址；不改写状态、元数据或已存在的地址。解析或持久化失败会使该次列表请求失败，不返回空 `src`。旧实例退出前应保持稳定公开域名，不能借滚动升级更换历史素材的域名。

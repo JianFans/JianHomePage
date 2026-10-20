@@ -21,8 +21,6 @@ func TestObjectMissingClassificationDistinguishesBucketAndWriteFailures(t *testi
 		missingObject      bool
 	}{
 		{"missing HEAD object", http.MethodHead, "", true},
-		{"missing GET object", http.MethodGet, "NoSuchKey", true},
-		{"missing GET bucket", http.MethodGet, "NoSuchBucket", false},
 		{"missing PUT bucket", http.MethodPut, "NoSuchBucket", false},
 		{"unclassified PUT endpoint", http.MethodPut, "", false},
 	} {
@@ -44,11 +42,9 @@ func TestObjectMissingClassificationDistinguishesBucketAndWriteFailures(t *testi
 			}
 			switch test.method {
 			case http.MethodHead:
-				_, err = store.Stat(context.Background(), "snapshots/rel_1/content.json")
-			case http.MethodGet:
-				_, err = store.ReadSnapshot(context.Background(), "snapshots/rel_1/content.json")
+				_, err = store.Stat(context.Background(), "assets/asset_1/source.json")
 			case http.MethodPut:
-				err = store.Put(context.Background(), "snapshots/rel_1/content.json", bytes.NewReader([]byte("{}")), ports.BlobMetadata{ContentType: "application/json", Size: 2, Checksum: "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"})
+				err = store.Put(context.Background(), "assets/asset_1/source.json", bytes.NewReader([]byte("{}")), ports.BlobMetadata{ContentType: "application/json", Size: 2, Checksum: "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"})
 			}
 			if err == nil || errors.Is(err, domain.ErrNotFound) != test.missingObject {
 				t.Fatalf("missing-object classification = %v, want %v (error=%v)", errors.Is(err, domain.ErrNotFound), test.missingObject, err)
