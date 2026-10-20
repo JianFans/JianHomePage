@@ -200,6 +200,43 @@ func TestOutputsFailIndependentlyAndFileIsJSON(t *testing.T) {
 	}
 }
 
+// TestLogFileRejectsSymlinks prevents log setup from changing a link target or creating one through a dangling link.
+func TestLogFileRejectsSymlinks(t *testing.T) {
+	for _, exists := range []bool{true, false} {
+		t.Run(fmt.Sprintf("target-exists=%t", exists), func(t *testing.T) {
+			directory := t.TempDir()
+			target := filepath.Join(directory, "private-target")
+			filename := filepath.Join(directory, "server.jsonl")
+			if exists {
+				if err := os.WriteFile(target, []byte("keep target intact"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(target, filename); err != nil {
+				if runtime.GOOS == "windows" {
+					t.Skipf("symlink creation unavailable: %v", err)
+				}
+				t.Fatal(err)
+			}
+			_, closeLog, err := New(Options{Console: io.Discard, File: filename})
+			if closeLog != nil {
+				_ = closeLog()
+			}
+			if err == nil {
+				t.Error("accepted a symbolic link as log file")
+			}
+			if exists {
+				content, err := os.ReadFile(target)
+				if err != nil || string(content) != "keep target intact" {
+					t.Fatalf("link target changed: %q, %v", content, err)
+				}
+			} else if _, err := os.Lstat(target); !os.IsNotExist(err) {
+				t.Fatalf("dangling link target was created: %v", err)
+			}
+		})
+	}
+}
+
 // TestExistingLogFilePermissionsAreRestricted closes the permissions gap left by OpenFile's creation mode.
 func TestExistingLogFilePermissionsAreRestricted(t *testing.T) {
 	if runtime.GOOS == "windows" {

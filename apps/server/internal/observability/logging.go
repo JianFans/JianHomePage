@@ -76,12 +76,22 @@ func New(options Options) (*slog.Logger, func() error, error) {
 	outputs := []namedHandler{{"console", console}}
 	var rotating *lumberjack.Logger
 	if options.File != "" {
+		before, err := os.Lstat(options.File)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, nil, errors.New("cannot open configured log file")
+		}
+		if before != nil && !before.Mode().IsRegular() {
+			return nil, nil, errors.New("configured log file is not a writable regular file")
+		}
 		file, err := os.OpenFile(options.File, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			return nil, nil, errors.New("cannot open configured log file")
 		}
 		info, err := file.Stat()
-		if err != nil || !info.Mode().IsRegular() {
+		after, pathErr := os.Lstat(options.File)
+		// Validate the opened identity before chmod, including paths first created here.
+		if err != nil || !info.Mode().IsRegular() || pathErr != nil || !after.Mode().IsRegular() ||
+			!os.SameFile(info, after) || (before != nil && !os.SameFile(before, info)) {
 			_ = file.Close()
 			return nil, nil, errors.New("configured log file is not a writable regular file")
 		}
