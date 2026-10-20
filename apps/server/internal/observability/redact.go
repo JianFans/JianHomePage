@@ -20,7 +20,9 @@ const maxRecordAttributes = 128
 var urlPattern = regexp.MustCompile(`(?i)(?:https?|postgres(?:ql)?|redis|mysql)://[^\s<>"']+`)
 var bearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[^\s,;"']+`)
 var jwtPattern = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
-var credentialPattern = regexp.MustCompile(`(?i)\b(password|passwd|pwd|client[_-]?secret|secret[_-]?access[_-]?key|access[_-]?key[_-]?id|token|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|cookie|set-cookie|code)["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&]+)`)
+var credentialPattern = regexp.MustCompile(`(?i)\b(password|passwd|pwd|client[_-]?secret|secret[_-]?access[_-]?key|access[_-]?key[_-]?id|token|access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|cookie|set-cookie)["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&]+)`)
+var queryCodePattern = regexp.MustCompile(`(?i)\bcode=(?:"(?:\\.|[^"\\\r\n])*"|'[^'\r\n]*'|[^\s,;&"'<>]+)`)
+var jsonCodePattern = regexp.MustCompile(`(?i)("code"\s*:\s*)"(?:\\.|[^"\\\r\n])*"`)
 
 type redactor struct{ secrets []string }
 
@@ -38,19 +40,21 @@ func newRedactor(secrets []string) *redactor {
 
 // text removes credentials before truncating, including URL userinfo, query and fragment.
 func (redactor *redactor) text(value string) string {
-	value = redactor.sanitize(value)
+	value = strings.ToValidUTF8(redactor.sanitize(value), "\uFFFD")
 	if len(value) > maxString {
-		value = value[:maxString]
-		for !utf8.ValidString(value) {
-			value = value[:len(value)-1]
+		limit := maxString
+		for limit > 0 && !utf8.RuneStart(value[limit]) {
+			limit--
 		}
-		value += "…[truncated]"
+		value = value[:limit] + "…[truncated]"
 	}
 	return value
 }
 
 // sanitize removes configured and recognizable credentials without truncating future redaction context.
 func (redactor *redactor) sanitize(value string) string {
+	// Consume complete JSON strings before other substitutions can alter their escapes.
+	value = jsonCodePattern.ReplaceAllString(value, `$1"[REDACTED]"`)
 	for _, secret := range redactor.secrets {
 		value = strings.ReplaceAll(value, secret, "[REDACTED]")
 	}
@@ -69,6 +73,7 @@ func (redactor *redactor) sanitize(value string) string {
 	value = bearerPattern.ReplaceAllString(value, "Bearer [REDACTED]")
 	value = jwtPattern.ReplaceAllString(value, "[REDACTED JWT]")
 	value = credentialPattern.ReplaceAllString(value, "$1=[REDACTED]")
+	value = queryCodePattern.ReplaceAllString(value, "code=[REDACTED]")
 	return value
 }
 
@@ -115,12 +120,11 @@ func (budget *recordBudget) take(redactor *redactor, value string) string {
 		limit = budget.bytes
 		marker = ""
 	}
-	value = value[:min(limit, len(value))]
-	for !utf8.ValidString(value) {
-		value = value[:len(value)-1]
+	for limit > 0 && !utf8.RuneStart(value[limit]) {
+		limit--
 	}
 	budget.bytes = 0
-	return value + marker
+	return value[:limit] + marker
 }
 
 // attr resolves lazy values before recursively sanitizing nested attributes.
