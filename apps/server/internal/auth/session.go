@@ -542,6 +542,8 @@ func oauthErrorCode(body []byte) string {
 	}
 }
 
+// oauthAuthorizationErrorCode allowlists standard authorization failures for
+// logs, replacing arbitrary callback values with a fixed unknown classification.
 func oauthAuthorizationErrorCode(code string) string {
 	switch code {
 	case "invalid_request", "unauthorized_client", "access_denied", "unsupported_response_type", "invalid_scope", "server_error", "temporarily_unavailable", "interaction_required", "login_required", "account_selection_required", "consent_required":

@@ -32,6 +32,8 @@ func lifecycleLog(ctx context.Context, level slog.Level, message, stage string, 
 	observability.Logger(ctx).Log(ctx, level, message, values...)
 }
 
+// safeLifecycleResourceID accepts only bounded application IDs of the expected
+// resource type so caller-controlled paths cannot become credential-bearing fields.
 func safeLifecycleResourceID(value, prefix string) string {
 	if strings.HasPrefix(value, prefix+"_") && safeLifecycleID.MatchString(value) {
 		return value
@@ -39,6 +41,8 @@ func safeLifecycleResourceID(value, prefix string) string {
 	return ""
 }
 
+// safeLifecycleBuildID excludes arbitrary provider values from logs, retaining
+// only identifiers matching the durable workflow's bounded build-ID format.
 func safeLifecycleBuildID(value string) string {
 	if safeBuildID.MatchString(value) {
 		return value
@@ -46,10 +50,15 @@ func safeLifecycleBuildID(value string) string {
 	return ""
 }
 
+// lifecycleActorForJob attributes background diagnostics to the original requester;
+// the reconstructed principal carries no roles and grants no authorization.
 func lifecycleActorForJob(job domain.PublishJob) domain.Principal {
 	return domain.Principal{Subject: job.RequestedBy}
 }
 
+// lifecycleError classifies staged failures by dependency, integrity and domain
+// rejection, omitting caller-supplied details for expected rejections while
+// retaining internal causes and treating job persistence failures as errors.
 func lifecycleError(ctx context.Context, actor domain.Principal, job domain.PublishJob, err error) {
 	var failure *Failure
 	if !errors.As(err, &failure) {

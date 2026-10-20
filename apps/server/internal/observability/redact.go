@@ -86,14 +86,20 @@ func secretKey(key string) bool {
 
 type recordBudget struct{ bytes, attributes int }
 
+// recordBudgetAfter subtracts already bound attributes from per-record limits
+// so chained logger contexts cannot reset the available logging budget.
 func recordBudgetAfter(bytesUsed, attributesUsed int) *recordBudget {
 	return &recordBudget{bytes: max(0, maxRecordBytes-bytesUsed), attributes: max(0, maxRecordAttributes-attributesUsed)}
 }
 
+// newRecordBudget allocates independent byte and attribute limits for records
+// without previously bound context, avoiding shared mutable accounting.
 func newRecordBudget() *recordBudget {
 	return &recordBudget{bytes: maxRecordBytes, attributes: maxRecordAttributes}
 }
 
+// take redacts before charging the remaining byte budget, then truncates at a
+// UTF-8 boundary so truncation cannot bypass redaction or split an encoded rune.
 func (budget *recordBudget) take(redactor *redactor, value string) string {
 	value = redactor.text(value)
 	if budget.bytes <= 0 {

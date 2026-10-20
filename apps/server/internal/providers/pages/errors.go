@@ -52,6 +52,8 @@ func (err *cloudError) ProviderAction() string {
 	}
 }
 
+// newCloudError retains diagnostic fields and the transport cause, never the
+// provider response body, which may contain credentials or request data.
 func newCloudError(action string, status int, body []byte, cause error) *cloudError {
 	code, requestID := cloudErrorDetails(body)
 	return &cloudError{action: action, code: code, requestID: requestID, status: status, cause: cause}
@@ -73,6 +75,8 @@ func cloudErrorDetails(body []byte) (string, string) {
 	return "", ""
 }
 
+// cloudJSONDetails handles nested Pages response envelopes with bounded recursion,
+// preferring nested error codes while retaining the outermost valid request ID.
 func cloudJSONDetails(body []byte, depth int) (string, string) {
 	if depth > 4 {
 		return "", ""
@@ -109,6 +113,8 @@ func cloudJSONDetails(body []byte, depth int) (string, string) {
 	return code, requestID
 }
 
+// rawCode normalizes string and numeric provider codes without treating null as
+// a failure code; callers still apply the diagnostic code allowlist.
 func rawCode(raw json.RawMessage) string {
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
@@ -120,6 +126,8 @@ func rawCode(raw json.RawMessage) string {
 	return string(raw)
 }
 
+// validRequestID rejects unsafe provider identities and enforces the total
+// 128-byte limit, including any terminal base64 padding allowed by the pattern.
 func validRequestID(value string) string {
 	if len(value) <= 128 && safeRequestID.MatchString(value) {
 		return value

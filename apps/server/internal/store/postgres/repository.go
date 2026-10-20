@@ -455,6 +455,9 @@ func compareAndSwapResult(ctx context.Context, exec Executor, result ExecResult,
 	return domain.ErrConflict
 }
 
+// scanVersion restores canonical snapshot bytes after JSONB readback and verifies
+// their checksum, distinguishing missing rows from stored corruption without
+// exposing persisted content through parser diagnostics.
 func scanVersion(row Row) (domain.ContentVersion, error) {
 	var version domain.ContentVersion
 	var status string

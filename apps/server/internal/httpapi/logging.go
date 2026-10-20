@@ -112,6 +112,8 @@ func safeRequestRoute(request *http.Request, matched string) string {
 	return "unmatched"
 }
 
+// isStaticRoute identifies compiled browser resources whose successful requests
+// are debug noise; uploaded media and API traffic retain normal request levels.
 func isStaticRoute(path string) bool {
 	return strings.HasPrefix(path, "/_nuxt/") || strings.HasPrefix(path, "/site/")
 }
@@ -200,6 +202,8 @@ func logOperation(r *http.Request, err error, status int, code, message string, 
 	observability.Logger(r.Context()).Log(r.Context(), requestLevel(status), message, attrs...)
 }
 
+// expectedDomainRejection identifies business rejections whose wrapped details
+// may contain caller data and must therefore be omitted from operation logs.
 func expectedDomainRejection(err error) bool {
 	return errors.Is(err, domain.ErrForbidden) || errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrConflict) ||
 		errors.Is(err, domain.ErrInvalidInput) || errors.Is(err, domain.ErrInvalidTransition) || errors.Is(err, domain.ErrDuplicateRequest)
@@ -232,6 +236,8 @@ func (writer *statusWriter) WriteHeader(status int) {
 	writer.ResponseWriter.WriteHeader(status)
 }
 
+// Write captures implicit HTTP 200 responses and counts bytes actually accepted
+// by the underlying writer, including partial writes that return an error.
 func (writer *statusWriter) Write(value []byte) (int, error) {
 	if !writer.wroteHeader {
 		writer.WriteHeader(http.StatusOK)

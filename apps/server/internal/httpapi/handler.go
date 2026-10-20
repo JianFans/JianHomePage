@@ -222,6 +222,9 @@ func (handler *Handler) withBodyLimit(next http.Handler) http.Handler {
 	})
 }
 
+// requestIDMiddleware keeps accepted external UUIDs or uses the configured
+// generator, replacing provisional logging IDs so headers and operation logs
+// share one validated identifier without accepting arbitrary client secrets.
 func requestIDMiddleware(next http.Handler, generator func(*http.Request) string) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requestID := strings.TrimSpace(request.Header.Get("X-Request-ID"))
@@ -647,6 +650,8 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(writer).Encode(value)
 }
 
+// writeDomainError uses the shared domain mapping for both diagnostic severity
+// and the public response, preserving internal causes only in server logs.
 func writeDomainError(writer http.ResponseWriter, request *http.Request, err error) {
 	status, code, message := domainErrorResponse(err)
 	logOperation(request, err, status, "domain_error", "management operation failed")
@@ -671,6 +676,8 @@ func domainErrorResponse(err error) (status int, code, message string) {
 	}
 }
 
+// writeError emits the request-correlated public error and logs its rejection
+// only when the request has not already recorded a more specific failure.
 func writeError(writer http.ResponseWriter, request *http.Request, status int, code, message string) {
 	state, _ := request.Context().Value(requestLogKey{}).(*requestLog)
 	if state == nil || !state.failed {
