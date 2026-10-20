@@ -4,7 +4,9 @@
 
 ## 程序与启动
 
-[Release 工作流](https://github.com/JianFans/JianHomePage/actions/workflows/release.yml) 在最新 `master` 手动触发，`bump` 为 `patch`、`minor` 或 `major`。它同步 Node／Go 版本，原子推送版本 commit 和 tag，检查并构建该提交，再发布到 [Releases](https://github.com/JianFans/JianHomePage/releases)。Actions 需有默认分支、标签、Release 和 GHCR 的写权限。
+[Prepare Release 工作流](https://github.com/JianFans/JianHomePage/actions/workflows/release-prepare.yml) 在最新 `master` 手动触发，`bump` 为 `patch`、`minor` 或 `major`。它同步 Node／Go 版本，原子推送版本 commit 和 tag，再以该 tag 显式触发独立的 [Release 工作流](https://github.com/JianFans/JianHomePage/actions/workflows/release.yml)。Release 的运行状态关联版本提交，检查、构建后发布到 [Releases](https://github.com/JianFans/JianHomePage/releases)。
+
+使用内置 `GITHUB_TOKEN`，无需 PAT。准备任务需要默认分支及标签写权限，触发任务需要 `actions: write`，发布任务需要 Release 和 GHCR 写权限。默认 token 推送不会触发 tag push 工作流，因此通过 `workflow_dispatch` 显式启动；其他身份推送 `vX.Y.Z` 标签也会触发 Release。
 
 下载对应架构的裸二进制 `yujian-server-X.Y.Z-linux-amd64` 或 `yujian-server-X.Y.Z-linux-arm64`，以及 `SHA256SUMS.txt`。以下以 `0.1.0`、amd64 为例：
 
@@ -128,4 +130,5 @@ Casdoor 普通、非共享应用可按以下方式配置，其他 OIDC 服务遵
 - 发布请求失败时，用响应中的 `requestId` 查服务日志 `publish request failed` 和同 ID 的 `http request`。`stage` 区分版本查询、素材校验、快照读取／写入和发布器提交；外部故障另含白名单 `provider_error_code`、`provider_http_status`，如 `NoSuchBucket`／404、`AccessDenied`／403。`Unknown`／0 表示没有可用分类；日志不记录服务商原文或凭据。版本确实不存在时返回 404，对象存储的桶或上传故障返回服务错误。
 - 内容更新由后台保存、审核和发布；程序升级前结束活动发布任务，备份数据库及旧二进制。迁移前置条件见 [安全与运维](../apps/server/README.md#安全与运维)。
 - 发布任务固定二进制 SHA-256；旧任务未结束时保留并使用旧程序恢复。云端创建结果不明时先核实 Pages 部署，再使用 [发布恢复接口](../apps/server/README.md#内置-pages-发布与恢复)，不要重复提交。
-- Release 准备阶段成功后，版本 commit／tag 保留。后续临时失败用 **Re-run failed jobs**；代码修复后发下一版本，不移动已有标签。准备阶段推送响应丢失时，先核实远端是否已写入。Release 草稿可续传相同文件，已公开文件不会被覆盖。
+- Prepare Release 推送成功后，版本 commit／tag 保留。触发任务失败可用 **Re-run failed jobs**，不会再次递增版本；不要重跑全部准备任务。推送响应丢失时先核实远端引用。
+- Release 临时失败可重跑失败任务，或执行 `gh workflow run release.yml --ref vX.Y.Z --repo JianFans/JianHomePage`，以原 tag 重新启动。不要在 `master` 上手动运行 Release；它只接受稳定版本标签并校验 Node／Go 版本一致。旧 tag 使用其提交内的工作流，拆分前的 tag 不支持此补跑方式。代码修复后发下一版本，不移动已有标签。Release 草稿可续传相同文件，已公开文件不会被覆盖。

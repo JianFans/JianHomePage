@@ -1,14 +1,10 @@
 name: Release
+run-name: Release ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
-    inputs:
-      bump:
-        description: Version bump (first release can use minor for v0.1.0)
-        type: choice
-        required: true
-        default: patch
-        options: [patch, minor, major]
+  push:
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -19,52 +15,42 @@ concurrency:
 
 jobs:
   prepare:
-    name: Commit and tag synchronized release version
+    name: Validate release tag and source version
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       sha: ${{ steps.version.outputs.sha }}
       image: ${{ steps.version.outputs.image }}
     steps:
-      - name: Checkout dispatch commit
+      - name: Checkout release event commit
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
-          persist-credentials: true
+          persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version-file: package.json
-      - name: Synchronize versions and atomically push release commit and tag
+      - name: Resolve tag and verify synchronized versions
         id: version
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          BUMP: ${{ inputs.bump }}
         shell: bash
         run: |
-          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
-            echo 'Release must run on the default branch.' >&2
+          if [[ ! "$GITHUB_REF" =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'Release must run on a stable version tag (vX.Y.Z); select the tag as the workflow ref.' >&2
             exit 1
           fi
-          git fetch origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" --tags
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$DEFAULT_BRANCH")" ]; then
-            echo 'Default branch changed; start a new release run.' >&2
+          tag=${GITHUB_REF#refs/tags/}
+          sha=$(git rev-parse "$GITHUB_REF^{commit}")
+          if [ "$sha" != "$GITHUB_SHA" ] || [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo 'Release tag does not match the workflow event commit.' >&2
             exit 1
           fi
-          version=$(node scripts/release-version.mjs "$BUMP")
-          node scripts/set-release-version.mjs "$version"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json apps/web/package.json apps/admin/package.json packages/schema/package.json apps/server/cmd/api/version.go
-          git commit -m "chore(发布): 同步 v$version 版本"
-          git tag "v$version"
-          git push --atomic origin "HEAD:refs/heads/$DEFAULT_BRANCH" "refs/tags/v$version"
-          printf 'version=%s\ntag=v%s\nsha=%s\nimage=ghcr.io/%s\n' "$version" "$version" "$(git rev-parse HEAD)" "${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          version=${tag#v}
+          node scripts/set-release-version.mjs --check "$version"
+          printf 'version=%s\ntag=%s\nsha=%s\nimage=ghcr.io/%s\n' "$version" "$tag" "$sha" "${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
   checks:
     name: Validate and build release source
@@ -144,7 +130,7 @@ jobs:
             files+=("$file")
           done
           sha256sum --binary "${files[@]}" > SHA256SUMS.txt
-          existing_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')
+          existing_sha=$(gh api "repos/$GH_REPO/commits/refs/tags/$RELEASE_TAG" --jq '.sha')
           if [ "$existing_sha" != "$RELEASE_SHA" ]; then
             echo 'Release tag does not point to the validated commit.' >&2
             exit 1
