@@ -650,38 +650,26 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 }
 
 func writeDomainError(writer http.ResponseWriter, request *http.Request, err error) {
-	writeDomainErrorResponse(writer, request, err, true)
+	status, code, message := domainErrorResponse(err)
+	logOperation(request, err, status, "domain_error", "management operation failed")
+	writeError(writer, request, status, code, message)
 }
 
-// writeDomainErrorResponse optionally records the cause before returning the stable public contract.
-func writeDomainErrorResponse(writer http.ResponseWriter, request *http.Request, err error, report bool) {
-	if report {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, domain.ErrForbidden):
-			status = 403
-		case errors.Is(err, domain.ErrNotFound):
-			status = 404
-		case errors.Is(err, domain.ErrConflict), errors.Is(err, domain.ErrInvalidTransition):
-			status = 409
-		case errors.Is(err, domain.ErrInvalidInput):
-			status = 400
-		}
-		logOperation(request, err, status, "domain_error", "management operation failed")
-	}
+// domainErrorResponse defines the shared public contract and precedence for domain errors.
+func domainErrorResponse(err error) (status int, code, message string) {
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
-		writeError(writer, request, http.StatusForbidden, "forbidden", "Permission denied.")
+		return http.StatusForbidden, "forbidden", "Permission denied."
 	case errors.Is(err, domain.ErrNotFound):
-		writeError(writer, request, http.StatusNotFound, "not_found", "Resource not found.")
+		return http.StatusNotFound, "not_found", "Resource not found."
 	case errors.Is(err, domain.ErrConflict):
-		writeError(writer, request, http.StatusConflict, "conflict", "Resource was modified by another request.")
+		return http.StatusConflict, "conflict", "Resource was modified by another request."
 	case errors.Is(err, domain.ErrInvalidTransition):
-		writeError(writer, request, http.StatusConflict, "invalid_state", "The requested state transition is not allowed.")
+		return http.StatusConflict, "invalid_state", "The requested state transition is not allowed."
 	case errors.Is(err, domain.ErrInvalidInput):
-		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Request data is invalid.")
+		return http.StatusBadRequest, "invalid_request", "Request data is invalid."
 	default:
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Service unavailable.")
+		return http.StatusInternalServerError, "internal_error", "Service unavailable."
 	}
 }
 
