@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,7 @@ import (
 
 	"yujian.me/server/internal/config"
 	"yujian.me/server/internal/httpapi"
+	"yujian.me/server/internal/observability"
 	"yujian.me/server/internal/ports"
 	"yujian.me/server/internal/providers/local"
 	"yujian.me/server/internal/providers/pages"
@@ -155,6 +157,45 @@ func TestHealthHandlerRejectsUnsupportedMethod(t *testing.T) {
 
 	if recorder.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", recorder.Code)
+	}
+}
+
+// TestOperationalLoggerUsesConfiguredOutputsAndRedactsConfiguredSecrets verifies production logger wiring.
+func TestOperationalLoggerUsesConfiguredOutputsAndRedactsConfiguredSecrets(t *testing.T) {
+	var console, diagnostic bytes.Buffer
+	filename := filepath.Join(t.TempDir(), "server.jsonl")
+	settings := config.Config{
+		Log:           config.LoggingConfig{Level: "debug", Format: "json", File: filename, MaxSizeMB: 1, MaxBackups: 1},
+		DatabaseURL:   "postgresql://dbuser:database-password@localhost:5432/yujian?sslmode=require",
+		PagesAPIToken: "pages-secret-value",
+	}
+	logger, closeLog, err := newOperationalLogger(settings, &console, &diagnostic)
+	if err != nil {
+		t.Fatalf("create operational logger: %v", err)
+	}
+	logger.Debug("configured diagnostics", "dsn", settings.DatabaseURL, "provider", settings.PagesAPIToken, "diagnostic_value", "database-password")
+	if err := closeLog(); err != nil {
+		t.Fatalf("close operational logger: %v", err)
+	}
+	file, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for destination, output := range map[string]string{"console": console.String(), "file": string(file)} {
+		if !strings.Contains(output, "configured diagnostics") || !strings.Contains(output, "DEBUG") && destination == "console" {
+			t.Fatalf("%s output did not honor configured logging: %s", destination, output)
+		}
+		for _, secret := range []string{"database-password", "pages-secret-value"} {
+			if strings.Contains(output, secret) {
+				t.Fatalf("%s output exposed %s: %s", destination, secret, output)
+			}
+		}
+	}
+	if diagnostic.Len() != 0 {
+		t.Fatalf("unexpected logging diagnostic: %s", diagnostic.String())
+	}
+	if observability.Logger(t.Context()) == nil {
+		t.Fatal("missing fallback logger")
 	}
 }
 

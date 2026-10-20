@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"yujian.me/server/internal/domain"
 	"yujian.me/server/internal/ports"
 	storage "yujian.me/server/internal/providers/s3"
@@ -59,7 +61,7 @@ func TestPublishSnapshotPersistenceHasSafeDiagnostics(t *testing.T) {
 			repository := memory.NewPublishRepository(state)
 			snapshots := &diagnosticSnapshotStore{}
 			if test.snapshotError {
-				snapshots.err = errors.New("private database detail")
+				snapshots.err = &pgconn.PgError{Code: "08006", Message: "private database detail", Detail: "private snapshot data"}
 			}
 			service := publish.NewService(publish.ServiceOptions{Repository: repository, BlobStore: blobs, SnapshotStore: snapshots, BuildTrigger: diagnosticBuildTrigger{}, Validator: diagnosticValidator{}})
 			var logs bytes.Buffer
@@ -74,12 +76,16 @@ func TestPublishSnapshotPersistenceHasSafeDiagnostics(t *testing.T) {
 			}
 			if test.stage != "" {
 				found := false
+				foundServiceIdentity := false
 				for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
 					var entry map[string]any
 					if err := json.Unmarshal([]byte(line), &entry); err != nil {
 						t.Fatal(err)
 					}
-					if entry["msg"] == "publish request failed" {
+					if entry["component"] == "publish" && entry["msg"] == "publish operation failed" {
+						foundServiceIdentity = entry["version_id"] == "ver_513db4a6-c494-4b3e-a481-1ac18ea5f3b6"
+					}
+					if entry["msg"] == "publish request failed" && entry["component"] == "management" {
 						found = true
 						if entry["request_id"] != "req_550e8400-e29b-41d4-a716-446655440000" || entry["stage"] != test.stage || entry["error_kind"] != test.kind || entry["actor_subject"] != "editor-1" {
 							t.Fatalf("incorrect failure diagnostics: %#v", entry)
@@ -89,8 +95,14 @@ func TestPublishSnapshotPersistenceHasSafeDiagnostics(t *testing.T) {
 				if !found {
 					t.Fatalf("missing publish failure log: %s", logs.String())
 				}
+				if !foundServiceIdentity {
+					t.Fatalf("missing service-level version correlation: %s", logs.String())
+				}
+				if test.snapshotError && !strings.Contains(logs.String(), `"sqlstate":"08006"`) {
+					t.Fatalf("missing database error classification: %s", logs.String())
+				}
 			}
-			for _, secret := range []string{"private database detail", "private-bucket", "private-access", "private-secret", "private-cookie", "private-idempotency", "ver_513db4a6-c494-4b3e-a481-1ac18ea5f3b6", "rel_e625589b-8110-4074-8013-11b529bd1e40", provider.URL} {
+			for _, secret := range []string{"private database detail", "private snapshot data", "rel_e625589b-8110-4074-8013-11b529bd1e40", "private-bucket", "private-access", "private-secret", "private-cookie", "private-idempotency", provider.URL} {
 				if strings.Contains(logs.String()+recorder.Body.String(), secret) && test.status != http.StatusAccepted {
 					t.Fatalf("private detail leaked: %s", secret)
 				}
@@ -151,7 +163,7 @@ type diagnosticValidator struct{}
 // Validate isolates transport diagnostics from the independent schema suite.
 func (diagnosticValidator) Validate([]byte) error { return nil }
 
-type diagnosticBuildTrigger struct{}
+type diagnosticBuildTrigger struct{ statusErr error }
 
 // Trigger represents a durable build accepted after the immutable snapshot write.
 func (diagnosticBuildTrigger) Trigger(context.Context, ports.BuildRequest) (ports.BuildRun, error) {
@@ -159,6 +171,9 @@ func (diagnosticBuildTrigger) Trigger(context.Context, ports.BuildRequest) (port
 }
 
 // Status leaves the accepted build running for the HTTP admission test.
-func (diagnosticBuildTrigger) Status(context.Context, string) (ports.BuildRun, error) {
+func (trigger diagnosticBuildTrigger) Status(context.Context, string) (ports.BuildRun, error) {
+	if trigger.statusErr != nil {
+		return ports.BuildRun{}, trigger.statusErr
+	}
 	return ports.BuildRun{ID: "build_12b823dc-69a5-4093-93ed-5a85034ddbea", Status: domain.PublishBuilding}, nil
 }

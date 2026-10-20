@@ -254,7 +254,7 @@ jobs:
             exit 1
           }
           # Keep exited containers until cleanup so startup failures retain their logs.
-          docker run --detach --network none --name yujian-server-offline --entrypoint /usr/local/bin/yujian-server yujian-server:ci || fail_startup "Could not start offline container"
+          docker run --detach --network none --env LOG_FORMAT=json --name yujian-server-offline --entrypoint /usr/local/bin/yujian-server yujian-server:ci || fail_startup "Could not start offline container"
           for attempt in {1..20}; do
             state=$(docker inspect --format '{{.State.Status}}' yujian-server-offline) || fail_startup "Could not inspect offline container"
             case "$state" in

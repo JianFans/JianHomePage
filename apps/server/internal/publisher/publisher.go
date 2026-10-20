@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strings"
@@ -171,12 +172,23 @@ func NewService(options Options) (*Service, error) {
 
 // Trigger durably queues one logical build without tying worker lifetime to HTTP.
 func (s *Service) Trigger(ctx context.Context, request ports.BuildRequest) (ports.BuildRun, error) {
+	started := time.Now()
 	key, ok := domain.NormalizeIdempotencyKey(request.IdempotencyKey)
 	if !ok || !validRequest(request) {
+		taskLog(ctx, slog.LevelWarn, "publisher submission rejected", "enqueue.validate", Task{}, started, domain.ErrInvalidInput)
 		return ports.BuildRun{}, domain.ErrInvalidInput
 	}
 	request.IdempotencyKey = ""
 	task, err := s.options.Repository.Enqueue(ctx, key, request, s.options.Target)
+	if err != nil {
+		level := slog.LevelError
+		if errors.Is(err, domain.ErrInvalidInput) || errors.Is(err, domain.ErrConflict) {
+			level = slog.LevelWarn
+		}
+		taskLog(ctx, level, "publisher submission persistence failed", "enqueue", task, started, err)
+	} else {
+		taskLog(ctx, slog.LevelInfo, "publisher task accepted or reused", "enqueue", task, started, nil)
+	}
 	return response(task), safeError(err)
 }
 
@@ -189,12 +201,27 @@ func (s *Service) Status(ctx context.Context, id string) (ports.BuildRun, error)
 // Inspect returns diagnostic task information for an authenticated administrator.
 func (s *Service) Inspect(ctx context.Context, id string) (Task, error) {
 	task, err := s.options.Repository.Get(ctx, id)
+	if err != nil {
+		level := slog.LevelError
+		if errors.Is(err, domain.ErrNotFound) {
+			level = slog.LevelWarn
+		}
+		loggedTask := task
+		if loggedTask.ID == "" && identifier.MatchString(id) {
+			loggedTask.ID = id
+		}
+		taskLog(ctx, level, "publisher task lookup failed", "task.lookup", loggedTask, time.Time{}, err)
+	}
 	return task, safeError(err)
 }
 
 // Reconcile advances a task while holding the cross-process publishing lock.
 func (s *Service) Reconcile(ctx context.Context) error {
-	return safeError(s.options.Repository.WithLock(ctx, func(repository Repository) error {
+	started := time.Now()
+	stage := "worker.lock"
+	var current Task
+	err := s.options.Repository.WithLock(ctx, func(repository Repository) error {
+		stage = "task.active"
 		task, err := repository.Active(ctx)
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil
@@ -202,7 +229,10 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		current = task
 		if task.Target != s.options.Target {
+			stage = "target.verify"
+			taskLog(ctx, slog.LevelError, "frozen publisher target differs; restore original configuration", stage, task, started, domain.ErrConflict)
 			task.Error = "Frozen publisher configuration differs; restore the original configuration"
 			_, err = repository.Update(ctx, task, task.Phase)
 			return err
@@ -210,12 +240,16 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		switch task.Phase {
 		case "submitting":
 			if task.Error != "" {
+				taskLog(ctx, slog.LevelDebug, "deployment awaiting verified manual recovery", "deployment.uncertain", task, started, nil)
 				return nil
 			}
 			task.Error = uncertainMessage
+			stage = "deployment.uncertain"
+			taskLog(ctx, slog.LevelWarn, "deployment outcome unknown; verify Pages deployment before manual recovery", stage, task, started, nil)
 			_, err = repository.Update(ctx, task, "submitting")
 			return err
 		case "queued", "building":
+			stage = "build.start.persist"
 			previous := task.Phase
 			task.Phase = "building"
 			task.Error = ""
@@ -223,31 +257,56 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
+			current = task
+			taskLog(ctx, slog.LevelInfo, "static site build started", "build.start", task, started, nil, "previous_phase", previous)
 			files, buildErr := s.build(ctx, task.Request)
 			if buildErr != nil {
+				taskLog(ctx, slog.LevelError, "static site build failed", buildStage(buildErr), task, started, buildErr)
+				stage = "build.failure.persist"
 				task.Phase = "failed"
 				task.Error = "Snapshot validation or static build failed"
 				_, err = repository.Update(ctx, task, "building")
 				return err
 			}
+			taskLog(ctx, slog.LevelInfo, "static site build completed", "build.complete", task, started, nil, "file_count", len(files))
+			stage = "deployment.prepare.persist"
 			task.Phase = "submitting"
 			task, err = repository.Update(ctx, task, "building")
 			if err != nil {
 				return err
 			}
+			current = task
+			stage = "deployment.submit"
+			taskLog(ctx, slog.LevelInfo, "Pages deployment submission started", stage, task, started, nil)
 			deployment, cloudErr := s.options.Pages.Deploy(ctx, task.Target.ProjectID, files)
 			if cloudErr != nil || !validDeployment(deployment, task.Target, "") {
+				if cloudErr == nil {
+					cloudErr = errors.New("provider returned an invalid deployment identity")
+				}
+				taskLog(ctx, slog.LevelWarn, "deployment outcome unknown; verify Pages deployment before manual recovery", stage, task, started, cloudErr)
+				stage = "deployment.uncertain.persist"
 				task.Error = uncertainMessage
 				_, err = repository.Update(ctx, task, "submitting")
 				return err
 			}
 			task.Phase = "deployed"
 			task.DeploymentID = deployment.ID
+			stage = "deployment.accepted.persist"
+			current = task
 			_, err = repository.Update(ctx, task, "submitting")
+			if err == nil {
+				taskLog(ctx, slog.LevelInfo, "Pages deployment accepted", "deployment.accepted", task, started, nil)
+			}
 			return err
 		case "deployed":
+			stage = "deployment.poll"
 			deployment, cloudErr := s.options.Pages.Get(ctx, task.Target.ProjectID, task.DeploymentID)
 			if cloudErr != nil || !validDeployment(deployment, task.Target, task.DeploymentID) || (deployment.Status != "building" && deployment.Status != "succeeded" && deployment.Status != "failed") {
+				if cloudErr == nil {
+					cloudErr = errors.New("provider returned invalid deployment identity or status")
+				}
+				taskLog(ctx, slog.LevelError, "deployment status lookup failed; polling will continue", stage, task, started, cloudErr)
+				stage = "deployment.poll.persist"
 				task.Error = "Deployment status unavailable; automatic reconciliation will continue"
 				_, err = repository.Update(ctx, task, "deployed")
 				return err
@@ -263,21 +322,45 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			if task.Phase == "succeeded" {
 				task.PreviewURL = task.Target.PublicURL
 			}
+			stage = "deployment.status.persist"
+			current = task
 			_, err = repository.Update(ctx, task, "deployed")
+			if err == nil {
+				level, message := slog.LevelDebug, "deployment still building"
+				if task.Phase == "succeeded" {
+					level, message = slog.LevelInfo, "deployment succeeded"
+				} else if task.Phase == "failed" {
+					level, message = slog.LevelError, "Pages deployment failed"
+				}
+				taskLog(ctx, level, message, "deployment.status", task, started, nil, "previous_phase", "deployed", "provider_status", deployment.Status)
+			}
 			return err
 		default:
 			return domain.ErrConflict
 		}
-	}))
+	})
+	if err != nil {
+		taskLog(ctx, slog.LevelError, "publisher reconciliation failed", stage, current, started, err)
+	}
+	return safeError(err)
 }
 
 // Recover records verified operator resolution for an uncertain deployment.
 func (s *Service) Recover(ctx context.Context, id string, input RecoveryInput) (Task, error) {
+	started := time.Now()
+	stage := "recovery.validate"
+	previousPhase := "submitting"
 	var recovered Task
 	if !validRecovery(input) {
+		loggedTask := recovered
+		if identifier.MatchString(id) {
+			loggedTask.ID = id
+		}
+		taskLog(ctx, slog.LevelWarn, "publisher recovery rejected", stage, loggedTask, started, domain.ErrInvalidInput)
 		return recovered, domain.ErrInvalidInput
 	}
 	err := s.options.Repository.WithLock(ctx, func(repository Repository) error {
+		stage = "recovery.lookup"
 		task, err := repository.Get(ctx, id)
 		if err != nil {
 			return err
@@ -286,8 +369,10 @@ func (s *Service) Recover(ctx context.Context, id string, input RecoveryInput) (
 			return domain.ErrConflict
 		}
 		if input.DeploymentID != nil {
+			stage = "recovery.deployment.verify"
 			deployment, err := s.options.Pages.Get(ctx, task.Target.ProjectID, *input.DeploymentID)
 			if err != nil {
+				taskLog(ctx, slog.LevelError, "recovery deployment verification failed", stage, task, started, err)
 				return errors.New("Deployment status unavailable")
 			}
 			if !validDeployment(deployment, task.Target, *input.DeploymentID) {
@@ -302,11 +387,21 @@ func (s *Service) Recover(ctx context.Context, id string, input RecoveryInput) (
 		}
 		input.Note = strings.TrimSpace(input.Note)
 		task.Reconciliation = append(task.Reconciliation, RecoveryRecord{RecoveryInput: input, At: s.options.Now().UTC(), ActorSubject: input.ActorSubject})
+		stage = "recovery.persist"
 		recovered, err = repository.Update(ctx, task, "submitting")
 		return err
 	})
 	if err == nil && recovered.ID == "" {
 		err = domain.ErrConflict
+	}
+	if err != nil {
+		loggedTask := recovered
+		if loggedTask.ID == "" && identifier.MatchString(id) {
+			loggedTask.ID = id
+		}
+		taskLog(ctx, slog.LevelError, "publisher recovery failed", stage, loggedTask, started, err)
+	} else {
+		taskLog(ctx, slog.LevelInfo, "publisher recovery recorded", "recovery.complete", recovered, started, nil, "actor_subject", input.ActorSubject, "confirmed_absent", input.ConfirmedAbsent != nil, "previous_phase", previousPhase)
 	}
 	return recovered, safeError(err)
 }
@@ -327,26 +422,26 @@ func validRequest(request ports.BuildRequest) bool {
 // build verifies raw snapshot identity before handing canonical semantics to the generator.
 func (s *Service) build(ctx context.Context, request ports.BuildRequest) (map[string][]byte, error) {
 	if !validRequest(request) {
-		return nil, domain.ErrInvalidInput
+		return nil, buildError("snapshot.identity", domain.ErrInvalidInput)
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.options.BuildTimeout)
 	defer cancel()
 	body, err := s.options.ReadSnapshot(ctx, request.SnapshotKey)
 	if err != nil {
-		return nil, err
+		return nil, buildError("snapshot.open", err)
 	}
 	if body == nil {
-		return nil, domain.ErrInvalidInput
+		return nil, buildError("snapshot.open", domain.ErrInvalidInput)
 	}
 	defer body.Close()
 	stop := context.AfterFunc(ctx, func() { _ = body.Close() })
 	defer stop()
 	raw, err := io.ReadAll(io.LimitReader(body, maxSnapshotBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, buildError("snapshot.read", err)
 	}
 	if len(raw) > maxSnapshotBytes || !utf8.Valid(raw) || fmt.Sprintf("sha256:%x", sha256.Sum256(raw)) != request.SnapshotChecksum {
-		return nil, domain.ErrInvalidInput
+		return nil, buildError("snapshot.integrity", domain.ErrInvalidInput)
 	}
 	var identity struct {
 		ReleaseID string `json:"releaseId"`
@@ -358,28 +453,28 @@ func (s *Service) build(ctx context.Context, request ports.BuildRequest) (map[st
 		} `json:"assets"`
 	}
 	if err := json.Unmarshal(raw, &identity); err != nil || identity.ReleaseID != request.ReleaseID {
-		return nil, domain.ErrInvalidInput
+		return nil, buildError("snapshot.identity", domain.ErrInvalidInput)
 	}
 	if !productionURL(identity.Site.CanonicalURL) || strings.TrimSuffix(identity.Site.CanonicalURL, "/") != strings.TrimSuffix(s.options.Target.PublicURL, "/") {
-		return nil, domain.ErrInvalidInput
+		return nil, buildError("snapshot.target", domain.ErrInvalidInput)
 	}
 	for _, asset := range identity.Assets {
 		if !productionURL(asset.Src) {
-			return nil, domain.ErrInvalidInput
+			return nil, buildError("snapshot.asset_url", domain.ErrInvalidInput)
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, buildError("build.context", err)
 	}
 	files, err := s.options.Generate(ctx, raw)
 	if err != nil {
-		return nil, err
+		return nil, buildError("build.generate", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, buildError("build.context", err)
 	}
 	if len(files) == 0 {
-		return nil, domain.ErrInvalidInput
+		return nil, buildError("build.output", domain.ErrInvalidInput)
 	}
 	return files, nil
 }

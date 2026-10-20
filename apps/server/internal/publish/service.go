@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strings"
@@ -144,8 +145,20 @@ func (service *Service) Publish(
 	versionID string,
 	idempotencyKey string,
 ) (result domain.PublishJob, returnErr error) {
+	started := time.Now()
 	stage := "authorize"
-	defer func() { returnErr = failureAt(stage, returnErr) }()
+	defer func() {
+		returnErr = failureAt(stage, returnErr)
+		if returnErr != nil {
+			loggedJob := result
+			if loggedJob.VersionID == "" {
+				loggedJob.VersionID = versionID
+				loggedJob.RequestedBy = actor.Subject
+				loggedJob.Operation = domain.PublishOperationPublish
+			}
+			lifecycleError(ctx, actor, loggedJob, returnErr)
+		}
+	}()
 	if !hasPermission(actor, auth.PermissionPublish) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
@@ -159,6 +172,8 @@ func (service *Service) Publish(
 	if existing, found, err := service.existingJob(ctx, actor, domain.PublishOperationPublish, versionID, idempotencyKey); err != nil {
 		return domain.PublishJob{}, err
 	} else if found {
+		lifecycleLog(ctx, slog.LevelInfo, "existing publish job reused", "idempotency.reuse", actor, existing, started, nil)
+		stage = "build.trigger"
 		return service.resumeExisting(ctx, existing)
 	}
 
@@ -202,7 +217,9 @@ func (service *Service) Publish(
 		}
 		return domain.PublishJob{}, err
 	}
+	lifecycleLog(ctx, slog.LevelInfo, "publish job admitted", "job.create", actor, job, started, nil)
 
+	stage = "build.trigger"
 	return service.trigger(ctx, job, canonical.ReleaseID)
 }
 
@@ -214,8 +231,20 @@ func (service *Service) Rollback(
 	versionID string,
 	idempotencyKey string,
 ) (result domain.PublishJob, returnErr error) {
+	started := time.Now()
 	stage := "authorize"
-	defer func() { returnErr = failureAt(stage, returnErr) }()
+	defer func() {
+		returnErr = failureAt(stage, returnErr)
+		if returnErr != nil {
+			loggedJob := result
+			if loggedJob.VersionID == "" {
+				loggedJob.VersionID = versionID
+				loggedJob.RequestedBy = actor.Subject
+				loggedJob.Operation = domain.PublishOperationRollback
+			}
+			lifecycleError(ctx, actor, loggedJob, returnErr)
+		}
+	}()
 	if !hasPermission(actor, auth.PermissionRollback) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
@@ -229,6 +258,8 @@ func (service *Service) Rollback(
 	if existing, found, err := service.existingJob(ctx, actor, domain.PublishOperationRollback, versionID, idempotencyKey); err != nil {
 		return domain.PublishJob{}, err
 	} else if found {
+		lifecycleLog(ctx, slog.LevelInfo, "existing rollback job reused", "idempotency.reuse", actor, existing, started, nil)
+		stage = "build.trigger"
 		return service.resumeExisting(ctx, existing)
 	}
 
@@ -283,6 +314,8 @@ func (service *Service) Rollback(
 		}
 		return domain.PublishJob{}, err
 	}
+	lifecycleLog(ctx, slog.LevelInfo, "rollback job admitted", "job.create", actor, job, started, nil)
+	stage = "build.trigger"
 	return service.trigger(ctx, job, canonical.ReleaseID)
 }
 
@@ -387,17 +420,33 @@ func (service *Service) RefreshStatus(
 	actor domain.Principal,
 	jobID string,
 ) (result domain.PublishJob, returnErr error) {
+	started := time.Now()
 	stage := "authorize"
-	defer func() { returnErr = failureAt(stage, returnErr) }()
+	var job domain.PublishJob
+	defer func() {
+		returnErr = failureAt(stage, returnErr)
+		if returnErr != nil {
+			loggedJob := result
+			if loggedJob.ID == "" {
+				loggedJob = job
+			}
+			if loggedJob.ID == "" {
+				loggedJob.ID = jobID
+			}
+			lifecycleError(ctx, actor, loggedJob, returnErr)
+		}
+	}()
 	if !hasPermission(actor, auth.PermissionPublish) {
 		return domain.PublishJob{}, domain.ErrForbidden
 	}
 	stage = "job.lookup"
-	job, err := service.repository.GetPublishJob(ctx, jobID)
+	var err error
+	job, err = service.repository.GetPublishJob(ctx, jobID)
 	if err != nil {
 		return domain.PublishJob{}, err
 	}
 	if job.Status != domain.PublishBuilding {
+		lifecycleLog(ctx, slog.LevelDebug, "publish status unchanged", "publish.status", actor, job, started, nil)
 		return job, nil
 	}
 	run, err := service.buildTrigger.Status(ctx, job.BuildID)
@@ -405,6 +454,7 @@ func (service *Service) RefreshStatus(
 		return job, failureAt("build.status", err)
 	}
 	if run.Status == domain.PublishFailed {
+		lifecycleLog(ctx, slog.LevelError, "publish build failed", "build.status", actor, job, started, errors.New(run.Error))
 		stage = "job.fail"
 		failed, changed, err := service.failBuildingJob(ctx, actor, job, run.Error, true)
 		if err != nil {
@@ -416,6 +466,7 @@ func (service *Service) RefreshStatus(
 		return failed, nil
 	}
 	if run.Status != domain.PublishSucceeded {
+		lifecycleLog(ctx, slog.LevelDebug, "publish build remains in progress", "build.status", actor, job, started, nil, "build_status", run.Status)
 		return job, nil
 	}
 
@@ -423,6 +474,7 @@ func (service *Service) RefreshStatus(
 	stage = "job.finalize"
 	alreadyFinalized := false
 	finalizationFailed := false
+	beforeFinalize := job
 	err = service.repository.WithinTransaction(ctx, func(repository Repository) error {
 		if err := repository.LockPublishSlot(ctx, productionSlot); err != nil {
 			return err
@@ -504,16 +556,25 @@ func (service *Service) RefreshStatus(
 		return repository.AppendAudit(ctx, publishAudit(actor, action, job.ID, service.now().UTC()))
 	})
 	if err != nil {
+		// Transaction-local terminal states did not commit; keep failure logs
+		// anchored to the last job state read outside the transaction.
+		job = beforeFinalize
 		return domain.PublishJob{}, err
 	}
 	if alreadyFinalized {
 		return job, nil
 	}
 	if finalizationFailed {
+		lifecycleLog(ctx, slog.LevelError, "publish target changed before completion", "publish.finalize", actor, job, started, domain.ErrConflict)
 		service.notify(ctx, job, domain.PublishPointer{}, false)
 		return job, nil
 	}
 	service.notify(ctx, job, pointer, true)
+	message := "publish completed"
+	if job.Operation == domain.PublishOperationRollback {
+		message = "rollback completed"
+	}
+	lifecycleLog(ctx, slog.LevelInfo, message, "publish.finalize", actor, job, started, nil)
 	return job, nil
 }
 
@@ -581,6 +642,8 @@ func (service *Service) trigger(
 	job domain.PublishJob,
 	releaseID string,
 ) (domain.PublishJob, error) {
+	started := time.Now()
+	lifecycleLog(ctx, slog.LevelInfo, "build submission started", "build.trigger", lifecycleActorForJob(job), job, started, nil)
 	run, err := service.buildTrigger.Trigger(ctx, ports.BuildRequest{
 		IdempotencyKey:   job.IdempotencyKey,
 		ReleaseID:        releaseID,
@@ -610,6 +673,7 @@ func (service *Service) trigger(
 		}
 		return domain.PublishJob{}, failureAt("job.update", err)
 	}
+	lifecycleLog(ctx, slog.LevelInfo, "build submission accepted", "build.trigger", lifecycleActorForJob(job), job, started, nil)
 	return job, nil
 }
 

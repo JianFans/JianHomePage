@@ -55,7 +55,23 @@ install -m 755 yujian-server-0.1.0-linux-amd64 ./yujian-server
 | `PAGES_REGION` | 必填 | 中国站 `china`，国际站 `global`；项目、Token 与站点一致，不是 COS 地域 |
 | `PAGES_PUBLIC_URL` | 必填 | Pages 绑定的公开站地址，如 `https://yujian.me`，须与内容快照 canonical URL 一致 |
 | `SHUTDOWN_TIMEOUT` | 默认 `10s` | 优雅停止超时 |
+| `LOG_LEVEL` | 默认 `info` | `debug`、`info`、`warn` 或 `error`；同时过滤控制台和文件日志 |
+| `LOG_FORMAT` | 默认 `text` | 控制台格式，支持 `text` 或 `json`；文件日志始终为 JSONL |
+| `LOG_FILE` | 默认关闭 | 可选 JSONL 文件路径；相对路径基于进程工作目录，启用前须创建父目录并授予服务账号写权限 |
+| `LOG_MAX_SIZE_MB` | 默认 `20` | 单个文件大小上限，范围为 1–1024 MB |
+| `LOG_MAX_BACKUPS` | 默认 `5` | 轮转备份数，范围为 1–100；不压缩备份 |
 | `ALLOW_DEV_IDENTITY` | 默认 `false` | 生产环境必须为 `false` |
+
+默认日志写入标准输出，采用可读文本格式。设置 `LOG_FORMAT=json` 可切换为 JSON 控制台输出；设置 `LOG_FILE` 后会额外写入分级 JSONL 文件。日志文件按大小轮转，当前文件之外最多保留 `LOG_MAX_BACKUPS` 份。控制台与文件共用 `LOG_LEVEL`。
+
+请求日志包含请求 ID、匹配路由、操作者、状态、响应字节数和耗时；后台操作会补充资源 ID、失败阶段、错误分类和脱敏后的依赖诊断。5xx 记为 `ERROR`，4xx 记为 `WARN`，成功请求记为 `INFO`；健康检查和成功的静态资源请求记为 `DEBUG`。请求／响应正文、Cookie、Authorization、Token、授权码、幂等键、签名 URL 和服务商响应正文不写入日志。可按响应中的 `requestId` 查询同一请求的 HTTP 记录及对应操作诊断。上游错误保留白名单错误码、HTTP 状态及安全字符集内的服务商请求 ID；无法识别的错误码记为 `Unknown`。配置密钥在字段截断前脱敏。
+
+例如将 `LOG_FILE` 设为 `/var/log/yujian/server.jsonl` 后，可按请求 ID 查看完整事件：
+
+```bash
+jq --arg id 'req-example' 'select(.request_id == $id)' /var/log/yujian/server.jsonl
+tail -F /var/log/yujian/server.jsonl
+```
 
 OIDC 可使用标准身份服务；令牌要求及 Casdoor 示例见下节。完整认证契约见 [浏览器登录与会话](../apps/server/README.md#浏览器登录与会话)。
 
@@ -110,7 +126,7 @@ Casdoor 普通、非共享应用可按以下方式配置，其他 OIDC 服务遵
 ## 更新与故障恢复
 
 - 首次应用 `0010_uuid_ids` 是不兼容的停服升级：先停止所有旧版服务实例和写入流量，再启动新版；迁移成功后不得重启旧二进制。迁移只检查执行时业务表是否为空，不会阻止旧实例之后写入旧格式 ID。`content_versions`、`assets`、`publish_jobs`、`publish_pointer`、`publisher_builds` 或 `publish_snapshots` 任一表有记录时，迁移会回滚并拒绝启动，不会删除数据。预发布环境应改用空数据库；迁移会保留审计行并将其主键转为 UUID。该迁移不检查或清理 COS 对象；旧素材对象不会自动关联到新素材记录。升级失败时保持服务停止；回退必须同时恢复升级前的数据库备份和旧二进制。
-- 发布请求失败时，用响应中的 `requestId` 查服务日志 `publish request failed`。`stage` 区分版本查询、素材校验、快照读取／写入和发布器提交；外部故障另含白名单 `provider_error_code`、`provider_http_status`，如 `NoSuchBucket`／404、`AccessDenied`／403。`Unknown`／0 表示没有可用分类；日志不记录服务商原文或凭据。版本确实不存在时返回 404，对象存储的桶或上传故障返回服务错误。
+- 发布请求失败时，用响应中的 `requestId` 查服务日志 `publish request failed` 和同 ID 的 `http request`。`stage` 区分版本查询、素材校验、快照读取／写入和发布器提交；外部故障另含白名单 `provider_error_code`、`provider_http_status`，如 `NoSuchBucket`／404、`AccessDenied`／403。`Unknown`／0 表示没有可用分类；日志不记录服务商原文或凭据。版本确实不存在时返回 404，对象存储的桶或上传故障返回服务错误。
 - 内容更新由后台保存、审核和发布；程序升级前结束活动发布任务，备份数据库及旧二进制。迁移前置条件见 [安全与运维](../apps/server/README.md#安全与运维)。
 - 发布任务固定二进制 SHA-256；旧任务未结束时保留并使用旧程序恢复。云端创建结果不明时先核实 Pages 部署，再使用 [发布恢复接口](../apps/server/README.md#内置-pages-发布与恢复)，不要重复提交。
 - Release 准备阶段成功后，版本 commit／tag 保留。后续临时失败用 **Re-run failed jobs**；代码修复后发下一版本，不移动已有标签。准备阶段推送响应丢失时，先核实远端是否已写入。Release 草稿可续传相同文件，已公开文件不会被覆盖。

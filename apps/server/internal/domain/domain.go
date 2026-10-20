@@ -16,6 +16,7 @@ var (
 	ErrInvalidInput      = errors.New("invalid input")
 	ErrInvalidTransition = errors.New("invalid state transition")
 	ErrDuplicateRequest  = errors.New("duplicate request")
+	ErrDataIntegrity     = errors.New("data integrity violation")
 )
 
 type Role string
