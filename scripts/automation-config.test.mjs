@@ -99,9 +99,21 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
   const webPackage = JSON.parse(await readText('apps/web/package.json'))
   assert.equal(webPackage.scripts['playwright:install'], 'playwright install --with-deps chromium')
   const adminPackage = JSON.parse(await readText('apps/admin/package.json'))
-  assert.equal(adminPackage.scripts['test:e2e'], 'playwright test')
+  assert.equal(adminPackage.scripts['test:e2e'], 'pnpm build && playwright test')
+  assert.equal(workflow.jobs.e2e.steps.find(step => step.run === 'pnpm --filter @yujian/admin test:e2e')['timeout-minutes'], 15)
   assert.equal(adminPackage.devDependencies['@playwright/test'], webPackage.devDependencies['@playwright/test'])
   assert.ok(workflow.jobs.e2e.steps.some(step => step.uses?.startsWith('actions/upload-artifact@') && step.with?.path === 'apps/admin/test-results'))
+})
+
+test('管理端浏览器测试在探测前单独构建，生产服务固定监听同一回环地址', async () => {
+  const { default: config } = await import('../apps/admin/playwright.config.ts')
+  assert.equal(config.webServer.command, 'node .output/server/index.mjs')
+  assert.equal(config.webServer.url, 'http://127.0.0.1:49318')
+  assert.equal(config.use.baseURL, config.webServer.url)
+  assert.equal(config.webServer.env.NITRO_HOST, '127.0.0.1')
+  assert.equal(config.webServer.env.NITRO_PORT, '49318')
+  assert.equal(config.webServer.stdout, 'pipe')
+  assert.equal(config.webServer.stderr, 'pipe')
 })
 
 test('复用验证工作流固定代码身份，复用内嵌资源并输出双架构裸二进制', async () => {

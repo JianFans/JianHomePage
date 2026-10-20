@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const port = 49318
-const baseURL = process.env.PLAYWRIGHT_ADMIN_BASE_URL || `http://localhost:${port}`
+const baseURL = process.env.PLAYWRIGHT_ADMIN_BASE_URL || `http://127.0.0.1:${port}`
 
 export default defineConfig({
   testDir: './test/e2e',
@@ -21,8 +21,11 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
   ],
   webServer: process.env.PLAYWRIGHT_ADMIN_BASE_URL ? undefined : {
-    command: `pnpm build && pnpm exec nuxt preview --host localhost --port ${port}`,
+    command: 'node .output/server/index.mjs',
     url: baseURL,
+    env: { NITRO_HOST: '127.0.0.1', NITRO_PORT: String(port) },
+    stdout: 'pipe',
+    stderr: 'pipe',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

@@ -197,6 +197,7 @@ jobs:
       - name: Run E2E
         run: pnpm --filter @yujian/web test:e2e
       - name: Run admin E2E
+        timeout-minutes: 15
         run: pnpm --filter @yujian/admin test:e2e
       - name: Build embedded browser and renderer assets
         run: pnpm build:server:assets
