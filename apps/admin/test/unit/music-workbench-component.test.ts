@@ -30,21 +30,21 @@ function mountMusic() {
 describe('音乐工作台界面', () => {
   it('在作品列表按当前语言显示作品类型', async () => {
     const { wrapper, locale } = mountMusic()
-    expect(wrapper.get('[data-testid="music-release-release_01"] small').text()).toContain('单曲')
+    expect(wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"] small').text()).toContain('单曲')
     locale.value = 'en'
     await wrapper.vm.$nextTick()
-    expect(wrapper.get('[data-testid="music-release-release_01"] small').text()).toContain('Single')
+    expect(wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"] small').text()).toContain('Single')
   })
 
   it('为本地封面使用 API Origin 预览，不更改快照地址', async () => {
     const { wrapper, editorText } = mountMusic()
-    expect(wrapper.get('[data-testid="music-release-release_01"] img').attributes('src')).toMatch(/^http:\/\/127\.0\.0\.1:8080\/media\//)
+    expect(wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"] img').attributes('src')).toMatch(/^http:\/\/127\.0\.0\.1:8080\/media\//)
     expect(JSON.parse(editorText.value).assets[0].src).toBe(fixtureData.assets[0]!.src)
   })
 
   it('编辑平台标签、署名并移除试听时保持可选字段契约', async () => {
     const { wrapper, editorText } = mountMusic()
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     const track = wrapper.get('[data-testid="track-editor"]')
     await track.get('[data-testid="track-preview"]').setValue('')
     const links = wrapper.findAll('[data-testid="platform-link"]')
@@ -61,12 +61,12 @@ describe('音乐工作台界面', () => {
 
   it('选择作品、筛选素材并应用双语标题', async () => {
     const { wrapper, editorText } = mountMusic()
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     const cover = wrapper.get('[data-testid="music-cover"]')
     const preview = wrapper.get('[data-testid="track-preview"]').findAll('option')
-    expect(cover.findAll('option').some(option => option.attributes('value') === 'asset_preview_sample')).toBe(false)
-    expect(preview.some(option => option.attributes('value') === 'asset_preview_sample')).toBe(true)
-    expect(preview.some(option => option.attributes('value') === 'asset_cover_01')).toBe(false)
+    expect(cover.findAll('option').some(option => option.attributes('value') === 'asset_71734f61-5250-4825-a8b3-0192448be437')).toBe(false)
+    expect(preview.some(option => option.attributes('value') === 'asset_71734f61-5250-4825-a8b3-0192448be437')).toBe(true)
+    expect(preview.some(option => option.attributes('value') === 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2')).toBe(false)
     await wrapper.get('[data-testid="release-title-zh"]').setValue('新的标题')
     await wrapper.get('[data-testid="release-title-en"]').setValue('New title')
     await wrapper.get('[data-testid="music-apply"]').trigger('click')
@@ -76,7 +76,7 @@ describe('音乐工作台界面', () => {
 
   it('添加并重排曲目，清空英文时移除选填键', async () => {
     const { wrapper, editorText } = mountMusic()
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     await wrapper.get('[data-testid="release-title-en"]').setValue('')
     await wrapper.get('[data-testid="track-add"]').trigger('click')
     const tracks = wrapper.findAll('[data-testid="track-editor"]')
@@ -86,7 +86,7 @@ describe('音乐工作台界面', () => {
     await wrapper.get('[data-testid="music-apply"]').trigger('click')
     const next = JSON.parse(editorText.value)
     expect(next.releases[0].title.en).toBeUndefined()
-    expect(next.releases[0].trackIds[0]).not.toBe('track_01')
+    expect(next.releases[0].trackIds[0]).not.toBe('track_e60c46c7-28d6-418e-8905-167307dc8354')
     expect(next.tracks.find((track: { title: { 'zh-CN': string } }) => track.title['zh-CN'] === '第二首').durationSeconds).toBe(200)
   })
 
@@ -96,30 +96,30 @@ describe('音乐工作台界面', () => {
     value.releases[0]!.trackIds.push(value.releases[0]!.trackIds[0]!)
     editorText.value = JSON.stringify(value)
     await wrapper.vm.$nextTick()
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     const tracks = wrapper.findAll('[data-testid="track-editor"]')
     await tracks[1]!.get('[data-testid="track-title-zh"]').setValue('共享曲目标题')
     expect(tracks[0]!.get('[data-testid="track-title-zh"]').element).toHaveProperty('value', '共享曲目标题')
     await wrapper.get('[data-testid="music-apply"]').trigger('click')
     expect(wrapper.find('[data-testid="music-error"]').exists()).toBe(false)
     expect(JSON.parse(editorText.value).tracks[0].title['zh-CN']).toBe('共享曲目标题')
-    expect(JSON.parse(editorText.value).releases[0].trackIds).toEqual(['track_01', 'track_01'])
+    expect(JSON.parse(editorText.value).releases[0].trackIds).toEqual(['track_e60c46c7-28d6-418e-8905-167307dc8354', 'track_e60c46c7-28d6-418e-8905-167307dc8354'])
     await wrapper.findAll('[data-testid="track-remove"]')[1]!.trigger('click')
     await wrapper.get('[data-testid="music-apply"]').trigger('click')
     const next = JSON.parse(editorText.value)
-    expect(next.releases[0].trackIds).toEqual(['track_01'])
-    expect(next.tracks.filter((track: { id: string }) => track.id === 'track_01')).toHaveLength(1)
+    expect(next.releases[0].trackIds).toEqual(['track_e60c46c7-28d6-418e-8905-167307dc8354'])
+    expect(next.tracks.filter((track: { id: string }) => track.id === 'track_e60c46c7-28d6-418e-8905-167307dc8354')).toHaveLength(1)
     expect(next.tracks[0].title['zh-CN']).toBe('共享曲目标题')
     expect(analyzeSnapshotText(editorText.value).issues).toEqual([])
   })
 
   it('移出音乐条目和重新排序不会更改板块限制', async () => {
     const { wrapper, editorText } = mountMusic()
-    await wrapper.get('[data-testid="music-release-release_02"]').trigger('click')
-    await wrapper.get('[data-testid="section-section_music"] [data-testid="section-up"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_f9462a63-70d9-40b3-a0cc-a792f1b5499e"]').trigger('click')
+    await wrapper.get('[data-testid="section-section_1941aa2b-341c-471c-9408-760fbd9edcea"] [data-testid="section-up"]').trigger('click')
     await wrapper.get('[data-testid="music-apply"]').trigger('click')
     const section = JSON.parse(editorText.value).homepage.sections.find((item: { type: string }) => item.type === 'music')
-    expect(section.itemIds[0]).toBe('release_02')
+    expect(section.itemIds[0]).toBe('release_f9462a63-70d9-40b3-a0cc-a792f1b5499e')
     expect(section.limit).toBe(5)
   })
 
@@ -127,7 +127,7 @@ describe('音乐工作台界面', () => {
     const { wrapper, editorText } = mountMusic()
     const value = structuredClone(fixtureData)
     const section = value.homepage.sections.find(item => item.type === 'music')!
-    section.itemIds = ['release_01', 'release_01', 'release_02']
+    section.itemIds = ['release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_f9462a63-70d9-40b3-a0cc-a792f1b5499e']
     section.limit = 1
     // 单独验证排序与可见性；内部目标隐藏保护由事务测试覆盖。
     for (const slide of value.heroSlides) {
@@ -136,32 +136,32 @@ describe('音乐工作台界面', () => {
     expect(analyzeSnapshotText(JSON.stringify(value)).issues).toEqual([])
     editorText.value = JSON.stringify(value)
     await wrapper.vm.$nextTick()
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
-    const placement = wrapper.get('[data-testid="section-section_music"]')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
+    const placement = wrapper.get('[data-testid="section-section_1941aa2b-341c-471c-9408-760fbd9edcea"]')
     expect(placement.text()).toContain('位于展示范围内')
     await placement.get('[data-testid="section-down"]').trigger('click')
     expect(placement.text()).toContain('超过展示数量或板块未启用')
     await wrapper.get('[data-testid="music-apply"]').trigger('click')
     expect(wrapper.find('[data-testid="music-error"]').exists()).toBe(false)
     const next = JSON.parse(editorText.value).homepage.sections.find((item: { type: string }) => item.type === 'music')
-    expect(next).toEqual({ ...section, itemIds: ['release_02', 'release_01', 'release_01'] })
+    expect(next).toEqual({ ...section, itemIds: ['release_f9462a63-70d9-40b3-a0cc-a792f1b5499e', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff'] })
     expect(placement.get('[data-testid="section-down"]').attributes('disabled')).toBeDefined()
     await placement.get('[data-testid="section-up"]').trigger('click')
     await wrapper.get('[data-testid="music-apply"]').trigger('click')
-    expect(JSON.parse(editorText.value).homepage.sections.find((item: { type: string }) => item.type === 'music').itemIds).toEqual(['release_01', 'release_02', 'release_01'])
+    expect(JSON.parse(editorText.value).homepage.sections.find((item: { type: string }) => item.type === 'music').itemIds).toEqual(['release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_f9462a63-70d9-40b3-a0cc-a792f1b5499e', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff'])
     expect(analyzeSnapshotText(editorText.value).issues).toEqual([])
   })
 
   it.each([
-    { name: '尾部重复引用', itemIds: ['release_02', 'release_01', 'release_01'] },
-    { name: '仅有重复引用', itemIds: ['release_01', 'release_01'] },
+    { name: '尾部重复引用', itemIds: ['release_f9462a63-70d9-40b3-a0cc-a792f1b5499e', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff'] },
+    { name: '仅有重复引用', itemIds: ['release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff'] },
   ])('$name 没有可下移条目时禁用按钮', async ({ itemIds }) => {
     const { wrapper, editorText } = mountMusic()
     const value = structuredClone(fixtureData)
     value.homepage.sections.find(item => item.type === 'music')!.itemIds = itemIds
     editorText.value = JSON.stringify(value)
     await wrapper.vm.$nextTick()
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     expect(wrapper.get('[data-testid="section-down"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-testid="music-apply"]').attributes('disabled')).toBeDefined()
   })
@@ -182,7 +182,7 @@ describe('音乐工作台界面', () => {
 
   it('切换语言不清空内容，忙碌期间禁用表单和新建', async () => {
     const { wrapper, busy, locale } = mountMusic()
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     locale.value = 'en'
     await wrapper.vm.$nextTick()
     expect(wrapper.get('[data-testid="music-new"]').attributes('aria-label')).toBe('New release')

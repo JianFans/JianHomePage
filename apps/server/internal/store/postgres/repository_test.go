@@ -145,15 +145,15 @@ func TestContentRepositoryGetVersionMapsRowAndNoRows(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	snapshot := []byte(`{"schemaVersion":"1.0.0"}`)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"ver_1", "draft", int64(2), snapshot, snapshotdata.Checksum(snapshot), false,
+		"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", "draft", int64(2), snapshot, snapshotdata.Checksum(snapshot), false,
 		"editor-1", "editor-1", now, now,
 	}}}
 	repository := NewContentRepository(executor)
-	version, err := repository.GetVersion(context.Background(), "ver_1")
+	version, err := repository.GetVersion(context.Background(), "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d")
 	if err != nil {
 		t.Fatalf("get version: %v", err)
 	}
-	if version.ID != "ver_1" || version.Revision != 2 || version.Status != domain.StatusDraft {
+	if version.ID != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || version.Revision != 2 || version.Status != domain.StatusDraft {
 		t.Fatalf("unexpected version %#v", version)
 	}
 
@@ -167,11 +167,11 @@ func TestContentRepositoryCanonicalizesJSONBReadback(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	expected := []byte(`{"a":1.23,"schemaVersion":"1.0.0","z":100}`)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"ver_1", "draft", int64(2), []byte(`{"z":100.0,"schemaVersion":"1.0.0","a":1.2300}`), snapshotdata.Checksum(expected), false,
+		"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", "draft", int64(2), []byte(`{"z":100.0,"schemaVersion":"1.0.0","a":1.2300}`), snapshotdata.Checksum(expected), false,
 		"editor-1", "editor-1", now, now,
 	}}}
 
-	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_1")
+	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d")
 	if err != nil {
 		t.Fatalf("get version: %v", err)
 	}
@@ -185,11 +185,11 @@ func TestContentRepositoryCanonicalizesJSONBReadback(t *testing.T) {
 func TestContentRepositoryRejectsSnapshotChecksumMismatch(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"ver_1", "draft", int64(2), []byte(`{"title":"private-snapshot-title"}`), "sha256:wrong", false,
+		"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", "draft", int64(2), []byte(`{"title":"private-snapshot-title"}`), "sha256:wrong", false,
 		"editor-1", "editor-1", now, now,
 	}}}
 
-	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_1")
+	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d")
 	if !errors.Is(err, domain.ErrDataIntegrity) || errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected stored snapshot integrity classification, got %v", err)
 	}
@@ -203,11 +203,11 @@ func TestContentRepositoryRejectsSnapshotChecksumMismatch(t *testing.T) {
 func TestContentRepositoryClassifiesUnparseableStoredSnapshotAsIntegrityError(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"ver_1", "draft", int64(2), []byte(`{"title":"private-snapshot-title","schemaVersion":`), "sha256:stored", false,
+		"ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", "draft", int64(2), []byte(`{"title":"private-snapshot-title","schemaVersion":`), "sha256:stored", false,
 		"editor-1", "editor-1", now, now,
 	}}}
 
-	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_1")
+	version, err := NewContentRepository(executor).GetVersion(context.Background(), "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d")
 	if !errors.Is(err, domain.ErrDataIntegrity) || errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected unparseable stored snapshot integrity classification, got %v", err)
 	}
@@ -217,7 +217,7 @@ func TestContentRepositoryClassifiesUnparseableStoredSnapshotAsIntegrityError(t 
 }
 
 func TestContentRepositoryUpdateUsesCompareAndSwap(t *testing.T) {
-	version := domain.ContentVersion{ID: "ver_1", Status: domain.StatusDraft, Revision: 3, Snapshot: []byte(`{}`), Checksum: "sha256:test", CreatedBy: "editor", UpdatedBy: "editor"}
+	version := domain.ContentVersion{ID: "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", Status: domain.StatusDraft, Revision: 3, Snapshot: []byte(`{}`), Checksum: "sha256:test", CreatedBy: "editor", UpdatedBy: "editor"}
 	executor := &recordingExecutor{result: recordingResult{affected: 1}}
 	if err := NewContentRepository(executor).UpdateVersion(context.Background(), version, 2); err != nil {
 		t.Fatalf("update version: %v", err)
@@ -225,14 +225,14 @@ func TestContentRepositoryUpdateUsesCompareAndSwap(t *testing.T) {
 	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "WHERE id = $8 AND revision = $9") {
 		t.Fatalf("expected compare-and-swap query, got %#v", executor.execQueries)
 	}
-	if executor.execArgs[0][7] != "ver_1" || executor.execArgs[0][8] != int64(2) {
+	if executor.execArgs[0][7] != "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d" || executor.execArgs[0][8] != int64(2) {
 		t.Fatalf("unexpected update args %#v", executor.execArgs[0])
 	}
 }
 
 func TestContentRepositoryPreservesLookupErrorsAfterZeroRowsUpdate(t *testing.T) {
 	sentinel := errors.New("database connection lost")
-	version := domain.ContentVersion{ID: "ver_1", Status: domain.StatusDraft, Revision: 3, Snapshot: []byte(`{}`), Checksum: "sha256:test", CreatedBy: "editor", UpdatedBy: "editor"}
+	version := domain.ContentVersion{ID: "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", Status: domain.StatusDraft, Revision: 3, Snapshot: []byte(`{}`), Checksum: "sha256:test", CreatedBy: "editor", UpdatedBy: "editor"}
 	executor := &recordingExecutor{result: recordingResult{affected: 0}, row: recordingRow{err: sentinel}}
 	if err := NewContentRepository(executor).UpdateVersion(context.Background(), version, 2); !errors.Is(err, sentinel) {
 		t.Fatalf("expected lookup error, got %v", err)
@@ -244,8 +244,8 @@ func TestContentRepositoryPreservesLookupErrorsAfterZeroRowsUpdate(t *testing.T)
 func TestAssetRepositoryPersistsStableSourceURL(t *testing.T) {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
 	asset := domain.AssetRecord{
-		ID: "asset_1", BlobKey: "assets/asset_1/source.webp",
-		SourceURL: "https://media.yujian.me/assets/asset_1/source.webp",
+		ID: "asset_551aed01-404d-4e4b-b2d3-0974f521eab8", BlobKey: "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp",
+		SourceURL: "https://media.yujian.me/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp",
 		Status:    domain.AssetPending, Metadata: []byte(`{"kind":"image"}`),
 		Rights: []byte(`{"source":{"zh-CN":"authorized"}}`), CreatedBy: "editor-1", CreatedAt: now,
 	}
@@ -291,12 +291,12 @@ func TestAssetRepositoryListsWithStatusAndKeysetPagination(t *testing.T) {
 	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{rows: &recordingRows{rows: []recordingRow{
 		{values: []any{
-			"asset_c", "assets/asset_c/source.webp", "https://media.yujian.me/assets/asset_c/source.webp",
+			"asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6", "assets/asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6/source.webp", "https://media.yujian.me/assets/asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6/source.webp",
 			"ready", []byte(`{"fileName":"cover.webp"}`), []byte(`{"source":{"zh-CN":"authorized"}}`),
 			"editor-1", createdAt, sql.NullTime{},
 		}},
 		{values: []any{
-			"asset_b", "assets/asset_b/source.mp3", "https://media.yujian.me/assets/asset_b/source.mp3",
+			"asset_47f68d47-98a9-4288-be7c-c76c3dbcad67", "assets/asset_47f68d47-98a9-4288-be7c-c76c3dbcad67/source.mp3", "https://media.yujian.me/assets/asset_47f68d47-98a9-4288-be7c-c76c3dbcad67/source.mp3",
 			"pending", []byte(`{"fileName":"song.mp3"}`), []byte(`{"source":{"zh-CN":"authorized"}}`),
 			"editor-1", createdAt, sql.NullTime{},
 		}},
@@ -305,13 +305,13 @@ func TestAssetRepositoryListsWithStatusAndKeysetPagination(t *testing.T) {
 	items, err := NewAssetRepository(executor).ListAssets(t.Context(), assets.ListQuery{
 		Statuses:        []domain.AssetStatus{domain.AssetPending, domain.AssetReady},
 		BeforeCreatedAt: &createdAt,
-		BeforeID:        "asset_d",
+		BeforeID:        "asset_0c6cac0a-8ed5-4da9-b2f5-13b400740070",
 		Limit:           3,
 	})
 	if err != nil {
 		t.Fatalf("list assets: %v", err)
 	}
-	if len(items) != 2 || items[0].ID != "asset_c" || items[1].ID != "asset_b" {
+	if len(items) != 2 || items[0].ID != "asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6" || items[1].ID != "asset_47f68d47-98a9-4288-be7c-c76c3dbcad67" {
 		t.Fatalf("unexpected assets %#v", items)
 	}
 	if len(executor.queries) != 1 ||
@@ -321,7 +321,7 @@ func TestAssetRepositoryListsWithStatusAndKeysetPagination(t *testing.T) {
 		t.Fatalf("unexpected list query %#v", executor.queries)
 	}
 	args := executor.queryArgs[0]
-	if len(args) != 3 || args[0] != createdAt || args[1] != "asset_d" || args[2] != 3 {
+	if len(args) != 3 || args[0] != createdAt || args[1] != "asset_0c6cac0a-8ed5-4da9-b2f5-13b400740070" || args[2] != 3 {
 		t.Fatalf("unexpected list args %#v", args)
 	}
 }
@@ -361,12 +361,12 @@ func (*errorRows) Close() error { return nil }
 func TestAssetRepositoryReadsLegacyNullSourceURL(t *testing.T) {
 	now := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"asset_legacy", "assets/asset_legacy/source.webp", nil,
+		"asset_58d6e938-5806-4086-8a5d-f3908326255e", "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp", nil,
 		"pending", []byte(`{}`), []byte(`{"source":{"zh-CN":"authorized"}}`),
 		"editor-legacy", now, sql.NullTime{},
 	}}}
 
-	asset, err := NewAssetRepository(executor).GetAsset(t.Context(), "asset_legacy")
+	asset, err := NewAssetRepository(executor).GetAsset(t.Context(), "asset_58d6e938-5806-4086-8a5d-f3908326255e")
 	if err != nil {
 		t.Fatalf("read legacy asset with NULL source URL: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestAssetRepositoryReadsLegacyNullSourceURL(t *testing.T) {
 func TestAssetRepositoryCreatesMissingSourceURLAsNull(t *testing.T) {
 	executor := &recordingExecutor{result: recordingResult{affected: 1}}
 	asset := domain.AssetRecord{
-		ID: "asset_legacy", BlobKey: "assets/asset_legacy/source.webp", Status: domain.AssetPending,
+		ID: "asset_58d6e938-5806-4086-8a5d-f3908326255e", BlobKey: "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp", Status: domain.AssetPending,
 		Metadata: []byte(`{}`), Rights: []byte(`{}`), CreatedAt: time.Now(),
 	}
 
@@ -393,7 +393,7 @@ func TestAssetRepositoryCreatesMissingSourceURLAsNull(t *testing.T) {
 func TestAssetRepositoryUpdatesMissingSourceURLAsNull(t *testing.T) {
 	executor := &recordingExecutor{result: recordingResult{affected: 1}}
 	asset := domain.AssetRecord{
-		ID: "asset_legacy", BlobKey: "assets/asset_legacy/source.webp", Status: domain.AssetDeleted,
+		ID: "asset_58d6e938-5806-4086-8a5d-f3908326255e", BlobKey: "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp", Status: domain.AssetDeleted,
 		Metadata: []byte(`{}`), Rights: []byte(`{}`),
 	}
 
@@ -407,7 +407,7 @@ func TestAssetRepositoryUpdatesMissingSourceURLAsNull(t *testing.T) {
 
 func TestAssetRepositoryUpdateUsesStatusCompareAndSwap(t *testing.T) {
 	executor := &recordingExecutor{result: recordingResult{affected: 1}}
-	asset := domain.AssetRecord{ID: "asset_1", Status: domain.AssetReady, Metadata: []byte(`{}`), Rights: []byte(`{}`)}
+	asset := domain.AssetRecord{ID: "asset_551aed01-404d-4e4b-b2d3-0974f521eab8", Status: domain.AssetReady, Metadata: []byte(`{}`), Rights: []byte(`{}`)}
 	if err := NewAssetRepository(executor).UpdateAsset(context.Background(), asset, domain.AssetPending); err != nil {
 		t.Fatalf("update asset: %v", err)
 	}
@@ -424,12 +424,12 @@ func TestAssetRepositoryMapsStaleStatusToConflict(t *testing.T) {
 	executor := &recordingExecutor{
 		result: recordingResult{affected: 0},
 		row: recordingRow{values: []any{
-			"asset_1", "assets/asset_1/source.webp", "https://media.yujian.me/assets/asset_1/source.webp",
+			"asset_551aed01-404d-4e4b-b2d3-0974f521eab8", "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp", "https://media.yujian.me/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp",
 			"deleted", []byte(`{}`), []byte(`{}`),
 			"editor-1", now, sql.NullTime{},
 		}},
 	}
-	asset := domain.AssetRecord{ID: "asset_1", Status: domain.AssetReady, Metadata: []byte(`{}`), Rights: []byte(`{}`)}
+	asset := domain.AssetRecord{ID: "asset_551aed01-404d-4e4b-b2d3-0974f521eab8", Status: domain.AssetReady, Metadata: []byte(`{}`), Rights: []byte(`{}`)}
 	if err := NewAssetRepository(executor).UpdateAsset(context.Background(), asset, domain.AssetPending); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected stale status conflict, got %v", err)
 	}
@@ -452,13 +452,13 @@ func TestRepositoryTransactionRollsBackOnCallbackError(t *testing.T) {
 func TestPublishRepositoryReadsHistoricalSuccessfulJob(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"pub_1", "idem-1", "publish", "ver_old", "rel_old", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "succeeded", "", "publisher", now, now,
+		"pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a", "idem-1", "publish", "ver_b88f6af7-86cb-4fc4-b1dc-76722b17792e", "rel_2dd4971b-ccd0-4907-97c4-7360da9c8c5d", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "succeeded", "", "publisher", now, now,
 	}}}
-	job, err := NewPublishRepository(executor).GetSuccessfulPublishByVersion(context.Background(), "ver_old")
+	job, err := NewPublishRepository(executor).GetSuccessfulPublishByVersion(context.Background(), "ver_b88f6af7-86cb-4fc4-b1dc-76722b17792e")
 	if err != nil {
 		t.Fatalf("get historical job: %v", err)
 	}
-	if job.ID != "pub_1" || job.Status != domain.PublishSucceeded {
+	if job.ID != "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a" || job.Status != domain.PublishSucceeded {
 		t.Fatalf("unexpected job %#v", job)
 	}
 	if len(executor.execQueries) != 0 {
@@ -469,13 +469,13 @@ func TestPublishRepositoryReadsHistoricalSuccessfulJob(t *testing.T) {
 func TestPublishRepositoryReadsActiveProductionJob(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	executor := &recordingExecutor{row: recordingRow{values: []any{
-		"pub_active", "idem-active", "publish", "ver_new", "rel_new", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "building", "", "publisher", now, now,
+		"pub_27bc46a9-cefa-406c-a5f7-45959f1a3f3c", "idem-active", "publish", "ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526", "rel_f91d3d69-e774-4cf1-a493-744009d9aa0d", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "building", "", "publisher", now, now,
 	}}}
 	job, err := NewPublishRepository(executor).GetActivePublishJob(context.Background())
 	if err != nil {
 		t.Fatalf("get active job: %v", err)
 	}
-	if job.ID != "pub_active" || job.Status != domain.PublishBuilding {
+	if job.ID != "pub_27bc46a9-cefa-406c-a5f7-45959f1a3f3c" || job.Status != domain.PublishBuilding {
 		t.Fatalf("unexpected active job %#v", job)
 	}
 	if len(executor.rowQueries) != 1 || !strings.Contains(executor.rowQueries[0], "status IN ('pending', 'building')") {
@@ -486,25 +486,28 @@ func TestPublishRepositoryReadsActiveProductionJob(t *testing.T) {
 func TestPublishRepositoryPersistsOperationAndReleaseID(t *testing.T) {
 	executor := &recordingExecutor{result: recordingResult{affected: 1}}
 	job := domain.PublishJob{
-		ID: "pub_1", IdempotencyKey: "idem-1", Operation: domain.PublishOperationRollback,
-		VersionID: "ver_1", ReleaseID: "rel_1", SnapshotKey: "snapshots/rel_1/sha.json",
+		ID: "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a", IdempotencyKey: "idem-1", Operation: domain.PublishOperationRollback,
+		VersionID: "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", ReleaseID: "rel_b73feb78-c751-4ccb-be54-8a8039247ca0", SnapshotKey: "snapshots/rel_b73feb78-c751-4ccb-be54-8a8039247ca0/sha.json",
 		SnapshotChecksum: "sha256:test", Status: domain.PublishPending, RequestedBy: "publisher-1",
 	}
 
 	if err := NewPublishRepository(executor).CreatePublishJob(context.Background(), job); err != nil {
 		t.Fatalf("create publish job: %v", err)
 	}
+	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "release_id") || !strings.Contains(executor.execQueries[0], "build_id") {
+		t.Fatalf("insert query uses unexpected publish job columns: %#v", executor.execQueries)
+	}
 	if len(executor.execArgs) != 1 || len(executor.execArgs[0]) < 6 {
 		t.Fatalf("unexpected insert args %#v", executor.execArgs)
 	}
-	if executor.execArgs[0][2] != domain.PublishOperationRollback || executor.execArgs[0][4] != "rel_1" {
+	if executor.execArgs[0][2] != domain.PublishOperationRollback || executor.execArgs[0][4] != "rel_b73feb78-c751-4ccb-be54-8a8039247ca0" {
 		t.Fatalf("operation and release were not persisted: %#v", executor.execArgs[0])
 	}
 }
 
 func TestPublishRepositoryMapsUniqueViolationToConflict(t *testing.T) {
 	executor := &recordingExecutor{execErr: sqlStateTestError{state: "23505"}}
-	err := NewPublishRepository(executor).CreatePublishJob(context.Background(), domain.PublishJob{ID: "pub_1"})
+	err := NewPublishRepository(executor).CreatePublishJob(context.Background(), domain.PublishJob{ID: "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a"})
 	if !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected conflict, got %v", err)
 	}
@@ -512,12 +515,15 @@ func TestPublishRepositoryMapsUniqueViolationToConflict(t *testing.T) {
 
 func TestPublishRepositoryUpdateUsesStatusCompareAndSwap(t *testing.T) {
 	executor := &recordingExecutor{result: recordingResult{affected: 1}}
-	job := domain.PublishJob{ID: "pub_1", Status: domain.PublishBuilding}
+	job := domain.PublishJob{ID: "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a", Status: domain.PublishBuilding}
 	if err := NewPublishRepository(executor).UpdatePublishJob(context.Background(), job, domain.PublishPending); err != nil {
 		t.Fatalf("update publish job: %v", err)
 	}
 	if len(executor.execQueries) != 1 || !strings.Contains(executor.execQueries[0], "WHERE id = $12 AND status = $13") {
 		t.Fatalf("expected status compare-and-swap query, got %#v", executor.execQueries)
+	}
+	if !strings.Contains(executor.execQueries[0], "release_id = $4") || !strings.Contains(executor.execQueries[0], "build_id = NULLIF($7, '')") {
+		t.Fatalf("update query uses unexpected publish job columns: %#v", executor.execQueries)
 	}
 	if executor.execArgs[0][12] != domain.PublishPending {
 		t.Fatalf("unexpected expected status %#v", executor.execArgs[0])
@@ -529,12 +535,15 @@ func TestPublishRepositoryMapsStaleStatusToConflict(t *testing.T) {
 	executor := &recordingExecutor{
 		result: recordingResult{affected: 0},
 		row: recordingRow{values: []any{
-			"pub_1", "idem-1", "publish", "ver_new", "rel_new", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "succeeded", "", "publisher", now, now,
+			"pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a", "idem-1", "publish", "ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526", "rel_f91d3d69-e774-4cf1-a493-744009d9aa0d", "snapshots/rel/sha.json", "sha256:test", int64(4), "build-1", "succeeded", "", "publisher", now, now,
 		}},
 	}
-	job := domain.PublishJob{ID: "pub_1", Status: domain.PublishBuilding}
+	job := domain.PublishJob{ID: "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a", Status: domain.PublishBuilding}
 	if err := NewPublishRepository(executor).UpdatePublishJob(context.Background(), job, domain.PublishPending); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected stale status conflict, got %v", err)
+	}
+	if len(executor.rowQueries) != 1 || !strings.Contains(executor.rowQueries[0], "release_id") || !strings.Contains(executor.rowQueries[0], "COALESCE(build_id, '')") {
+		t.Fatalf("lookup query uses unexpected publish job columns: %#v", executor.rowQueries)
 	}
 }
 

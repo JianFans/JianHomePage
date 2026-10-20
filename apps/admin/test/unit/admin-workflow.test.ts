@@ -7,10 +7,10 @@ describe('admin workflow state', () => {
   })
 
   it('keeps a request id while surfacing an API error', () => {
-    expect(workflowError({ message: '冲突', requestId: 'req-1' })).toEqual({
+    expect(workflowError({ message: '冲突', requestId: 'req_550e8400-e29b-41d4-a716-446655440000' })).toEqual({
       status: 'error',
       message: '冲突',
-      requestId: 'req-1',
+      requestId: 'req_550e8400-e29b-41d4-a716-446655440000',
     })
   })
 

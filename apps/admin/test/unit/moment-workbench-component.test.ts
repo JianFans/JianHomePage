@@ -9,7 +9,7 @@ import { analyzeSnapshotText } from '../../utils/snapshot-workbench'
 /** 挂载真实状态机和表单，使用完整 canonical 应用事务。 */
 function mountMoment() {
   const source = structuredClone(fixture)
-  source.assets.push({ ...source.assets[0]!, id: 'asset_gif_test', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
+  source.assets.push({ ...source.assets[0]!, id: 'asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f', kind: 'gif', mimeType: 'image/gif', src: '/media/test.gif' })
   const editorText = ref(JSON.stringify(source))
   const snapshot = computed(() => analyzeSnapshotText(editorText.value).snapshot)
   const busy = ref(false)
@@ -69,13 +69,13 @@ describe('片段工作台组件', () => {
     await wrapper.get('[data-testid="moment-caption-en"]').setValue('')
     expect(moment.draft!.moments[0]!.caption).not.toHaveProperty('en')
     await wrapper.get('[data-testid="moment-target-kind"]').setValue('internal')
-    await wrapper.get('[data-testid="moment-target-content"]').setValue('release_01')
-    expect(moment.draft!.moments[0]!.target).toEqual({ kind: 'internal', contentId: 'release_01' })
+    await wrapper.get('[data-testid="moment-target-content"]').setValue('release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff')
+    expect(moment.draft!.moments[0]!.target).toEqual({ kind: 'internal', contentId: 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff' })
     await wrapper.get('[data-testid="moment-add"]').trigger('click')
     const id = moment.draft!.moments.at(-1)!.id
     await wrapper.get('[data-testid="moment-target-kind"]').setValue('internal')
     expect(wrapper.get('[data-testid="moment-target-content"]').findAll('option').map(option => option.attributes('value'))).toContain(id)
-    for (const value of ['hero_studio', 'release_01', 'track_01', 'video_01', 'event_01', 'moment_01', 'artist_primary']) {
+    for (const value of ['hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'track_e60c46c7-28d6-418e-8905-167307dc8354', 'video_b634e94d-b468-4e4b-b784-22eda2c49314', 'event_dc200c4c-abbb-476e-984d-405470f2dbea', 'moment_c8f0a2c9-7b1f-4bcc-a6c0-e6d5e74538c8', 'artist_eb908750-faf8-418f-94c6-97f769c1cf31']) {
       expect(wrapper.get('[data-testid="moment-target-content"]').findAll('option').map(option => option.attributes('value'))).toContain(value)
     }
     await wrapper.get('[data-testid="moment-target-kind"]').setValue('external')
@@ -102,7 +102,7 @@ describe('片段工作台组件', () => {
     await wrapper.get('[data-testid="moment-open"]').trigger('click')
     const ids = wrapper.get('[data-testid="moment-asset"]').findAll('option').map(option => option.attributes('value'))
     for (const asset of fixture.assets) expect(ids.includes(asset.id)).toBe(['image', 'gif'].includes(asset.kind))
-    expect(ids).toContain('asset_gif_test')
+    expect(ids).toContain('asset_a3c8a851-1654-46e3-9bb7-a8640b852c3f')
     expect(wrapper.find('img, video, audio').exists()).toBe(false)
     await wrapper.get('[data-testid="moment-caption-zh"]').setValue('保留')
     editorText.value = '{'
@@ -120,7 +120,7 @@ describe('片段工作台组件', () => {
   it('诊断最多八条并本地化剩余数量，busy 锁定 fieldset 与全部按钮', async () => {
     const { wrapper, moment, busy, locale } = mountMoment()
     await wrapper.get('[data-testid="moment-open"]').trigger('click')
-    moment.draft!.moments[0]!.assetId = 'asset_preview_sample'
+    moment.draft!.moments[0]!.assetId = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     moment.apply()
     await wrapper.vm.$nextTick()
     expect(wrapper.get('[data-testid="moment-error"]').text()).toContain('/moments/0/assetId')

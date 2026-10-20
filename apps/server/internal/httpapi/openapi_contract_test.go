@@ -7,6 +7,36 @@ import (
 	"testing"
 )
 
+type openAPISchema struct {
+	Type    string `json:"type"`
+	Pattern string `json:"pattern"`
+}
+
+type openAPIParameter struct {
+	Name     string        `json:"name"`
+	Required bool          `json:"required"`
+	Ref      string        `json:"$ref"`
+	Schema   openAPISchema `json:"schema"`
+}
+
+type openAPIProperty struct {
+	Ref         string                     `json:"$ref"`
+	Format      string                     `json:"format"`
+	Pattern     string                     `json:"pattern"`
+	Enum        []string                   `json:"enum"`
+	Description string                     `json:"description"`
+	Properties  map[string]openAPIProperty `json:"properties"`
+	OneOf       []struct {
+		Format  string `json:"format"`
+		Pattern string `json:"pattern"`
+	} `json:"oneOf"`
+}
+
+type openAPIComponentSchema struct {
+	Required   []string                   `json:"required"`
+	Properties map[string]openAPIProperty `json:"properties"`
+}
+
 // TestOpenAPIContainsManagementOperationsAndSecurity checks route identifiers,
 // bearer requirements and the documented asset query, rights and URL contracts.
 func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
@@ -29,29 +59,15 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 					} `json:"schema"`
 				} `json:"content"`
 			} `json:"requestBody"`
-			Parameters []struct {
-				Name     string `json:"name"`
-				Required bool   `json:"required"`
-			} `json:"parameters"`
+			Parameters []openAPIParameter `json:"parameters"`
 		} `json:"paths"`
 		Components struct {
+			Parameters      map[string]openAPIParameter `json:"parameters"`
 			SecuritySchemes map[string]struct {
 				Type   string `json:"type"`
 				Scheme string `json:"scheme"`
 			} `json:"securitySchemes"`
-			Schemas map[string]struct {
-				Required   []string `json:"required"`
-				Properties map[string]struct {
-					Ref         string   `json:"$ref"`
-					Format      string   `json:"format"`
-					Enum        []string `json:"enum"`
-					Description string   `json:"description"`
-					OneOf       []struct {
-						Format  string `json:"format"`
-						Pattern string `json:"pattern"`
-					} `json:"oneOf"`
-				} `json:"properties"`
-			} `json:"schemas"`
+			Schemas map[string]openAPIComponentSchema `json:"schemas"`
 		} `json:"components"`
 	}
 	if err := json.Unmarshal(raw, &document); err != nil {
@@ -125,6 +141,56 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	if document.Paths["/api/v1/auth/logout"]["post"].OperationID != "logout" {
 		t.Fatal("logout contract missing")
 	}
+	for parameter, prefix := range map[string]string{
+		"VersionId": "ver_",
+		"AssetId":   "asset_",
+		"PublishId": "pub_",
+	} {
+		if got := document.Components.Parameters[parameter].Schema.Pattern; got != typedIDPattern(prefix) {
+			t.Errorf("%s parameter pattern = %q, want %q", parameter, got, typedIDPattern(prefix))
+		}
+	}
+	for _, path := range []string{
+		"/api/v1/publisher/builds/{buildId}",
+		"/api/v1/publisher/builds/{buildId}/recovery",
+	} {
+		for method, operation := range document.Paths[path] {
+			if len(operation.Parameters) != 1 || operation.Parameters[0].Name != "buildId" || operation.Parameters[0].Schema.Pattern != typedIDPattern("build_") {
+				t.Errorf("%s %s buildId parameter must use build UUIDv4 pattern", method, path)
+			}
+		}
+	}
+	for _, field := range []struct {
+		schema string
+		field  string
+		prefix string
+	}{
+		{"VersionSummary", "id", "ver_"},
+		{"VersionSummary", "sourceVersionId", "ver_"},
+		{"ContentVersion", "id", "ver_"},
+		{"ContentVersion", "sourceVersionId", "ver_"},
+		{"Asset", "id", "asset_"},
+		{"PublisherBuild", "id", "build_"},
+		{"PublishRequest", "versionId", "ver_"},
+		{"RollbackRequest", "versionId", "ver_"},
+		{"PublishJob", "id", "pub_"},
+		{"PublishJob", "versionId", "ver_"},
+		{"PublishJob", "buildId", "build_"},
+		{"Error", "requestId", "req_"},
+	} {
+		if got := document.Components.Schemas[field.schema].Properties[field.field].Pattern; got != typedIDPattern(field.prefix) {
+			t.Errorf("%s.%s pattern = %q, want %q", field.schema, field.field, got, typedIDPattern(field.prefix))
+		}
+	}
+	if got := document.Components.Schemas["PublisherBuild"].Properties["request"].Properties["releaseId"].Pattern; got != typedIDPattern("rel_") {
+		t.Errorf("PublisherBuild.request.releaseId pattern = %q, want %q", got, typedIDPattern("rel_"))
+	}
+	if got := document.Components.Schemas["PublisherBuild"].Properties["target"].Properties["projectId"].Pattern; got != "" {
+		t.Errorf("external target projectId must remain opaque, got pattern %q", got)
+	}
+	if got := document.Components.Schemas["PublisherBuild"].Properties["deploymentId"].Pattern; got != "" {
+		t.Errorf("external deploymentId must remain opaque, got pattern %q", got)
+	}
 	if _, exists := document.Components.Schemas["VersionSummary"].Properties["snapshot"]; exists {
 		t.Fatal("summary schema must omit snapshots")
 	}
@@ -181,6 +247,11 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 	}
 }
 
+// typedIDPattern keeps contract assertions aligned on canonical UUIDv4 bits.
+func typedIDPattern(prefix string) string {
+	return "^" + prefix + `[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+}
+
 // TestOpenAPISourceIsSyncedIntoServerModule compares the canonical contract with
 // the embedded server copy so go generate cannot leave runtime docs stale.
 func TestOpenAPISourceIsSyncedIntoServerModule(t *testing.T) {
@@ -216,10 +287,7 @@ func splitOperation(t *testing.T, value string) (string, string) {
 	return "", ""
 }
 
-func assertRequiredHeader(t *testing.T, parameters []struct {
-	Name     string `json:"name"`
-	Required bool   `json:"required"`
-}, name string) {
+func assertRequiredHeader(t *testing.T, parameters []openAPIParameter, name string) {
 	t.Helper()
 	for _, parameter := range parameters {
 		if parameter.Name == name && parameter.Required {
@@ -242,10 +310,7 @@ func containsString(values []string, expected string) bool {
 
 // assertOptionalParameters verifies presence without accidentally making asset
 // filters mandatory for clients that rely on server-side defaults.
-func assertOptionalParameters(t *testing.T, parameters []struct {
-	Name     string `json:"name"`
-	Required bool   `json:"required"`
-}, names ...string) {
+func assertOptionalParameters(t *testing.T, parameters []openAPIParameter, names ...string) {
 	t.Helper()
 	for _, name := range names {
 		found := false

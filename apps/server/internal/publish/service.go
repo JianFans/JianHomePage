@@ -3,8 +3,6 @@ package publish
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +14,7 @@ import (
 
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	"yujian.me/server/internal/ports"
 	snapshotdata "yujian.me/server/internal/snapshot"
 )
@@ -90,7 +89,7 @@ func NewService(options ServiceOptions) *Service {
 	}
 	newID := options.NewID
 	if newID == nil {
-		newID = randomID
+		newID = identity.MustNew
 	}
 	return &Service{
 		repository:    options.Repository,
@@ -877,12 +876,4 @@ func failedAuditAction(job domain.PublishJob) string {
 		return "rollback.failed"
 	}
 	return "publish.failed"
-}
-
-func randomID(prefix string) string {
-	buffer := make([]byte, 12)
-	if _, err := rand.Read(buffer); err != nil {
-		panic("secure random source unavailable")
-	}
-	return prefix + hex.EncodeToString(buffer)
 }

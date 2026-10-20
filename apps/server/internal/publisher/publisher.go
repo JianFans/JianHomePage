@@ -411,7 +411,7 @@ const maxSnapshotBytes = ports.MaxPublishSnapshotBytes
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$`)
 var revision = regexp.MustCompile(`^(?:[a-f0-9]{40}|[a-f0-9]{64})$`)
-var release = regexp.MustCompile(`^rel_[a-z0-9_]+$`)
+var release = regexp.MustCompile(`^rel_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 var checksum = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
 // validRequest accepts exactly the immutable object reference emitted by the publishing domain.

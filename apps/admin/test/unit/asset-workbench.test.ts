@@ -65,9 +65,9 @@ describe('asset workbench utilities', () => {
     const asset = readyAsset()
 
     expect(toSnapshotAsset(asset, { zhCN: '封面', en: 'Cover' })).toEqual({
-      id: 'asset_uploaded',
+      id: 'asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c',
       kind: 'image',
-      src: 'https://media.yujian.me/assets/asset_uploaded/source.webp',
+      src: 'https://media.yujian.me/assets/asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c/source.webp',
       mimeType: 'image/webp',
       byteSize: 1024,
       width: 1200,
@@ -85,7 +85,7 @@ describe('asset workbench utilities', () => {
 
     expect(result.error).toBeNull()
     expect(result.inserted).toBe(true)
-    expect(result.text).toContain('asset_uploaded')
+    expect(result.text).toContain('asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c')
     expect(analyzeSnapshotText(result.text).issues).toHaveLength(0)
 
     expect(insertSnapshotAsset(result.text, asset)).toMatchObject({
@@ -107,8 +107,8 @@ describe('asset workbench utilities', () => {
 /** 构造具有完整服务端 metadata 的已确认素材。 */
 function readyAsset(): AdminAsset {
   return {
-    id: 'asset_uploaded',
-    src: 'https://media.yujian.me/assets/asset_uploaded/source.webp',
+    id: 'asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c',
+    src: 'https://media.yujian.me/assets/asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c/source.webp',
     status: 'ready',
     metadata: {
       fileName: 'cover.webp',

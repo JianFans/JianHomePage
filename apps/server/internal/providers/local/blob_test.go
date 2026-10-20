@@ -23,7 +23,7 @@ func TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata(t *testing.T) {
 	payload := []byte("image-data")
 	checksum := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
 	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
-		BlobKey: "assets/asset_1/source.webp", ContentType: "image/webp",
+		BlobKey: "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp", ContentType: "image/webp",
 		Size: int64(len(payload)), Checksum: checksum, ExpiresIn: time.Minute,
 	})
 	if err != nil {
@@ -40,7 +40,7 @@ func TestUploadHandlerAcceptsReservedUploadAndPersistsMetadata(t *testing.T) {
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
-	metadata, err := store.Stat(t.Context(), "assets/asset_1/source.webp")
+	metadata, err := store.Stat(t.Context(), "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp")
 	if err != nil {
 		t.Fatalf("stat uploaded object: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestUploadHandlerStreamsPayloadWithBoundedReads(t *testing.T) {
 	payload := bytes.Repeat([]byte("streamed-media"), 128*1024)
 	checksum := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
 	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
-		BlobKey: "assets/asset_stream/source.mp4", ContentType: "video/mp4",
+		BlobKey: "assets/asset_762865a9-7673-4333-b479-85c9eb7f89ca/source.mp4", ContentType: "video/mp4",
 		Size: int64(len(payload)), Checksum: checksum, ExpiresIn: time.Minute,
 	})
 	if err != nil {
@@ -85,7 +85,7 @@ func TestUploadHandlerStreamsPayloadWithBoundedReads(t *testing.T) {
 func TestBlobStorePublishesUploadedObjectAtStableLocalURL(t *testing.T) {
 	store := newTestBlobStore(t)
 	payload := []byte("audio-data")
-	key := "assets/asset_1/source.mp3"
+	key := "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.mp3"
 	if err := store.Put(t.Context(), key, bytes.NewReader(payload), ports.BlobMetadata{
 		ContentType: "audio/mpeg",
 		Size:        int64(len(payload)),
@@ -98,7 +98,7 @@ func TestBlobStorePublishesUploadedObjectAtStableLocalURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("public URL: %v", err)
 	}
-	if publicURL != "/media/assets/asset_1/source.mp3" {
+	if publicURL != "/media/assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.mp3" {
 		t.Fatalf("unexpected public URL %q", publicURL)
 	}
 
@@ -220,7 +220,7 @@ func TestBlobStorePutWithoutChecksumRemainsIdempotent(t *testing.T) {
 func TestUploadHandlerRejectsUnknownLengthPayloadTooLarge(t *testing.T) {
 	store := newTestBlobStore(t)
 	upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
-		BlobKey: "assets/asset_1/source.webp", ContentType: "image/webp", Size: 4,
+		BlobKey: "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp", ContentType: "image/webp", Size: 4,
 		Checksum: "sha256:" + fmt.Sprintf("%x", sha256.Sum256([]byte("data"))), ExpiresIn: time.Minute,
 	})
 	if err != nil {
@@ -255,7 +255,7 @@ func TestUploadHandlerRejectsInvalidPayloads(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			store := newTestBlobStore(t)
 			upload, err := store.CreateUpload(t.Context(), ports.UploadRequest{
-				BlobKey: "assets/asset_1/source.webp", ContentType: "image/webp", Size: 4,
+				BlobKey: "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.webp", ContentType: "image/webp", Size: 4,
 				Checksum: "sha256:" + fmt.Sprintf("%x", sha256.Sum256([]byte("data"))), ExpiresIn: time.Minute,
 			})
 			if err != nil {

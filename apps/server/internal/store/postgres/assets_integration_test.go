@@ -82,7 +82,7 @@ func TestPostgresAssetSourceRepair(t *testing.T) {
 	repository := NewAssetRepository(database)
 	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
 	asset := domain.AssetRecord{
-		ID: "asset_legacy", BlobKey: "assets/legacy/source.webp", Status: domain.AssetDeleted,
+		ID: "asset_58d6e938-5806-4086-8a5d-f3908326255e", BlobKey: "assets/legacy/source.webp", Status: domain.AssetDeleted,
 		Metadata: json.RawMessage(`{"retainBlob":true}`), Rights: json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 		CreatedBy: "review", CreatedAt: deletedAt, DeletedAt: &deletedAt,
 	}
@@ -227,7 +227,7 @@ FROM generate_series(1, 100000) g`)
 				query := assets.ListQuery{Statuses: statuses, Limit: 51}
 				if deep {
 					boundary := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(1000 * time.Second)
-					query.BeforeCreatedAt, query.BeforeID = &boundary, "asset_010005"
+					query.BeforeCreatedAt, query.BeforeID = &boundary, "asset_db88ed40-1c5c-49f0-ba05-e976063b876e"
 				}
 				items, err := NewAssetRepository(executor).ListAssets(t.Context(), query)
 				if err != nil || len(items) != query.Limit {

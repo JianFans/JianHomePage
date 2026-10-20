@@ -1,11 +1,10 @@
+import { createEntityId } from './identity'
+
 export type PublishOperation = 'publish' | 'rollback'
 export type PublishTaskStatus = 'pending' | 'building' | 'succeeded' | 'failed'
 
 export function createIdempotencyKey(prefix: PublishOperation = 'publish'): string {
-  const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  return `${prefix}-${random}`
+  return createEntityId(`${prefix}_`)
 }
 
 export function createOperationKeyStore(

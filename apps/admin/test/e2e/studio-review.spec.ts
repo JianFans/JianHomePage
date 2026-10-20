@@ -3,14 +3,14 @@ import { backend, navigate } from './studio'
 
 for (const locale of ['zh-CN', 'en'] as const) test(`审核通过后显示完成状态并锁定审核决定 ${locale}`, async ({ page }) => {
   const api = await backend(page)
-  const record = api.records.get('ver_current')!
+  const record = api.records.get('ver_14cea400-a42f-4560-9770-3de88cae9d5a')!
   Object.assign(record, { status: 'in_review', reviewApproved: false })
   const labels = locale === 'en'
     ? { pending: 'In review', approved: 'Approved', approve: 'Approve', reject: 'Return to draft', reason: 'Return reason', publish: 'Publish' }
     : { pending: '审核中', approved: '审核通过', approve: '通过审核', reject: '退回草稿', reason: '退回原因', publish: '发布' }
   await page.addInitScript(value => localStorage.setItem('yujian:admin-locale', value), locale)
   let approvals = 0
-  await page.route('**/api/v1/versions/ver_current/approve', async (route) => {
+  await page.route('**/api/v1/versions/ver_14cea400-a42f-4560-9770-3de88cae9d5a/approve', async (route) => {
     expect(route.request().postDataJSON()).toEqual({ revision: 4 })
     approvals++
     Object.assign(record, { reviewApproved: true, revision: 5 })
@@ -36,7 +36,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`审核通过后显示完成
   await expect(page.getByRole('button', { name: labels.publish, exact: true })).toBeEnabled()
   await page.reload()
   await expect(page.locator('.studio-meta')).toContainText(labels.approved)
-  await expect(page.getByTestId('version-ver_current')).toContainText(labels.approved)
+  await expect(page.getByTestId('version-ver_14cea400-a42f-4560-9770-3de88cae9d5a')).toContainText(labels.approved)
   await expect(page.locator('.studio-version-select')).toContainText(labels.approved)
   await expect(page.locator('.studio-history-list')).toContainText(labels.approved)
   expect(approvals).toBe(1)

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	"yujian.me/server/internal/publish"
 	"yujian.me/server/internal/store/memory"
 )
@@ -43,7 +44,7 @@ func TestRouterDefaultRequestIDsDoNotRepeatAcrossInstances(t *testing.T) {
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 			id := w.Header().Get("X-Request-ID")
-			if !validRequestID(id) || id == "req-unknown" || seen[id] {
+			if !identity.Valid(id, "req_") || seen[id] {
 				t.Fatalf("invalid or reused default request ID: %q", id)
 			}
 			seen[id] = true
@@ -54,12 +55,12 @@ func TestRouterDefaultRequestIDsDoNotRepeatAcrossInstances(t *testing.T) {
 // TestRouterHonorsConfiguredRequestID keeps explicit generators authoritative inside logging middleware.
 func TestRouterHonorsConfiguredRequestID(t *testing.T) {
 	var output bytes.Buffer
-	router := NewRouter(RouterOptions{RequestID: func(*http.Request) string { return "req-custom" }})
+	router := NewRouter(RouterOptions{RequestID: func(*http.Request) string { return "req_550e8400-e29b-41d4-a716-446655440000" }})
 	handler := LoggingMiddleware(router, slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	entries := logEntries(t, &output)
-	if w.Header().Get("X-Request-ID") != "req-custom" || len(entries) != 1 || entries[0]["request_id"] != "req-custom" {
+	if w.Header().Get("X-Request-ID") != "req_550e8400-e29b-41d4-a716-446655440000" || len(entries) != 1 || entries[0]["request_id"] != "req_550e8400-e29b-41d4-a716-446655440000" {
 		t.Fatalf("configured request ID lost: header=%q logs=%s", w.Header().Get("X-Request-ID"), output.String())
 	}
 }
@@ -111,7 +112,7 @@ func TestRequestLogsReplaceCookieShapedRequestIDs(t *testing.T) {
 	var output bytes.Buffer
 	inner := requestIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	}), func(*http.Request) string { return "req-generated" })
+	}), func(*http.Request) string { return "req_550e8400-e29b-41d4-a716-446655440000" })
 	handler := LoggingMiddleware(inner, slog.New(slog.NewJSONHandler(&output, nil)))
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
 	request.Header.Set("X-Request-ID", cookie)
@@ -119,11 +120,11 @@ func TestRequestLogsReplaceCookieShapedRequestIDs(t *testing.T) {
 
 	handler.ServeHTTP(w, request)
 
-	if got := w.Header().Get("X-Request-ID"); got != "req-generated" {
+	if got := w.Header().Get("X-Request-ID"); got != "req_550e8400-e29b-41d4-a716-446655440000" {
 		t.Fatalf("response request ID = %q", got)
 	}
 	entries := logEntries(t, &output)
-	if len(entries) != 1 || entries[0]["request_id"] != "req-generated" {
+	if len(entries) != 1 || entries[0]["request_id"] != "req_550e8400-e29b-41d4-a716-446655440000" {
 		t.Fatalf("unexpected request diagnostics: %s", output.String())
 	}
 	if strings.Contains(output.String(), cookie) {
@@ -177,19 +178,52 @@ func TestOperationAndRequestLogsShareTheConfiguredRequestID(t *testing.T) {
 	inner := requestIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logOperation(r, nil, http.StatusBadRequest, "invalid_request", "management request rejected")
 		w.WriteHeader(http.StatusBadRequest)
-	}), func(*http.Request) string { return "req-configured" })
+	}), func(*http.Request) string { return "req_550e8400-e29b-41d4-a716-446655440000" })
 	handler := LoggingMiddleware(inner, logger)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest("GET", "/test", nil))
-	if w.Header().Get("X-Request-ID") != "req-configured" {
+	if w.Header().Get("X-Request-ID") != "req_550e8400-e29b-41d4-a716-446655440000" {
 		t.Fatalf("response request ID = %q", w.Header().Get("X-Request-ID"))
 	}
 	entries := logEntries(t, &output)
-	if len(entries) != 2 || entries[0]["request_id"] != "req-configured" || entries[1]["request_id"] != "req-configured" {
+	if len(entries) != 2 || entries[0]["request_id"] != "req_550e8400-e29b-41d4-a716-446655440000" || entries[1]["request_id"] != "req_550e8400-e29b-41d4-a716-446655440000" {
 		t.Fatalf("operation and request log IDs differ: %#v", entries)
 	}
 	if got := strings.Count(output.String(), `"request_id"`); got != 2 {
 		t.Fatalf("request ID appears more than once per record: %s", output.String())
+	}
+}
+
+// TestLoggingMiddlewareUsesTypedUUIDs keeps static and API request correlation
+// consistent while rejecting unprefixed, wrong-version and arbitrary identifiers.
+func TestLoggingMiddlewareUsesTypedUUIDs(t *testing.T) {
+	const accepted = "req_550e8400-e29b-41d4-a716-446655440000"
+	for _, input := range []string{"", accepted, "550e8400-e29b-41d4-a716-446655440000", "req_550e8400-e29b-11d4-a716-446655440000", "req-legacy"} {
+		for _, withRouter := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/router=%t", input, withRouter), func(t *testing.T) {
+				var output bytes.Buffer
+				var next http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					logOperation(r, nil, 400, "invalid_request", "management request rejected")
+					w.WriteHeader(400)
+				})
+				if withRouter {
+					next = requestIDMiddleware(next, nil)
+				}
+				handler := LoggingMiddleware(next, slog.New(slog.NewJSONHandler(&output, nil)))
+				r := httptest.NewRequest("GET", "/", nil)
+				r.Header.Set("X-Request-ID", input)
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, r)
+				id := w.Header().Get("X-Request-ID")
+				if !identity.Valid(id, "req_") || (input == accepted && id != input) {
+					t.Fatalf("incorrect request identity: %q", id)
+				}
+				entries := logEntries(t, &output)
+				if len(entries) != 2 || entries[0]["request_id"] != id || entries[1]["request_id"] != id {
+					t.Fatalf("request correlation differs: %s", output.String())
+				}
+			})
+		}
 	}
 }
 

@@ -72,10 +72,10 @@ describe('片段草稿状态', () => {
   it('非法字段应用失败保留输入与精确诊断', () => {
     const { moment, editorText } = workspace()
     moment.open()
-    moment.draft.value!.moments[0]!.assetId = 'asset_preview_sample'
+    moment.draft.value!.moments[0]!.assetId = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     expect(moment.apply()).toBe(false)
     expect(moment.issues.value).toContainEqual(expect.objectContaining({ path: '/moments/0/assetId', code: 'asset-kind' }))
-    expect(moment.draft.value!.moments[0]!.assetId).toBe('asset_preview_sample')
+    expect(moment.draft.value!.moments[0]!.assetId).toBe('asset_71734f61-5250-4825-a8b3-0192448be437')
     expect(editorText.value).toBe(JSON.stringify(fixture))
   })
   it('忙碌锁定所有变更操作且保留待办，reset 清理上下文', () => {

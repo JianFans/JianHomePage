@@ -7,14 +7,14 @@ test('新增现场、首页引用、真实预览与导出再导入', async ({ pa
   await navigate(page, 'event')
   await page.getByTestId('event-add').click()
   for (const [id, value] of [['event-title-zh', '浏览器现场'], ['event-title-en', 'Browser event'], ['event-city-zh', '上海'], ['event-city-en', 'Shanghai'], ['event-venue-zh', '测试场馆'], ['event-venue-en', 'Test venue'], ['event-datetime', '2030-01-02T20:00:00+08:00'], ['event-detail-url', 'https://example.com/event']] as const) await page.getByTestId(id).fill(value)
-  await page.getByTestId('event-poster').selectOption('asset_cover_01')
+  await page.getByTestId('event-poster').selectOption('asset_2f183eda-5f01-4c34-93f6-47739c136bb2')
   await apply(page)
   const applied = await snapshot(page)
   const event = applied.events.at(-1)!
-  expect(event).toMatchObject({ title: { 'zh-CN': '浏览器现场', en: 'Browser event' }, dateTime: '2030-01-02T20:00:00+08:00', city: { en: 'Shanghai' }, venue: { en: 'Test venue' }, status: 'scheduled', detailUrl: 'https://example.com/event', posterAssetId: 'asset_cover_01' })
+  expect(event).toMatchObject({ title: { 'zh-CN': '浏览器现场', en: 'Browser event' }, dateTime: '2030-01-02T20:00:00+08:00', city: { en: 'Shanghai' }, venue: { en: 'Test venue' }, status: 'scheduled', detailUrl: 'https://example.com/event', posterAssetId: 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2' })
   expect(applied.homepage).toEqual(fixture.homepage)
   await navigate(page, 'homepage')
-  const section = page.getByTestId('homepage-section-section_event')
+  const section = page.getByTestId('homepage-section-section_6f69e09d-c025-4920-98dd-f96daa2df153')
   await section.getByTestId('homepage-item-add-select').selectOption(event.id)
   await section.getByTestId('homepage-item-add').click()
   await section.getByTestId('homepage-section-limit').fill('3')
@@ -52,7 +52,7 @@ test('保存契约：409 保留、保存锁定、成功刷新现场基线', asyn
   api.conflict = true
   await page.getByTestId('event-title-en').fill('Saved event')
   await page.getByTestId('snapshot-save').click()
-  await expect(page.getByTestId('toast-viewport')).toContainText('req_browser')
+  await expect(page.getByTestId('toast-viewport')).toContainText('req_c4464811-558f-4491-b698-2404d74f0167')
   expect((await snapshot(page)).events[0]!.title.en).toBe('Saved event')
   await page.getByTestId('event-title-en').fill('Retry event')
   api.conflict = false

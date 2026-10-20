@@ -116,7 +116,7 @@ export async function readSnapshotImport(file: SnapshotImportFile): Promise<stri
  * 将已验证快照序列化为具有稳定文件名和末尾换行的 JSON 文件。
  */
 export function createSnapshotExport(snapshot: YujianContentSnapshot): SnapshotExport {
-  const filename = /^rel_[a-z0-9_]+$/.test(snapshot.releaseId)
+  const filename = /^rel_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(snapshot.releaseId)
     ? `${snapshot.releaseId}.json`
     : 'yujian-snapshot.json'
   return {

@@ -2,10 +2,7 @@ package content
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +10,7 @@ import (
 
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
@@ -50,7 +48,7 @@ func NewService(options ServiceOptions) *Service {
 	}
 	newID := options.NewID
 	if newID == nil {
-		newID = randomID
+		newID = identity.MustNew
 	}
 	return &Service{
 		store:     options.Store,
@@ -309,12 +307,4 @@ func audit(
 		Metadata:     metadata,
 		CreatedAt:    createdAt,
 	}
-}
-
-func randomID(prefix string) string {
-	buffer := make([]byte, 12)
-	if _, err := rand.Read(buffer); err != nil {
-		panic(errors.New("secure random source unavailable"))
-	}
-	return prefix + hex.EncodeToString(buffer)
 }

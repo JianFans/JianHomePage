@@ -34,13 +34,13 @@ describe('首页板块解析', () => {
   it('跳过缺失内容 ID 并遵守板块数量上限', () => {
     const changed = structuredClone(snapshot)
     const videoSection = changed.homepage.sections.find(section => section.type === 'video')!
-    videoSection.itemIds = ['video_missing', 'video_03', 'video_01']
+    videoSection.itemIds = ['video_b2c95663-9e0f-4947-8325-365131897183', 'video_8ba6c435-f5b3-4603-a43e-f326ba0a12a5', 'video_b634e94d-b468-4e4b-b784-22eda2c49314']
     videoSection.limit = 1
 
     const visible = resolveHomepageSections(changed, 'zh-CN', now)
     const videos = visible.find(section => section.type === 'video')
 
-    expect(videos?.items.map(video => video.id)).toEqual(['video_03'])
+    expect(videos?.items.map(video => video.id)).toEqual(['video_8ba6c435-f5b3-4603-a43e-f326ba0a12a5'])
   })
 
   it('现场只保留未来且状态为 scheduled 的条目', () => {
@@ -62,7 +62,7 @@ describe('首页板块解析', () => {
     const visible = resolveHomepageSections(changed, 'zh-CN', now)
     const hero = visible.find(section => section.type === 'hero')
 
-    expect(hero?.items.map(item => item.id)).toEqual(['hero_studio'])
+    expect(hero?.items.map(item => item.id)).toEqual(['hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb'])
   })
 
   it('Hero 条目全部不在展示时间窗时隐藏板块', () => {

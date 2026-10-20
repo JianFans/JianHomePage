@@ -42,9 +42,9 @@ func TestObjectMissingClassificationDistinguishesBucketAndWriteFailures(t *testi
 			}
 			switch test.method {
 			case http.MethodHead:
-				_, err = store.Stat(context.Background(), "assets/asset_1/source.json")
+				_, err = store.Stat(context.Background(), "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.json")
 			case http.MethodPut:
-				err = store.Put(context.Background(), "assets/asset_1/source.json", bytes.NewReader([]byte("{}")), ports.BlobMetadata{ContentType: "application/json", Size: 2, Checksum: "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"})
+				err = store.Put(context.Background(), "assets/asset_551aed01-404d-4e4b-b2d3-0974f521eab8/source.json", bytes.NewReader([]byte("{}")), ports.BlobMetadata{ContentType: "application/json", Size: 2, Checksum: "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"})
 			}
 			if err == nil || errors.Is(err, domain.ErrNotFound) != test.missingObject {
 				t.Fatalf("missing-object classification = %v, want %v (error=%v)", errors.Is(err, domain.ErrNotFound), test.missingObject, err)

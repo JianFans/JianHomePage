@@ -59,11 +59,11 @@ describe('canonical field issue navigation', () => {
     { kind: 'homepage', selector: '[data-testid="homepage-starts-at"]', path: '/heroSlides/0/startsAt', invalid: '2030-01-01T20:00:00', valid: '' },
     { kind: 'homepage', selector: '[data-testid="homepage-ends-at"]', path: '/heroSlides/0/endsAt', invalid: 'invalid', valid: '' },
     { kind: 'homepage', selector: '[data-testid="homepage-focal-x"]', path: '/heroSlides/0/focalPoint/x', invalid: '101', valid: '50' },
-    { kind: 'homepage', selector: '[data-testid="homepage-section-section_music"] [data-testid="homepage-more-url"]', path: '/homepage/sections/1/moreLink/url', invalid: 'http://example.com', valid: 'https://example.com' },
-    { kind: 'homepage', selector: '[data-testid="homepage-section-section_music"] [data-testid="homepage-section-limit"]', path: '/homepage/sections/1/limit', invalid: '0', valid: '5' },
+    { kind: 'homepage', selector: '[data-testid="homepage-section-section_1941aa2b-341c-471c-9408-760fbd9edcea"] [data-testid="homepage-more-url"]', path: '/homepage/sections/1/moreLink/url', invalid: 'http://example.com', valid: 'https://example.com' },
+    { kind: 'homepage', selector: '[data-testid="homepage-section-section_1941aa2b-341c-471c-9408-760fbd9edcea"] [data-testid="homepage-section-limit"]', path: '/homepage/sections/1/limit', invalid: '0', valid: '5' },
   ] as const)('locates $path with localized feedback and clears it after correction', async ({ kind, selector, path, invalid, valid }) => {
     const { wrapper, form } = mountWorkbench(kind, 'en')
-    if (kind === 'music') await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    if (kind === 'music') await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     else await wrapper.get(`[data-testid="${kind}-open"]`).trigger('click')
     await wrapper.get(selector).setValue(invalid)
     if (kind === 'event') await wrapper.get(`[data-testid="event-record-${fixture.events[1]!.id}"]`).trigger('click')
@@ -89,7 +89,7 @@ describe('canonical field issue navigation', () => {
 
   it('locates an empty custom platform label in a collapsed link group', async () => {
     const { wrapper, form } = mountWorkbench('music')
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     const link = wrapper.get('[data-testid="platform-link"]')
     await link.get('input[type="checkbox"]').setValue(true)
     expect(form.apply()).toBe(false)
@@ -140,13 +140,13 @@ describe('canonical field issue navigation', () => {
     expect(form.apply()).toBe(true)
     await flushPromises()
     expect(form.issues).toEqual([])
-    const select = wrapper.get('[data-testid="homepage-section-section_hero"] [data-testid="homepage-item-add-select"]')
+    const select = wrapper.get('[data-testid="homepage-section-section_b94a248c-1c93-4f9a-98df-059f4fde1cf5"] [data-testid="homepage-item-add-select"]')
     expect(select.attributes('aria-invalid')).toBeUndefined()
   })
 
   it.each(['reorder', 'remove', 'duplicate'] as const)('keeps track diagnostics aligned with canonical order after %s', async (operation) => {
     const { wrapper, form } = mountWorkbench('music')
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     const original = wrapper.findAll('[data-testid="track-editor"]')[0]!
     await wrapper.get('[data-testid="track-add"]').trigger('click')
     const added = wrapper.findAll('[data-testid="track-editor"]')[1]!
@@ -205,7 +205,7 @@ describe('canonical field issue navigation', () => {
     expect(document.activeElement).toBe(asset.element)
     expect(asset.attributes('aria-invalid')).toBe('true')
     expect(description(asset.element)).toContain(path)
-    await asset.setValue('asset_cover_01')
+    await asset.setValue('asset_2f183eda-5f01-4c34-93f6-47739c136bb2')
     expect(form.apply()).toBe(true)
     await flushPromises()
     expect(asset.attributes('aria-invalid')).toBeUndefined()
@@ -240,7 +240,7 @@ describe('canonical field issue navigation', () => {
 
   it('focuses an empty required cover with a localized contract description', async () => {
     const { wrapper, form } = mountWorkbench('music')
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     await wrapper.get('[data-testid="music-cover"]').setValue('')
     expect(form.apply()).toBe(false)
     await flushPromises()
@@ -309,7 +309,7 @@ describe('canonical field issue navigation', () => {
     expect(description(cover.element)).toContain(path)
     expect(await focusSnapshotIssue(wrapper.element, form.issues)).toBe(true)
     expect(document.activeElement).toBe(cover.element)
-    await cover.setValue('asset_cover_01')
+    await cover.setValue('asset_2f183eda-5f01-4c34-93f6-47739c136bb2')
     expect(form.apply()).toBe(true)
     await flushPromises()
     expect(cover.attributes('aria-invalid')).toBeUndefined()
@@ -321,7 +321,7 @@ describe('canonical field issue navigation', () => {
     await wrapper.get('[data-testid="homepage-open"]').trigger('click')
     await wrapper.get('[data-testid="homepage-target-kind"]').setValue('internal')
     await wrapper.get('[data-testid="homepage-target-content"]').setValue(fixture.events[0]!.id)
-    const eventSection = wrapper.get('[data-testid="homepage-section-section_event"]')
+    const eventSection = wrapper.get('[data-testid="homepage-section-section_6f69e09d-c025-4920-98dd-f96daa2df153"]')
     await eventSection.get('[data-testid="homepage-section-enabled"]').setValue(false)
     expect(form.apply()).toBe(false)
     await focusSnapshotIssue(wrapper.element, form.issues)

@@ -19,11 +19,11 @@ func TestBuildTriggerLifecycle(t *testing.T) {
 	if _, err := trigger.Status(t.Context(), "missing"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected missing build, got %v", err)
 	}
-	first, err := trigger.Trigger(t.Context(), ports.BuildRequest{ReleaseID: "rel_1"})
+	first, err := trigger.Trigger(t.Context(), ports.BuildRequest{ReleaseID: "rel_b73feb78-c751-4ccb-be54-8a8039247ca0"})
 	if err != nil {
 		t.Fatalf("trigger build: %v", err)
 	}
-	second, err := trigger.Trigger(t.Context(), ports.BuildRequest{ReleaseID: "rel_2"})
+	second, err := trigger.Trigger(t.Context(), ports.BuildRequest{ReleaseID: "rel_df2682c1-5247-4923-93fb-529311fcc278"})
 	if err != nil {
 		t.Fatalf("trigger second build: %v", err)
 	}

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,6 +13,7 @@ import (
 
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	"yujian.me/server/internal/observability"
 )
 
@@ -40,7 +40,12 @@ func LoggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 		id := strings.TrimSpace(request.Header.Get("X-Request-ID"))
 		generatedByLogging := !validExternalRequestID(id)
 		if generatedByLogging {
-			id = fmt.Sprintf("req-%s", rand.Text())
+			var err error
+			id, err = identity.New("req_")
+			if err != nil {
+				writeJSON(writer, http.StatusServiceUnavailable, errorResponse{Code: "service_unavailable", Message: "Service unavailable."})
+				return
+			}
 		}
 		request.Header.Set("X-Request-ID", id)
 		writer.Header().Set("X-Request-ID", id)
@@ -140,24 +145,9 @@ func validRequestID(id string) bool {
 	return true
 }
 
-// validExternalRequestID only accepts UUIDs as caller-supplied request IDs.
+// validExternalRequestID only accepts canonical typed UUIDv4 request IDs.
 func validExternalRequestID(id string) bool {
-	if len(id) != 36 {
-		return false
-	}
-	for index := range id {
-		if index == 8 || index == 13 || index == 18 || index == 23 {
-			if id[index] != '-' {
-				return false
-			}
-			continue
-		}
-		value := id[index]
-		if !((value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') || (value >= 'A' && value <= 'F')) {
-			return false
-		}
-	}
-	return true
+	return identity.Valid(id, "req_")
 }
 
 // requestLevel distinguishes rejected input from service faults and successful operations.

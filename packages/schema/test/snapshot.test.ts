@@ -23,12 +23,24 @@ describe('首页快照契约', () => {
     expect(validate(fixture), JSON.stringify(validate.errors)).toBe(true)
   })
 
+  it.each([
+    ['快照发布', (value: typeof fixture) => { value.releaseId = 'rel_initial' }],
+    ['首页板块', (value: typeof fixture) => { value.homepage.sections[0].id = 'section_hero' }],
+    ['艺人记录', (value: typeof fixture) => { value.artist.id = 'artist_primary' }],
+    ['音乐作品', (value: typeof fixture) => { value.releases[0].id = 'release_01' }],
+    ['素材', (value: typeof fixture) => { value.assets[0].id = 'asset_hero_studio' }],
+  ])('拒绝非 UUIDv4 的%s ID', (_name, mutate) => {
+    const value = structuredClone(fixture)
+    mutate(value)
+    expect(validate(value)).toBe(false)
+  })
+
   it('接受尚未添加素材与作品的初始内容结构', () => {
     const initial = structuredClone(fixture)
     delete initial.site.seo.ogAssetId
     delete initial.artist.portraitAssetId
     for (const key of ['heroSlides', 'releases', 'tracks', 'videos', 'events', 'moments', 'assets']) initial[key] = []
-    for (const section of initial.homepage.sections) section.itemIds = section.type === 'artist' ? ['artist_primary'] : []
+    for (const section of initial.homepage.sections) section.itemIds = section.type === 'artist' ? ['artist_eb908750-faf8-418f-94c6-97f769c1cf31'] : []
     expect(diagnoseContentSnapshot(initial)).toEqual([])
   })
 
@@ -36,9 +48,9 @@ describe('首页快照契约', () => {
     const value = structuredClone(fixture)
     const owner = field === 'ogAssetId' ? value.site.seo : value.artist
     const path = field === 'ogAssetId' ? '/site/seo/ogAssetId' : '/artist/portraitAssetId'
-    owner[field] = 'asset_missing'
+    owner[field] = 'asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c'
     expect(diagnoseContentSnapshot(value)).toContainEqual({ path, source: 'semantic', code: 'missing-reference' })
-    owner[field] = 'asset_preview_sample'
+    owner[field] = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     expect(diagnoseContentSnapshot(value)).toContainEqual({ path, source: 'semantic', code: 'asset-kind' })
   })
 
@@ -165,7 +177,7 @@ describe('首页快照契约', () => {
     })
 
     const brokenReference = structuredClone(fixture)
-    brokenReference.releases[0].coverAssetId = 'asset_missing'
+    brokenReference.releases[0].coverAssetId = 'asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c'
 
     expect(diagnoseContentSnapshot(brokenReference)).toContainEqual({
       path: '/releases/0/coverAssetId',
@@ -212,7 +224,7 @@ describe('首页快照契约', () => {
     const musicSectionIndex = missingReference.homepage.sections.findIndex(
       (section: { type: string }) => section.type === 'music',
     )
-    missingReference.homepage.sections[musicSectionIndex].itemIds[0] = 'release_missing'
+    missingReference.homepage.sections[musicSectionIndex].itemIds[0] = 'release_b762069e-c372-46ae-a943-4c2d59fa6d7a'
     expect(diagnoseContentSnapshot(missingReference)).toContainEqual({
       path: `/homepage/sections/${musicSectionIndex}/itemIds/0`,
       source: 'semantic',
@@ -233,9 +245,9 @@ describe('首页快照契约', () => {
 
     const missingTarget = structuredClone(fixture)
     const missingTargetHero = missingTarget.heroSlides.find(
-      (slide: { id: string }) => slide.id === 'hero_release',
+      (slide: { id: string }) => slide.id === 'hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c',
     )
-    missingTargetHero.target.contentId = 'content_missing'
+    missingTargetHero.target.contentId = 'release_00000000-0000-4000-8000-000000000000'
     expect(diagnoseContentSnapshot(missingTarget)).toContainEqual({
       path: '/heroSlides/2/target/contentId',
       source: 'semantic',
@@ -243,11 +255,11 @@ describe('首页快照契约', () => {
     })
 
     const hiddenTarget = structuredClone(fixture)
-    const hero = hiddenTarget.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
+    const hero = hiddenTarget.heroSlides.find((slide: { id: string }) => slide.id === 'hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c')
     const musicSection = hiddenTarget.homepage.sections.find(
       (section: { type: string }) => section.type === 'music',
     )
-    hero.target.contentId = 'release_02'
+    hero.target.contentId = 'release_f9462a63-70d9-40b3-a0cc-a792f1b5499e'
     musicSection.limit = 1
     expect(diagnoseContentSnapshot(hiddenTarget)).toContainEqual({
       path: '/heroSlides/2/target/contentId',
@@ -258,7 +270,7 @@ describe('首页快照契约', () => {
 
   it('保留路径数组校验 API', () => {
     const invalid = structuredClone(fixture)
-    invalid.releases[0].coverAssetId = 'asset_missing'
+    invalid.releases[0].coverAssetId = 'asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c'
 
     expect(validateContentSnapshot(invalid)).toContain('/releases/0/coverAssetId')
   })
@@ -277,11 +289,11 @@ describe('首页快照契约', () => {
 
   it('拒绝指向被板块 limit 截断内容的内部目标', () => {
     const invalid = structuredClone(fixture)
-    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
+    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c')
     const musicSection = invalid.homepage.sections.find(
       (section: { type: string }) => section.type === 'music',
     )
-    hero.target.contentId = 'release_02'
+    hero.target.contentId = 'release_f9462a63-70d9-40b3-a0cc-a792f1b5499e'
     musicSection.limit = 1
 
     expect(validateContentSnapshot(invalid)).toContain('/heroSlides/2/target/contentId')
@@ -289,11 +301,11 @@ describe('首页快照契约', () => {
 
   it('拒绝指向禁用板块内容的内部目标', () => {
     const invalid = structuredClone(fixture)
-    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
+    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c')
     const artistSection = invalid.homepage.sections.find(
       (section: { type: string }) => section.type === 'artist',
     )
-    hero.target.contentId = 'artist_primary'
+    hero.target.contentId = 'artist_eb908750-faf8-418f-94c6-97f769c1cf31'
     artistSection.enabled = false
 
     expect(validateContentSnapshot(invalid)).toContain('/heroSlides/2/target/contentId')
@@ -304,15 +316,15 @@ describe('首页快照契约', () => {
     const musicSection = invalid.homepage.sections.find(
       (section: { type: string }) => section.type === 'music',
     )
-    musicSection.itemIds = musicSection.itemIds.filter((id: string) => id !== 'release_01')
+    musicSection.itemIds = musicSection.itemIds.filter((id: string) => id !== 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff')
 
     expect(validateContentSnapshot(invalid)).toContain('/heroSlides/2/target/contentId')
   })
 
   it('拒绝指向已过展示期内容的内部目标', () => {
     const invalid = structuredClone(fixture)
-    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_release')
-    hero.target.contentId = 'event_01'
+    const hero = invalid.heroSlides.find((slide: { id: string }) => slide.id === 'hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c')
+    hero.target.contentId = 'event_dc200c4c-abbb-476e-984d-405470f2dbea'
     invalid.events[0].dateTime = invalid.generatedAt
 
     expect(validateContentSnapshot(invalid)).toContain('/heroSlides/2/target/contentId')

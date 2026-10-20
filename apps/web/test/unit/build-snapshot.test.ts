@@ -87,7 +87,7 @@ describe('构建时内容快照', () => {
 		const root = mkdtempSync(join(tmpdir(), 'yujian-snapshot-'))
 		const snapshotPath = join(root, 'broken-reference.json')
 		const invalid = structuredClone(fixture)
-		invalid.releases[0].trackIds[0] = 'track_missing'
+		invalid.releases[0].trackIds[0] = 'track_fd44d76e-d3d0-4969-86c2-605e9606b85a'
 		writeFileSync(snapshotPath, JSON.stringify(invalid))
 
 		expect(() => loadContentSnapshot(snapshotPath)).toThrow(/trackIds\/0/)

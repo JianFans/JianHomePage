@@ -8,8 +8,8 @@ import type { StudioWorkspace } from '../../composables/useStudioWorkspace'
 /** 模拟真实 HTTP 边界，不替代页面的表单、事务和版本状态。 */
 function backend(options: { authenticated?: boolean; status?: string; reviewApproved?: boolean; roles?: string[]; failSave?: boolean; failList?: boolean; empty?: boolean; paginated?: boolean; logout?: Promise<Response> } = {}) {
   const records = new Map([
-    ['ver_current', { id: 'ver_current', name: '工作草稿', status: options.status || 'draft', reviewApproved: options.reviewApproved, revision: 4, snapshot: structuredClone(fixture), checksum: 'sha256:test' }],
-    ['ver_history', { id: 'ver_history', name: '之前版本', status: 'archived', revision: 2, snapshot: structuredClone(fixture), checksum: 'sha256:history' }],
+    ['ver_14cea400-a42f-4560-9770-3de88cae9d5a', { id: 'ver_14cea400-a42f-4560-9770-3de88cae9d5a', name: '工作草稿', status: options.status || 'draft', reviewApproved: options.reviewApproved, revision: 4, snapshot: structuredClone(fixture), checksum: 'sha256:test' }],
+    ['ver_8bb3a437-061d-4dcd-805e-7d5e6f716921', { id: 'ver_8bb3a437-061d-4dcd-805e-7d5e6f716921', name: '之前版本', status: 'archived', revision: 2, snapshot: structuredClone(fixture), checksum: 'sha256:history' }],
   ])
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = new URL(String(input), 'http://localhost')
@@ -21,20 +21,20 @@ function backend(options: { authenticated?: boolean; status?: string; reviewAppr
     if (path.endsWith('/versions')) {
       if (init?.method === 'POST') {
         const body = JSON.parse(String(init.body))
-        return json({ ...records.get('ver_current'), id: 'ver_first', snapshot: body.snapshot })
+        return json({ ...records.get('ver_14cea400-a42f-4560-9770-3de88cae9d5a'), id: 'ver_e26e5049-a6cb-42b5-b448-9d927c4d0040', snapshot: body.snapshot })
       }
       if (options.failList) return json({ code: 'unavailable', message: 'Unavailable' }, 503)
       if (options.paginated) return json(url.searchParams.has('cursor')
-        ? { items: [records.get('ver_current')] }
-        : { items: [records.get('ver_history')], nextCursor: 'older-page' })
+        ? { items: [records.get('ver_14cea400-a42f-4560-9770-3de88cae9d5a')] }
+        : { items: [records.get('ver_8bb3a437-061d-4dcd-805e-7d5e6f716921')], nextCursor: 'older-page' })
       return json({ items: options.empty ? [] : [...records.values()].map(record => ({ id: record.id, name: record.name, status: record.status, reviewApproved: record.reviewApproved, revision: record.revision, checksum: record.checksum })) })
     }
-    if (path.endsWith('/clone')) return json({ ...records.get('ver_history'), id: 'ver_copy', name: '复制版本', sourceVersionId: 'ver_history', status: 'draft', revision: 1 })
+    if (path.endsWith('/clone')) return json({ ...records.get('ver_8bb3a437-061d-4dcd-805e-7d5e6f716921'), id: 'ver_9cb0468e-f117-476b-be75-eed979e0c719', name: '复制版本', sourceVersionId: 'ver_8bb3a437-061d-4dcd-805e-7d5e6f716921', status: 'draft', revision: 1 })
     const id = path.split('/').at(-1)!
     const record = records.get(id)
     if (!record) return json({ code: 'not_found', message: 'Not found' }, 404)
     if (init?.method === 'PUT') {
-      if (options.failSave) return json({ code: 'revision_conflict', message: 'Revision conflict', requestId: 'req_save' }, 409)
+      if (options.failSave) return json({ code: 'revision_conflict', message: 'Revision conflict', requestId: 'req_f9f9abc2-e321-40c6-a1f8-be24bb71186b' }, 409)
       const body = JSON.parse(String(init.body))
       return json({ ...record, revision: record.revision + 1, snapshot: body.snapshot })
     }
@@ -60,7 +60,7 @@ it('shows approved review consistently and prevents reopening review decisions',
   const { wrapper } = await mountStudio({ status: 'in_review', reviewApproved: true })
   try {
     expect(wrapper.get('.studio-meta').text()).toContain('Approved')
-    expect(wrapper.get('[data-testid="version-ver_current"]').text()).toContain('Approved')
+    expect(wrapper.get('[data-testid="version-ver_14cea400-a42f-4560-9770-3de88cae9d5a"]').text()).toContain('Approved')
     expect(wrapper.get('.studio-version-select').text()).toContain('Approved')
     expect(wrapper.get('.studio-history-list').text()).toContain('Approved')
     await wrapper.get('[data-testid="nav-history"]').trigger('click')
@@ -87,7 +87,7 @@ it('opens a usable first draft without importing test content or writing to the 
     expect(studio.homepage.draft?.heroSlides).toEqual([])
     await wrapper.get('[data-testid="snapshot-save"]').trigger('click')
     await flushPromises()
-    expect(studio.workspace.version?.id).toBe('ver_first')
+    expect(studio.workspace.version?.id).toBe('ver_e26e5049-a6cb-42b5-b448-9d927c4d0040')
   } finally { wrapper.unmount() }
 })
 
@@ -148,11 +148,11 @@ it.each([
   const { wrapper, fetcher } = await mountStudio(options)
   try {
     await wrapper.get('[data-testid="nav-homepage"]').trigger('click')
-    const next = wrapper.get('[data-testid="homepage-hero-hero_stage"]')
+    const next = wrapper.get('[data-testid="homepage-hero-hero_cec07764-0923-4dcc-a57b-a8630ce91f51"]')
     expect(next.element.matches(':disabled')).toBe(false)
     expect(next.element.closest('fieldset[disabled]')).toBeNull()
     await next.trigger('click')
-    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_stage')
+    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_cec07764-0923-4dcc-a57b-a8630ce91f51')
     expect(wrapper.get('[data-testid="homepage-headline-zh"]').element).toHaveProperty('value', fixture.heroSlides[1]!.headline['zh-CN'])
     for (const control of wrapper.findAll('[data-testid="homepage-workbench"] input, [data-testid="homepage-workbench"] select, [data-testid="homepage-workbench"] textarea')) {
       expect(control.element.closest('fieldset[disabled]'), control.element.outerHTML).not.toBeNull()
@@ -244,12 +244,12 @@ it.each(['homepage', 'assets'] as const)('locks %s during logout and restores in
     expect(studio.workspace.busy).toBe(true)
     expect(wrapper.get('[data-testid="studio-shell"]').attributes('inert')).toBeDefined()
     expect(input.element.matches(':disabled') || input.element.closest('fieldset[disabled]') !== null).toBe(true)
-    for (const id of ['snapshot-save', 'version-clone', 'version-ver_history', 'nav-video']) {
+    for (const id of ['snapshot-save', 'version-clone', 'version-ver_8bb3a437-061d-4dcd-805e-7d5e6f716921', 'nav-video']) {
       expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
     }
     const calls = fetcher.mock.calls.length
     await studio.request({ kind: 'module', module: 'video' })
-    await studio.request({ kind: 'version', id: 'ver_history' })
+    await studio.request({ kind: 'version', id: 'ver_8bb3a437-061d-4dcd-805e-7d5e6f716921' })
     await studio.request({ kind: 'clone' })
     await studio.save()
     await studio.clone('Forbidden during logout')
@@ -276,7 +276,7 @@ it.each(['homepage', 'assets'] as const)('locks %s during logout and restores in
 it('closes active dialogs on session expiry while retaining unsaved content', async () => {
   const { wrapper, fetcher } = await mountStudio()
   await wrapper.get('[data-testid="studio-tools"]').trigger('click')
-  await wrapper.get('.json-editor').setValue(JSON.stringify({ ...fixture, releaseId: 'rel_local_unsaved' }))
+  await wrapper.get('.json-editor').setValue(JSON.stringify({ ...fixture, releaseId: 'rel_35662245-24ad-4ba2-a432-b13bf2e9cc7e' }))
   fetcher.mockResolvedValue(new Response(JSON.stringify({ code: 'unauthorized', message: 'Unauthorized' }), { status: 401 }))
   const page = wrapper.vm as unknown as { studio: { save: () => Promise<boolean> } }
   await page.studio.save()
@@ -293,7 +293,7 @@ describe('CMS 版本工作区', () => {
   it('无效表单用 Toast 提示，选择其他作品也要明确确认', async () => {
     const { wrapper, fetcher } = await mountStudio()
     await wrapper.get('[data-testid="nav-music"]').trigger('click')
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     await wrapper.get('[data-testid="release-title-zh"]').setValue('')
     await wrapper.get('[data-testid="snapshot-save"]').trigger('click')
     await flushPromises()
@@ -305,7 +305,7 @@ describe('CMS 版本工作区', () => {
     expect(invalid.getAttribute('aria-invalid')).toBe('true')
     expect(document.getElementById(invalid.getAttribute('aria-describedby') || '')?.textContent)
       .toBe('Text is too short · /releases/0/title/zh-CN')
-    await wrapper.get('[data-testid="music-release-release_02"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_f9462a63-70d9-40b3-a0cc-a792f1b5499e"]').trigger('click')
     expect(wrapper.find('[data-testid="leave-dialog"]').exists()).toBe(true)
     await wrapper.get('[data-testid="leave-keep"]').trigger('click')
     expect(wrapper.get('[data-testid="release-title-zh"]').element).toHaveProperty('value', '')
@@ -333,7 +333,7 @@ describe('CMS 版本工作区', () => {
   it('顶部保存应用当前表单并提交，失败仍保留输入与当前版本', async () => {
     const { wrapper, fetcher } = await mountStudio({ failSave: true })
     await wrapper.get('[data-testid="nav-music"]').trigger('click')
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     await wrapper.get('[data-testid="release-title-zh"]').setValue('保留标题')
     await wrapper.get('[data-testid="snapshot-save"]').trigger('click')
     await flushPromises()
@@ -363,12 +363,12 @@ describe('CMS 版本工作区', () => {
 
   it('历史只读；查看不会发布，基于该版本复制进入独立草稿', async () => {
     const { wrapper, fetcher } = await mountStudio()
-    await wrapper.get('[data-testid="version-ver_history"]').trigger('click')
+    await wrapper.get('[data-testid="version-ver_8bb3a437-061d-4dcd-805e-7d5e6f716921"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-testid="nav-music"]').trigger('click')
     expect(wrapper.get('[data-testid="snapshot-save"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-testid="music-new"]').attributes('disabled')).toBeDefined()
-    await wrapper.get('[data-testid="music-release-release_01"]').trigger('click')
+    await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     expect(wrapper.find('[data-testid="release-title-zh"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="music-fields"]').attributes('disabled')).toBeDefined()
     expect(fetcher.mock.calls.some(([url]) => String(url).includes('/publish'))).toBe(false)

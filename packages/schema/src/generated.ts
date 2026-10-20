@@ -163,7 +163,7 @@ export interface ArtistSection {
   /**
    * @maxItems 1
    */
-  itemIds: [] | ["artist_primary"];
+  itemIds: [] | [string];
 }
 export interface HeroSlide {
   id: string;
@@ -237,7 +237,7 @@ export interface Moment {
   target?: ContentTarget;
 }
 export interface ArtistProfile {
-  id: "artist_primary";
+  id: string;
   name: LocalizedText;
   shortBio: LocalizedText;
   portraitAssetId?: string;

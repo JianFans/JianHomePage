@@ -19,13 +19,13 @@ type publisherIntegrationPages struct{ creates int }
 // publisherIntegrationBuildInput shares canonical bytes between unit and database tests.
 func publisherIntegrationBuildInput(t *testing.T) ([]byte, ports.BuildRequest) {
 	t.Helper()
-	raw, err := snapshotdata.CanonicalJSON([]byte(`{"releaseId":"rel_test","site":{"canonicalUrl":"https://site.example/"},"assets":[{"src":"https://media.example/image.webp"}]}`))
+	raw, err := snapshotdata.CanonicalJSON([]byte(`{"releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f","site":{"canonicalUrl":"https://site.example/"},"assets":[{"src":"https://media.example/image.webp"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	request := ports.BuildRequest{
 		IdempotencyKey:   "opaque-key",
-		ReleaseID:        "rel_test",
+		ReleaseID:        "rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f",
 		SnapshotChecksum: snapshotdata.Checksum(raw),
 	}
 	request.SnapshotKey = "snapshots/" + request.ReleaseID + "/" + request.SnapshotChecksum + ".json"
@@ -155,7 +155,7 @@ func TestPostgresPublisherLostSessionCannotMutate(t *testing.T) {
 	db := assetIntegrationDatabase(t)
 	ctx := t.Context()
 	repo := NewPublisherRepository(db, db)
-	task, err := repo.Enqueue(ctx, "lost-session-key", ports.BuildRequest{ReleaseID: "rel_test"}, publisher.Target{ProjectID: "project"})
+	task, err := repo.Enqueue(ctx, "lost-session-key", ports.BuildRequest{ReleaseID: "rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f"}, publisher.Target{ProjectID: "project"})
 	if err != nil {
 		t.Fatal(err)
 	}

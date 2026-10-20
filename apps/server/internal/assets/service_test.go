@@ -187,7 +187,7 @@ func assetServiceForTest(repository *memoryRepository, blobs *blobStoreFake) *Se
 		Now: func() time.Time {
 			return time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
 		},
-		NewID: func(prefix string) string { return prefix + "fixed" },
+		NewID: func(prefix string) string { return prefix + "550e8400-e29b-41d4-a716-446655440000" },
 	})
 }
 
@@ -207,10 +207,10 @@ func TestListAssetsUsesStableCursorAndDefaultStatuses(t *testing.T) {
 	createdAt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
 	repository := newMemoryRepository()
 	repository.assets = map[string]domain.AssetRecord{
-		"asset_a": {ID: "asset_a", Status: domain.AssetPending, CreatedAt: createdAt.Add(-time.Minute)},
-		"asset_b": {ID: "asset_b", Status: domain.AssetReady, CreatedAt: createdAt},
-		"asset_c": {ID: "asset_c", Status: domain.AssetPending, CreatedAt: createdAt},
-		"asset_d": {ID: "asset_d", Status: domain.AssetDeleted, CreatedAt: createdAt.Add(time.Minute)},
+		"asset_0f5179cb-849b-4786-84ae-ae17f29ffbda": {ID: "asset_0f5179cb-849b-4786-84ae-ae17f29ffbda", Status: domain.AssetPending, CreatedAt: createdAt.Add(-time.Minute)},
+		"asset_47f68d47-98a9-4288-be7c-c76c3dbcad67": {ID: "asset_47f68d47-98a9-4288-be7c-c76c3dbcad67", Status: domain.AssetReady, CreatedAt: createdAt},
+		"asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6": {ID: "asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6", Status: domain.AssetPending, CreatedAt: createdAt},
+		"asset_0c6cac0a-8ed5-4da9-b2f5-13b400740070": {ID: "asset_0c6cac0a-8ed5-4da9-b2f5-13b400740070", Status: domain.AssetDeleted, CreatedAt: createdAt.Add(time.Minute)},
 	}
 	service := assetServiceForTest(repository, &blobStoreFake{})
 
@@ -218,7 +218,7 @@ func TestListAssetsUsesStableCursorAndDefaultStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list first page: %v", err)
 	}
-	if got := assetIDs(first.Items); !slices.Equal(got, []string{"asset_c", "asset_b"}) {
+	if got := assetIDs(first.Items); !slices.Equal(got, []string{"asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6", "asset_47f68d47-98a9-4288-be7c-c76c3dbcad67"}) {
 		t.Fatalf("unexpected first page %v", got)
 	}
 	if first.NextCursor == "" {
@@ -229,7 +229,7 @@ func TestListAssetsUsesStableCursorAndDefaultStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list second page: %v", err)
 	}
-	if got := assetIDs(second.Items); !slices.Equal(got, []string{"asset_a"}) {
+	if got := assetIDs(second.Items); !slices.Equal(got, []string{"asset_0f5179cb-849b-4786-84ae-ae17f29ffbda"}) {
 		t.Fatalf("unexpected second page %v", got)
 	}
 	if second.NextCursor != "" {
@@ -244,7 +244,7 @@ func TestListRepairsLegacySources(t *testing.T) {
 		t.Run(string(status), func(t *testing.T) {
 			repository := newMemoryRepository()
 			now := time.Now().UTC()
-			for _, id := range []string{"asset_a", "asset_b", "asset_c"} {
+			for _, id := range []string{"asset_0f5179cb-849b-4786-84ae-ae17f29ffbda", "asset_47f68d47-98a9-4288-be7c-c76c3dbcad67", "asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6"} {
 				repository.assets[id] = domain.AssetRecord{ID: id, BlobKey: "assets/" + id + "/source.webp", Status: status, CreatedAt: now}
 			}
 			blobs := &blobStoreFake{}
@@ -253,10 +253,10 @@ func TestListRepairsLegacySources(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(page.Items) != 1 || page.Items[0].SourceURL != "https://media.example.com/assets/asset_c/source.webp" {
+			if len(page.Items) != 1 || page.Items[0].SourceURL != "https://media.example.com/assets/asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6/source.webp" {
 				t.Fatalf("legacy URL not repaired: %#v", page)
 			}
-			if repository.assets["asset_c"].SourceURL != page.Items[0].SourceURL || blobs.publicCalls != 1 || repository.assets["asset_b"].SourceURL != "" {
+			if repository.assets["asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6"].SourceURL != page.Items[0].SourceURL || blobs.publicCalls != 1 || repository.assets["asset_47f68d47-98a9-4288-be7c-c76c3dbcad67"].SourceURL != "" {
 				t.Fatal("repair must persist only returned page records")
 			}
 			blobs.publicURL = "https://other-provider.example/changed.webp"
@@ -274,11 +274,11 @@ func TestListRepairsLegacySources(t *testing.T) {
 // persistence failure returns a partially repaired page to callers.
 func TestListLegacySourceRepairPropagatesErrors(t *testing.T) {
 	repository := newMemoryRepository()
-	repository.assets["asset_legacy"] = domain.AssetRecord{ID: "asset_legacy", BlobKey: "assets/legacy/source.webp", Status: domain.AssetReady, CreatedAt: time.Now()}
+	repository.assets["asset_58d6e938-5806-4086-8a5d-f3908326255e"] = domain.AssetRecord{ID: "asset_58d6e938-5806-4086-8a5d-f3908326255e", BlobKey: "assets/legacy/source.webp", Status: domain.AssetReady, CreatedAt: time.Now()}
 	providerErr := errors.New("provider unavailable")
 	blobs := &blobStoreFake{publicErr: providerErr}
 	page, err := assetServiceForTest(repository, blobs).List(t.Context(), editor(), ListOptions{})
-	if !errors.Is(err, providerErr) || len(page.Items) != 0 || repository.assets["asset_legacy"].SourceURL != "" {
+	if !errors.Is(err, providerErr) || len(page.Items) != 0 || repository.assets["asset_58d6e938-5806-4086-8a5d-f3908326255e"].SourceURL != "" {
 		t.Fatalf("provider failure must not return invalid page: page=%#v error=%v", page, err)
 	}
 	blobs.publicErr = nil
@@ -293,8 +293,8 @@ func TestListLegacySourceRepairPropagatesErrors(t *testing.T) {
 // accessible through an explicit filter despite being hidden by the default.
 func TestListAssetsSupportsExplicitDeletedStatus(t *testing.T) {
 	repository := newMemoryRepository()
-	repository.assets["asset_deleted"] = domain.AssetRecord{
-		ID: "asset_deleted", Status: domain.AssetDeleted, CreatedAt: time.Now(),
+	repository.assets["asset_bc2e7dfb-aa59-4010-a1e9-3eea6242d9af"] = domain.AssetRecord{
+		ID: "asset_bc2e7dfb-aa59-4010-a1e9-3eea6242d9af", Status: domain.AssetDeleted, CreatedAt: time.Now(),
 	}
 	service := assetServiceForTest(repository, &blobStoreFake{})
 
@@ -302,7 +302,7 @@ func TestListAssetsSupportsExplicitDeletedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list deleted assets: %v", err)
 	}
-	if got := assetIDs(page.Items); !slices.Equal(got, []string{"asset_deleted"}) {
+	if got := assetIDs(page.Items); !slices.Equal(got, []string{"asset_bc2e7dfb-aa59-4010-a1e9-3eea6242d9af"}) {
 		t.Fatalf("unexpected deleted assets %v", got)
 	}
 }
@@ -362,16 +362,16 @@ func TestCreateUploadValidatesTypeAndCreatesProviderIndependentKey(t *testing.T)
 	if err != nil {
 		t.Fatalf("create upload: %v", err)
 	}
-	if result.Asset.ID != "asset_fixed" {
+	if result.Asset.ID != "asset_550e8400-e29b-41d4-a716-446655440000" {
 		t.Fatalf("unexpected asset id %q", result.Asset.ID)
 	}
-	if result.Asset.BlobKey != "assets/asset_fixed/source.webp" {
+	if result.Asset.BlobKey != "assets/asset_550e8400-e29b-41d4-a716-446655440000/source.webp" {
 		t.Fatalf("unexpected blob key %q", result.Asset.BlobKey)
 	}
 	if result.Upload.URL != "https://upload.example.com/signed" {
 		t.Fatalf("unexpected upload URL %q", result.Upload.URL)
 	}
-	if result.Asset.SourceURL != "https://media.example.com/assets/asset_fixed/source.webp" {
+	if result.Asset.SourceURL != "https://media.example.com/assets/asset_550e8400-e29b-41d4-a716-446655440000/source.webp" {
 		t.Fatalf("unexpected public source URL %q", result.Asset.SourceURL)
 	}
 	if len(blobs.uploads) != 1 || blobs.uploads[0].ExpiresIn != 15*time.Minute {
@@ -601,15 +601,15 @@ func TestCompleteUploadCanRetryAfterReadyResponseIsLost(t *testing.T) {
 
 func TestCompleteUploadRetryPreservesPersistedSourceURL(t *testing.T) {
 	repository := newMemoryRepository()
-	repository.assets["asset_ready"] = domain.AssetRecord{
-		ID: "asset_ready", BlobKey: "assets/asset_ready/source.webp",
-		SourceURL: "https://media.yujian.me/assets/asset_ready/source.webp",
+	repository.assets["asset_4c1ba641-5c3b-4477-91ea-7a24acc8aa17"] = domain.AssetRecord{
+		ID: "asset_4c1ba641-5c3b-4477-91ea-7a24acc8aa17", BlobKey: "assets/asset_4c1ba641-5c3b-4477-91ea-7a24acc8aa17/source.webp",
+		SourceURL: "https://media.yujian.me/assets/asset_4c1ba641-5c3b-4477-91ea-7a24acc8aa17/source.webp",
 		Status:    domain.AssetReady,
 	}
-	blobs := &blobStoreFake{publicURL: "https://new-provider.example/assets/asset_ready/source.webp"}
+	blobs := &blobStoreFake{publicURL: "https://new-provider.example/assets/asset_4c1ba641-5c3b-4477-91ea-7a24acc8aa17/source.webp"}
 	service := assetServiceForTest(repository, blobs)
 
-	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_ready")
+	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_4c1ba641-5c3b-4477-91ea-7a24acc8aa17")
 	if err != nil {
 		t.Fatalf("retry complete upload: %v", err)
 	}
@@ -623,10 +623,10 @@ func TestCompleteUploadRetryPreservesPersistedSourceURL(t *testing.T) {
 
 func TestCompleteUploadPersistsSourceURLForLegacyPendingAsset(t *testing.T) {
 	const checksum = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	const sourceURL = "https://media.yujian.me/assets/asset_legacy/source.webp"
+	const sourceURL = "https://media.yujian.me/assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp"
 	repository := newMemoryRepository()
-	repository.assets["asset_legacy"] = domain.AssetRecord{
-		ID: "asset_legacy", BlobKey: "assets/asset_legacy/source.webp", Status: domain.AssetPending,
+	repository.assets["asset_58d6e938-5806-4086-8a5d-f3908326255e"] = domain.AssetRecord{
+		ID: "asset_58d6e938-5806-4086-8a5d-f3908326255e", BlobKey: "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp", Status: domain.AssetPending,
 		Metadata: json.RawMessage(`{"fileName":"cover.webp","contentType":"image/webp","declaredSize":1024,"checksum":"` + checksum + `"}`),
 		Rights:   json.RawMessage(`{"source":{"zh-CN":"authorized"}}`),
 	}
@@ -636,7 +636,7 @@ func TestCompleteUploadPersistsSourceURLForLegacyPendingAsset(t *testing.T) {
 	}
 	service := assetServiceForTest(repository, blobs)
 
-	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_legacy")
+	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_58d6e938-5806-4086-8a5d-f3908326255e")
 	if err != nil {
 		t.Fatalf("complete legacy pending upload: %v", err)
 	}
@@ -650,15 +650,15 @@ func TestCompleteUploadPersistsSourceURLForLegacyPendingAsset(t *testing.T) {
 }
 
 func TestCompleteUploadPersistsSourceURLForLegacyReadyAsset(t *testing.T) {
-	const sourceURL = "https://media.yujian.me/assets/asset_legacy/source.webp"
+	const sourceURL = "https://media.yujian.me/assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp"
 	repository := newMemoryRepository()
-	repository.assets["asset_legacy"] = domain.AssetRecord{
-		ID: "asset_legacy", BlobKey: "assets/asset_legacy/source.webp", Status: domain.AssetReady,
+	repository.assets["asset_58d6e938-5806-4086-8a5d-f3908326255e"] = domain.AssetRecord{
+		ID: "asset_58d6e938-5806-4086-8a5d-f3908326255e", BlobKey: "assets/asset_58d6e938-5806-4086-8a5d-f3908326255e/source.webp", Status: domain.AssetReady,
 	}
 	blobs := &blobStoreFake{publicURL: sourceURL}
 	service := assetServiceForTest(repository, blobs)
 
-	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_legacy")
+	asset, err := service.CompleteUpload(t.Context(), editor(), "asset_58d6e938-5806-4086-8a5d-f3908326255e")
 	if err != nil {
 		t.Fatalf("retry legacy ready upload: %v", err)
 	}

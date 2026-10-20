@@ -37,9 +37,9 @@ describe('MusicSection', () => {
   it('为作品和曲目内容 ID 提供稳定锚点', () => {
     const wrapper = mountMusicSection()
 
-    expect(wrapper.find('#release_01').exists()).toBe(true)
-    expect(wrapper.find('#track_01').exists()).toBe(true)
-    expect(wrapper.find('#track_05').exists()).toBe(true)
+    expect(wrapper.find('#release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff').exists()).toBe(true)
+    expect(wrapper.find('#track_e60c46c7-28d6-418e-8905-167307dc8354').exists()).toBe(true)
+    expect(wrapper.find('#track_1765c647-056c-47ac-b130-b738ed8744e1').exists()).toBe(true)
   })
 
   it('只有具备试听资源的作品才在封面显示播放按钮', async () => {
@@ -51,7 +51,7 @@ describe('MusicSection', () => {
 
     await cards[0]!.get('[data-testid="preview-trigger"]').trigger('click')
     expect(wrapper.emitted('preview')?.[0]?.[0]).toMatchObject({
-      id: 'track_01',
+      id: 'track_e60c46c7-28d6-418e-8905-167307dc8354',
       previewSrc: '/media/preview-sample.wav',
     })
   })

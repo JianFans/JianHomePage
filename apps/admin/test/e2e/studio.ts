@@ -23,8 +23,8 @@ export async function backend(page: Page, value: Snapshot = fixtureSnapshot()) {
   const historical = fixtureSnapshot()
   historical.heroSlides[0]!.headline.en = 'Historical headline'
   const records = new Map([
-    ['ver_current', { id: 'ver_current', name: 'Working draft', status: 'draft', revision: 4, checksum: 'sha256:browser', createdAt: '2026-10-14T00:00:00Z', updatedAt: '2026-10-14T00:00:00Z', snapshot: value }],
-    ['ver_history', { id: 'ver_history', name: 'Previous version', status: 'archived', revision: 2, checksum: 'sha256:history', createdAt: '2026-10-13T00:00:00Z', updatedAt: '2026-10-13T00:00:00Z', snapshot: historical }],
+    ['ver_14cea400-a42f-4560-9770-3de88cae9d5a', { id: 'ver_14cea400-a42f-4560-9770-3de88cae9d5a', name: 'Working draft', status: 'draft', revision: 4, checksum: 'sha256:browser', createdAt: '2026-10-14T00:00:00Z', updatedAt: '2026-10-14T00:00:00Z', snapshot: value }],
+    ['ver_8bb3a437-061d-4dcd-805e-7d5e6f716921', { id: 'ver_8bb3a437-061d-4dcd-805e-7d5e6f716921', name: 'Previous version', status: 'archived', revision: 2, checksum: 'sha256:history', createdAt: '2026-10-13T00:00:00Z', updatedAt: '2026-10-13T00:00:00Z', snapshot: historical }],
   ])
   const control = { conflict: false, hold: false, finish: undefined as (() => void) | undefined, saves: [] as Snapshot[], writes: [] as Request[], records }
   await page.route('**/api/v1/**', async (route) => {
@@ -47,10 +47,10 @@ export async function backend(page: Page, value: Snapshot = fixtureSnapshot()) {
     }) } })
     const id = path.split('/').at(path.endsWith('/clone') ? -2 : -1)!
     const record = records.get(id)
-    if (!record) return route.fulfill({ status: 404, json: { code: 'not_found', message: 'Not found', requestId: 'req_not_found' } })
+    if (!record) return route.fulfill({ status: 404, json: { code: 'not_found', message: 'Not found', requestId: 'req_f0dcb841-b62c-49df-9dba-420465f2015d' } })
     if (path.endsWith('/clone')) {
       expect(request.postDataJSON()).toEqual({ name: 'Independent draft' })
-      const cloned = { ...record, id: 'ver_copy', name: request.postDataJSON().name, sourceVersionId: id, status: 'draft', revision: 1, snapshot: structuredClone(record.snapshot) }
+      const cloned = { ...record, id: 'ver_9cb0468e-f117-476b-be75-eed979e0c719', name: request.postDataJSON().name, sourceVersionId: id, status: 'draft', revision: 1, snapshot: structuredClone(record.snapshot) }
       records.set(cloned.id, cloned)
       return route.fulfill({ json: cloned })
     }
@@ -59,7 +59,7 @@ export async function backend(page: Page, value: Snapshot = fixtureSnapshot()) {
       const next: unknown = request.postDataJSON().snapshot
       assertContentSnapshot(next)
       control.saves.push(next)
-      if (control.conflict) return route.fulfill({ status: 409, json: { code: 'revision_conflict', message: 'Revision conflict', requestId: 'req_browser' } })
+      if (control.conflict) return route.fulfill({ status: 409, json: { code: 'revision_conflict', message: 'Revision conflict', requestId: 'req_c4464811-558f-4491-b698-2404d74f0167' } })
       if (control.hold) await new Promise<void>((resolve) => { control.finish = resolve })
       record.snapshot = next
       record.revision++

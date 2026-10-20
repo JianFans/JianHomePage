@@ -94,7 +94,7 @@ func TestAssetRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	state := NewState()
 	repository := NewAssetRepository(state)
 	asset := domain.AssetRecord{
-		ID: "asset_1", Status: domain.AssetPending,
+		ID: "asset_551aed01-404d-4e4b-b2d3-0974f521eab8", Status: domain.AssetPending,
 		Metadata: json.RawMessage(`{"kind":"image"}`), Rights: json.RawMessage(`{"holder":"artist"}`),
 	}
 
@@ -149,10 +149,10 @@ func TestAssetRepositoryListsByStatusAndStableCursor(t *testing.T) {
 	state := NewState()
 	repository := NewAssetRepository(state)
 	for _, asset := range []domain.AssetRecord{
-		{ID: "asset_a", Status: domain.AssetPending, CreatedAt: createdAt.Add(-time.Minute)},
-		{ID: "asset_b", Status: domain.AssetReady, CreatedAt: createdAt},
-		{ID: "asset_c", Status: domain.AssetPending, CreatedAt: createdAt},
-		{ID: "asset_d", Status: domain.AssetDeleted, CreatedAt: createdAt.Add(time.Minute)},
+		{ID: "asset_0f5179cb-849b-4786-84ae-ae17f29ffbda", Status: domain.AssetPending, CreatedAt: createdAt.Add(-time.Minute)},
+		{ID: "asset_47f68d47-98a9-4288-be7c-c76c3dbcad67", Status: domain.AssetReady, CreatedAt: createdAt},
+		{ID: "asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6", Status: domain.AssetPending, CreatedAt: createdAt},
+		{ID: "asset_0c6cac0a-8ed5-4da9-b2f5-13b400740070", Status: domain.AssetDeleted, CreatedAt: createdAt.Add(time.Minute)},
 	} {
 		if err := repository.CreateAsset(t.Context(), asset); err != nil {
 			t.Fatalf("create %s: %v", asset.ID, err)
@@ -166,11 +166,11 @@ func TestAssetRepositoryListsByStatusAndStableCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list first page: %v", err)
 	}
-	if got := listedAssetIDs(first); !slices.Equal(got, []string{"asset_c", "asset_b"}) {
+	if got := listedAssetIDs(first); !slices.Equal(got, []string{"asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6", "asset_47f68d47-98a9-4288-be7c-c76c3dbcad67"}) {
 		t.Fatalf("unexpected first page %v", got)
 	}
 	first[0].Metadata = json.RawMessage(`{"changed":true}`)
-	stored, err := repository.GetAsset(t.Context(), "asset_c")
+	stored, err := repository.GetAsset(t.Context(), "asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6")
 	if err != nil || string(stored.Metadata) == string(first[0].Metadata) {
 		t.Fatalf("listed asset was not cloned: %#v err=%v", stored, err)
 	}
@@ -178,13 +178,13 @@ func TestAssetRepositoryListsByStatusAndStableCursor(t *testing.T) {
 	second, err := repository.ListAssets(t.Context(), assets.ListQuery{
 		Statuses:        []domain.AssetStatus{domain.AssetPending, domain.AssetReady},
 		BeforeCreatedAt: &createdAt,
-		BeforeID:        "asset_b",
+		BeforeID:        "asset_47f68d47-98a9-4288-be7c-c76c3dbcad67",
 		Limit:           2,
 	})
 	if err != nil {
 		t.Fatalf("list second page: %v", err)
 	}
-	if got := listedAssetIDs(second); !slices.Equal(got, []string{"asset_a"}) {
+	if got := listedAssetIDs(second); !slices.Equal(got, []string{"asset_0f5179cb-849b-4786-84ae-ae17f29ffbda"}) {
 		t.Fatalf("unexpected second page %v", got)
 	}
 }
@@ -205,7 +205,7 @@ func TestContentRepositoryLifecycleAndCloneIsolation(t *testing.T) {
 	state := NewState()
 	repository := NewContentRepository(state)
 	version := domain.ContentVersion{
-		ID: "ver_1", Status: domain.StatusDraft, Revision: 1,
+		ID: "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", Status: domain.StatusDraft, Revision: 1,
 		Snapshot: json.RawMessage(`{"schemaVersion":"1.0.0"}`),
 	}
 
@@ -253,8 +253,8 @@ func TestPublishRepositoryLifecycleAndIndexes(t *testing.T) {
 	contentRepository := NewContentRepository(state)
 	assetRepository := NewAssetRepository(state)
 	repository := NewPublishRepository(state)
-	version := domain.ContentVersion{ID: "ver_1", Status: domain.StatusInReview, Revision: 2, Snapshot: json.RawMessage(`{"schemaVersion":"1.0.0"}`)}
-	asset := domain.AssetRecord{ID: "asset_1", Status: domain.AssetReady, Metadata: json.RawMessage(`{"kind":"image"}`)}
+	version := domain.ContentVersion{ID: "ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d", Status: domain.StatusInReview, Revision: 2, Snapshot: json.RawMessage(`{"schemaVersion":"1.0.0"}`)}
+	asset := domain.AssetRecord{ID: "asset_551aed01-404d-4e4b-b2d3-0974f521eab8", Status: domain.AssetReady, Metadata: json.RawMessage(`{"kind":"image"}`)}
 	if err := contentRepository.CreateVersion(t.Context(), version); err != nil {
 		t.Fatalf("seed version: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestPublishRepositoryLifecycleAndIndexes(t *testing.T) {
 		t.Fatalf("seed asset: %v", err)
 	}
 
-	job := domain.PublishJob{ID: "pub_1", IdempotencyKey: "publish-key", VersionID: version.ID, Status: domain.PublishPending}
+	job := domain.PublishJob{ID: "pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a", IdempotencyKey: "publish-key", VersionID: version.ID, Status: domain.PublishPending}
 	if err := repository.WithinTransaction(t.Context(), func(tx publish.Repository) error {
 		if err := tx.CreatePublishJob(t.Context(), job); err != nil {
 			return err
@@ -295,7 +295,7 @@ func TestPublishRepositoryLifecycleAndIndexes(t *testing.T) {
 		t.Fatalf("expected duplicate job conflict, got %v", err)
 	}
 	duplicateKey := job
-	duplicateKey.ID = "pub_2"
+	duplicateKey.ID = "pub_7a848ebc-183d-4861-b882-531a8ee06b34"
 	if err := repository.CreatePublishJob(t.Context(), duplicateKey); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("expected idempotency conflict, got %v", err)
 	}

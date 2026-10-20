@@ -56,11 +56,11 @@ for (const operation of ['add', 'remove'] as const) {
     await expect(asset).toHaveAttribute('aria-invalid', 'true')
     await expect(asset).toHaveAttribute('data-snapshot-path', path)
     expect(api.saves).toHaveLength(0)
-    await asset.selectOption('asset_cover_01')
+    await asset.selectOption('asset_2f183eda-5f01-4c34-93f6-47739c136bb2')
     await page.getByTestId('snapshot-save').click()
     await expect(page.locator('.studio-meta')).toContainText('Saved')
     expect(api.saves).toHaveLength(1)
-    expect(api.saves[0]!.heroSlides.find(hero => hero.id === invalidId)?.assetId).toBe('asset_cover_01')
+    expect(api.saves[0]!.heroSlides.find(hero => hero.id === invalidId)?.assetId).toBe('asset_2f183eda-5f01-4c34-93f6-47739c136bb2')
     await expect(asset).not.toHaveAttribute('aria-invalid', 'true')
   })
 }
@@ -68,9 +68,9 @@ for (const operation of ['add', 'remove'] as const) {
 for (const scenario of [
   { kind: 'event', field: 'event-detail-url', path: '/events/0/detailUrl', invalid: 'http://example.com', valid: 'https://example.com', select: false },
   { kind: 'video', field: 'video-title-zh', path: '/videos/0/title/zh-CN', invalid: '', valid: '修正影像', select: false },
-  { kind: 'video', field: 'video-poster', path: '/videos/0/posterAssetId', invalid: '', valid: 'asset_cover_01', select: true },
+  { kind: 'video', field: 'video-poster', path: '/videos/0/posterAssetId', invalid: '', valid: 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2', select: true },
   { kind: 'video', field: 'video-duration', path: '/videos/0/durationSeconds', invalid: '0', valid: '181', select: false },
-  { kind: 'moment', field: 'moment-asset', path: '/moments/0/assetId', invalid: '', valid: 'asset_cover_01', select: true },
+  { kind: 'moment', field: 'moment-asset', path: '/moments/0/assetId', invalid: '', valid: 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2', select: true },
   { kind: 'moment', field: 'moment-caption-zh', path: '/moments/0/caption/zh-CN', invalid: '', valid: '修正片段', select: false },
   { kind: 'moment', field: 'moment-target-url', path: '/moments/0/target/link/url', invalid: 'http://example.com', valid: 'https://example.com', select: false },
 ] as const) {

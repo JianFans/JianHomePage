@@ -25,7 +25,7 @@
     },
     "releaseId": {
       "type": "string",
-      "pattern": "^rel_[a-z0-9_]+$"
+      "pattern": "^rel_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     },
     "generatedAt": {
       "type": "string",
@@ -151,7 +151,8 @@
             },
             "contentId": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "pattern": "^(?:hero|release|track|video|event|moment|artist)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
             }
           }
         },
@@ -223,7 +224,7 @@
             },
             "ogAssetId": {
               "type": "string",
-              "pattern": "^asset_"
+              "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
             }
           }
         },
@@ -236,7 +237,7 @@
             "properties": {
               "id": {
                 "type": "string",
-                "pattern": "^nav_"
+                "pattern": "^nav_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
               },
               "label": {
                 "$ref": "#/$defs/LocalizedText"
@@ -278,14 +279,14 @@
       "additionalProperties": false,
       "required": ["id", "type", "enabled", "layoutVariant", "itemIds"],
       "properties": {
-        "id": { "type": "string", "pattern": "^section_" },
+        "id": { "type": "string", "pattern": "^section_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "type": { "const": "hero" },
         "enabled": { "type": "boolean" },
         "layoutVariant": { "const": "immersive" },
         "itemIds": {
           "type": "array",
           "maxItems": 5,
-          "items": { "type": "string", "pattern": "^hero_" }
+          "items": { "type": "string", "pattern": "^hero_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
         }
       }
     },
@@ -294,13 +295,13 @@
       "additionalProperties": false,
       "required": ["id", "type", "enabled", "layoutVariant", "itemIds", "limit"],
       "properties": {
-        "id": { "type": "string", "pattern": "^section_" },
+        "id": { "type": "string", "pattern": "^section_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "type": { "const": "music" },
         "enabled": { "type": "boolean" },
         "layoutVariant": { "const": "cover-reel" },
         "itemIds": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^release_" }
+          "items": { "type": "string", "pattern": "^release_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
         },
         "limit": { "type": "integer", "minimum": 1, "maximum": 8 },
         "moreLink": { "$ref": "#/$defs/PlatformLink" }
@@ -311,13 +312,13 @@
       "additionalProperties": false,
       "required": ["id", "type", "enabled", "layoutVariant", "itemIds", "limit"],
       "properties": {
-        "id": { "type": "string", "pattern": "^section_" },
+        "id": { "type": "string", "pattern": "^section_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "type": { "const": "video" },
         "enabled": { "type": "boolean" },
         "layoutVariant": { "const": "asymmetric" },
         "itemIds": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^video_" }
+          "items": { "type": "string", "pattern": "^video_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
         },
         "limit": { "type": "integer", "minimum": 1, "maximum": 5 }
       }
@@ -327,13 +328,13 @@
       "additionalProperties": false,
       "required": ["id", "type", "enabled", "layoutVariant", "itemIds", "limit"],
       "properties": {
-        "id": { "type": "string", "pattern": "^section_" },
+        "id": { "type": "string", "pattern": "^section_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "type": { "const": "event" },
         "enabled": { "type": "boolean" },
         "layoutVariant": { "const": "timeline" },
         "itemIds": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^event_" }
+          "items": { "type": "string", "pattern": "^event_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
         },
         "limit": { "type": "integer", "minimum": 1, "maximum": 6 }
       }
@@ -343,13 +344,13 @@
       "additionalProperties": false,
       "required": ["id", "type", "enabled", "layoutVariant", "itemIds", "limit"],
       "properties": {
-        "id": { "type": "string", "pattern": "^section_" },
+        "id": { "type": "string", "pattern": "^section_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "type": { "const": "moment" },
         "enabled": { "type": "boolean" },
         "layoutVariant": { "const": "mosaic" },
         "itemIds": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^moment_" }
+          "items": { "type": "string", "pattern": "^moment_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
         },
         "limit": { "type": "integer", "minimum": 1, "maximum": 8 }
       }
@@ -359,14 +360,14 @@
       "additionalProperties": false,
       "required": ["id", "type", "enabled", "layoutVariant", "itemIds"],
       "properties": {
-        "id": { "type": "string", "pattern": "^section_" },
+        "id": { "type": "string", "pattern": "^section_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "type": { "const": "artist" },
         "enabled": { "type": "boolean" },
         "layoutVariant": { "const": "split" },
         "itemIds": {
           "type": "array",
           "maxItems": 1,
-          "items": { "const": "artist_primary" }
+          "items": { "type": "string", "pattern": "^artist_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
         }
       }
     },
@@ -375,11 +376,11 @@
       "additionalProperties": false,
       "required": ["id", "mediaKind", "assetId", "focalPoint", "headline", "autoplay"],
       "properties": {
-        "id": { "type": "string", "pattern": "^hero_" },
+        "id": { "type": "string", "pattern": "^hero_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "mediaKind": { "enum": ["image", "gif", "video"] },
-        "assetId": { "type": "string", "pattern": "^asset_" },
-        "mobileAssetId": { "type": "string", "pattern": "^asset_" },
-        "posterAssetId": { "type": "string", "pattern": "^asset_" },
+        "assetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+        "mobileAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+        "posterAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "focalPoint": {
           "type": "object",
           "additionalProperties": false,
@@ -390,7 +391,7 @@
           }
         },
         "headline": { "$ref": "#/$defs/LocalizedText" },
-        "releaseId": { "type": "string", "pattern": "^release_" },
+        "releaseId": { "type": "string", "pattern": "^release_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "target": { "$ref": "#/$defs/ContentTarget" },
         "autoplay": { "type": "boolean" },
         "startsAt": { "type": "string", "format": "date-time" },
@@ -402,15 +403,15 @@
       "additionalProperties": false,
       "required": ["id", "kind", "title", "coverAssetId", "releaseDate", "trackIds", "platformLinks", "featured"],
       "properties": {
-        "id": { "type": "string", "pattern": "^release_" },
+        "id": { "type": "string", "pattern": "^release_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "kind": { "enum": ["single", "ep", "album"] },
         "title": { "$ref": "#/$defs/LocalizedText" },
-        "coverAssetId": { "type": "string", "pattern": "^asset_" },
+        "coverAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "releaseDate": { "type": "string", "format": "date" },
         "trackIds": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "pattern": "^track_" }
+          "items": { "type": "string", "pattern": "^track_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
         },
         "platformLinks": {
           "type": "array",
@@ -424,11 +425,11 @@
       "additionalProperties": false,
       "required": ["id", "releaseId", "title", "durationSeconds", "platformLinks", "credits"],
       "properties": {
-        "id": { "type": "string", "pattern": "^track_" },
-        "releaseId": { "type": "string", "pattern": "^release_" },
+        "id": { "type": "string", "pattern": "^track_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+        "releaseId": { "type": "string", "pattern": "^release_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "title": { "$ref": "#/$defs/LocalizedText" },
         "durationSeconds": { "type": "integer", "minimum": 1 },
-        "previewAssetId": { "type": "string", "pattern": "^asset_" },
+        "previewAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "previewDurationSeconds": { "type": "integer", "minimum": 1, "maximum": 90 },
         "platformLinks": {
           "type": "array",
@@ -453,10 +454,10 @@
       "additionalProperties": false,
       "required": ["id", "title", "posterAssetId", "durationSeconds", "platformLinks", "featured"],
       "properties": {
-        "id": { "type": "string", "pattern": "^video_" },
+        "id": { "type": "string", "pattern": "^video_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "title": { "$ref": "#/$defs/LocalizedText" },
-        "posterAssetId": { "type": "string", "pattern": "^asset_" },
-        "videoAssetId": { "type": "string", "pattern": "^asset_" },
+        "posterAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+        "videoAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "durationSeconds": { "type": "integer", "minimum": 1 },
         "platformLinks": {
           "type": "array",
@@ -471,14 +472,14 @@
       "additionalProperties": false,
       "required": ["id", "title", "dateTime", "city", "venue", "status", "detailUrl"],
       "properties": {
-        "id": { "type": "string", "pattern": "^event_" },
+        "id": { "type": "string", "pattern": "^event_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "title": { "$ref": "#/$defs/LocalizedText" },
         "dateTime": { "type": "string", "format": "date-time" },
         "city": { "$ref": "#/$defs/LocalizedText" },
         "venue": { "$ref": "#/$defs/LocalizedText" },
         "status": { "enum": ["scheduled", "sold-out", "cancelled"] },
         "detailUrl": { "$ref": "#/$defs/HttpsUrl" },
-        "posterAssetId": { "type": "string", "pattern": "^asset_" }
+        "posterAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
       }
     },
     "Moment": {
@@ -486,8 +487,8 @@
       "additionalProperties": false,
       "required": ["id", "assetId"],
       "properties": {
-        "id": { "type": "string", "pattern": "^moment_" },
-        "assetId": { "type": "string", "pattern": "^asset_" },
+        "id": { "type": "string", "pattern": "^moment_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+        "assetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "caption": { "$ref": "#/$defs/LocalizedText" },
         "target": { "$ref": "#/$defs/ContentTarget" }
       }
@@ -497,10 +498,10 @@
       "additionalProperties": false,
       "required": ["id", "name", "shortBio", "platformLinks"],
       "properties": {
-        "id": { "const": "artist_primary" },
+        "id": { "type": "string", "pattern": "^artist_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "name": { "$ref": "#/$defs/LocalizedText" },
         "shortBio": { "$ref": "#/$defs/LocalizedText" },
-        "portraitAssetId": { "type": "string", "pattern": "^asset_" },
+        "portraitAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "platformLinks": {
           "type": "array",
           "items": { "$ref": "#/$defs/PlatformLink" }
@@ -542,7 +543,7 @@
         }
       ],
       "properties": {
-        "id": { "type": "string", "pattern": "^asset_" },
+        "id": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "kind": { "enum": ["image", "gif", "video", "audio"] },
         "src": { "$ref": "#/$defs/MediaUrl" },
         "mimeType": {
@@ -552,7 +553,7 @@
         "width": { "type": "integer", "minimum": 1 },
         "height": { "type": "integer", "minimum": 1 },
         "durationSeconds": { "type": "number", "exclusiveMinimum": 0 },
-        "posterAssetId": { "type": "string", "pattern": "^asset_" },
+        "posterAssetId": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
         "alt": { "$ref": "#/$defs/LocalizedText" },
         "rights": {
           "type": "object",

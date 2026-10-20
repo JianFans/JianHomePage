@@ -14,12 +14,12 @@ import (
 
 // TestSnapshotStoreValidatesKeyAndCanonicalContent rejects mismatched stored identities.
 func TestSnapshotStoreValidatesKeyAndCanonicalContent(t *testing.T) {
-	raw, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_test"}`))
+	raw, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	checksum := snapshotdata.Checksum(raw)
-	key := "snapshots/rel_test/" + checksum + ".json"
+	key := "snapshots/rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f/" + checksum + ".json"
 	if _, _, err := validateStoredSnapshot(key, raw); err != nil {
 		t.Fatalf("valid snapshot rejected: %v", err)
 	}
@@ -28,9 +28,10 @@ func TestSnapshotStoreValidatesKeyAndCanonicalContent(t *testing.T) {
 		content   []byte
 	}{
 		{"media key", "assets/asset_1/source.webp", raw},
-		{"different checksum", "snapshots/rel_test/sha256:" + strings.Repeat("0", 64) + ".json", raw},
-		{"noncanonical JSON", "snapshots/rel_test/" + snapshotdata.Checksum([]byte(`{"releaseId":"rel_test", "schemaVersion":"1.0.0"}`)) + ".json", []byte(`{"releaseId":"rel_test", "schemaVersion":"1.0.0"}`)},
-		{"wrong release", "snapshots/rel_other/" + checksum + ".json", raw},
+		{"different checksum", "snapshots/rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f/sha256:" + strings.Repeat("0", 64) + ".json", raw},
+		{"noncanonical JSON", "snapshots/rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f/" + snapshotdata.Checksum([]byte(`{"releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f", "schemaVersion":"1.0.0"}`)) + ".json", []byte(`{"releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f", "schemaVersion":"1.0.0"}`)},
+		{"wrong release", "snapshots/rel_550e8400-e29b-41d4-a716-446655440000/" + checksum + ".json", raw},
+		{"legacy release", "snapshots/rel_test/" + checksum + ".json", raw},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, _, err := validateStoredSnapshot(test.key, test.content); !errors.Is(err, domain.ErrInvalidInput) {
@@ -42,22 +43,22 @@ func TestSnapshotStoreValidatesKeyAndCanonicalContent(t *testing.T) {
 
 // TestSnapshotStorePersistsAndReadsCanonicalBytes covers immutable writes and verified reads.
 func TestSnapshotStorePersistsAndReadsCanonicalBytes(t *testing.T) {
-	raw, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_test"}`))
+	raw, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	checksum := snapshotdata.Checksum(raw)
-	key := "snapshots/rel_test/" + checksum + ".json"
+	key := "snapshots/rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f/" + checksum + ".json"
 	executor := &recordingExecutor{result: recordingResult{affected: 1}}
 	store := NewSnapshotStore(executor)
 	if err := store.PutSnapshot(context.Background(), key, raw); err != nil {
 		t.Fatalf("put snapshot: %v", err)
 	}
-	if len(executor.execArgs) != 1 || executor.execArgs[0][0] != key || executor.execArgs[0][1] != "rel_test" || executor.execArgs[0][2] != checksum {
+	if len(executor.execArgs) != 1 || executor.execArgs[0][0] != key || executor.execArgs[0][1] != "rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f" || executor.execArgs[0][2] != checksum {
 		t.Fatalf("unexpected persisted snapshot metadata %#v", executor.execArgs)
 	}
 
-	executor.row = recordingRow{values: []any{"rel_test", checksum, raw}}
+	executor.row = recordingRow{values: []any{"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f", checksum, raw}}
 	executor.result = recordingResult{affected: 0}
 	if err := store.PutSnapshot(context.Background(), key, raw); err != nil {
 		t.Fatalf("idempotent put snapshot: %v", err)
@@ -78,7 +79,7 @@ func TestSnapshotStorePersistsAndReadsCanonicalBytes(t *testing.T) {
 	}
 
 	executor.row = recordingRow{err: sql.ErrNoRows}
-	if _, err := store.ReadSnapshot(context.Background(), "snapshots/rel_test/"+checksum+".json"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := store.ReadSnapshot(context.Background(), "snapshots/rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f/"+checksum+".json"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected not found, got %v", err)
 	}
 }
@@ -88,12 +89,12 @@ func TestSnapshotStorePersistsAndReadsCanonicalBytes(t *testing.T) {
 func TestPostgresSnapshotStoreRestartRoundTrip(t *testing.T) {
 	database := assetIntegrationDatabase(t)
 	ctx := t.Context()
-	raw, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_store_test"}`))
+	raw, err := snapshotdata.CanonicalJSON([]byte(`{"schemaVersion":"1.0.0","releaseId":"rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	checksum := snapshotdata.Checksum(raw)
-	key := "snapshots/rel_store_test/" + checksum + ".json"
+	key := "snapshots/rel_9d6e63a2-d7e4-4e87-a54a-500c23239e6f/" + checksum + ".json"
 	first := NewSnapshotStore(database)
 	if err := first.PutSnapshot(ctx, key, raw); err != nil {
 		t.Fatal(err)

@@ -21,7 +21,7 @@ describe('影像应用事务', () => {
   })
   it('新增记录生成唯一合法 ID，保留空必填内容待填写', () => {
     const first = createVideo()
-    expect(first).toEqual({ id: expect.stringMatching(/^video_[a-z0-9_]+$/), title: { 'zh-CN': '' }, posterAssetId: '', durationSeconds: 1, featured: false, platformLinks: [{ provider: 'bilibili', url: '' }] })
+    expect(first).toEqual({ id: expect.stringMatching(/^video_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), title: { 'zh-CN': '' }, posterAssetId: '', durationSeconds: 1, featured: false, platformLinks: [{ provider: 'bilibili', url: '' }] })
     expect(createVideo().id).not.toBe(first.id)
     const value = draft()
     value.videos.push({ ...first, title: { 'zh-CN': '新增' }, posterAssetId: fixture.videos[0]!.posterAssetId, platformLinks: analyzeSnapshotText(text).snapshot!.videos[0]!.platformLinks })
@@ -30,7 +30,7 @@ describe('影像应用事务', () => {
   it.each(['remove', 'rename'])('拒绝原记录 %s，失败保留原文', (action) => {
     const value = draft()
     if (action === 'remove') value.videos.shift()
-    else value.videos[0]!.id = 'video_renamed'
+    else value.videos[0]!.id = 'video_0e28ccf2-c11f-4343-bad1-ebb91ab740c5'
     expect(applyVideoDraft(text, text, value)).toMatchObject({ text, error: 'immutable-video' })
   })
   it('重复 ID 与不合法新增 ID 交由完整诊断拒绝', () => {
@@ -41,9 +41,9 @@ describe('影像应用事务', () => {
     expect(applyVideoDraft(text, text, value).issues.length).toBeGreaterThan(0)
   })
   it.each([
-    ['posterAssetId', 'asset_preview_sample', '/videos/0/posterAssetId'],
-    ['posterAssetId', 'asset_missing', '/videos/0/posterAssetId'],
-    ['videoAssetId', 'asset_cover_01', '/videos/0/videoAssetId'],
+    ['posterAssetId', 'asset_71734f61-5250-4825-a8b3-0192448be437', '/videos/0/posterAssetId'],
+    ['posterAssetId', 'asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c', '/videos/0/posterAssetId'],
+    ['videoAssetId', 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2', '/videos/0/videoAssetId'],
     ['durationSeconds', 0, '/videos/0/durationSeconds'],
     ['durationSeconds', 1.5, '/videos/0/durationSeconds'],
     ['platformLinks', [], '/videos/0/platformLinks'],
@@ -54,7 +54,7 @@ describe('影像应用事务', () => {
     const result = applyVideoDraft(text, text, value)
     expect(result).toMatchObject({ text, error: 'invalid-draft' })
     expect(result.issues.some(issue => issue.path === path)).toBe(true)
-    if (invalid === 'asset_missing') expect(result.issues).toContainEqual(expect.objectContaining({ path, code: 'missing-reference' }))
+    if (invalid === 'asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c') expect(result.issues).toContainEqual(expect.objectContaining({ path, code: 'missing-reference' }))
   })
   it('移除可选视频字段后仍可应用', () => {
     const value = draft()

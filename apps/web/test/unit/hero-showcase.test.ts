@@ -4,7 +4,7 @@ import HeroShowcase from '../../components/home/HeroShowcase.vue'
 
 const imageAssets = [
   {
-    id: 'asset_hero_01',
+    id: 'asset_799acd0f-add2-4915-bca7-688cbcf07c63',
     kind: 'image',
     src: '/media/hero-studio.webp',
     mimeType: 'image/webp',
@@ -16,7 +16,7 @@ const imageAssets = [
     checksum: `sha256:${'0'.repeat(64)}`,
   },
   {
-    id: 'asset_hero_02',
+    id: 'asset_23f413dc-7217-4cbf-bf96-e7c7a740abb4',
     kind: 'image',
     src: '/media/hero-stage.webp',
     mimeType: 'image/webp',
@@ -31,17 +31,17 @@ const imageAssets = [
 
 const imageSlides = [
   {
-    id: 'hero_01',
+    id: 'hero_340f8cbb-68b0-4a31-a624-ab18651a58ad',
     mediaKind: 'image',
-    assetId: 'asset_hero_01',
+    assetId: 'asset_799acd0f-add2-4915-bca7-688cbcf07c63',
     focalPoint: { x: 34, y: 58 },
     headline: { 'zh-CN': '遇健我', en: 'Meet Jian' },
     autoplay: false,
   },
   {
-    id: 'hero_02',
+    id: 'hero_1a1d20aa-ad46-4c41-8cb6-d576b334cecb',
     mediaKind: 'image',
-    assetId: 'asset_hero_02',
+    assetId: 'asset_23f413dc-7217-4cbf-bf96-e7c7a740abb4',
     focalPoint: { x: 62, y: 40 },
     headline: { 'zh-CN': '示例现场', en: 'Sample Live' },
     autoplay: false,
@@ -110,7 +110,7 @@ describe('HeroShowcase', () => {
     })
 
     expect(wrapper.findAll('[data-content-anchor]').map(anchor => anchor.attributes('id')))
-      .toEqual(['hero_01', 'hero_02'])
+      .toEqual(['hero_340f8cbb-68b0-4a31-a624-ab18651a58ad', 'hero_1a1d20aa-ad46-4c41-8cb6-d576b334cecb'])
   })
 
   it('为配置的移动媒体输出响应式 source', () => {
@@ -119,7 +119,7 @@ describe('HeroShowcase', () => {
       ...imageAssets,
       {
         ...imageAssets[0],
-        id: 'asset_hero_mobile',
+        id: 'asset_b256524c-9e1c-4f02-a10c-71f01ed6de85',
         src: '/media/hero-mobile.webp',
         width: 900,
         height: 1200,
@@ -127,7 +127,7 @@ describe('HeroShowcase', () => {
     ] as Asset[]
     const slides = [{
       ...imageSlides[0],
-      mobileAssetId: 'asset_hero_mobile',
+      mobileAssetId: 'asset_b256524c-9e1c-4f02-a10c-71f01ed6de85',
     }] as HeroSlide[]
 
     const wrapper = mount(HeroShowcase, {
@@ -151,20 +151,20 @@ describe('HeroShowcase', () => {
       ...imageAssets,
       {
         ...imageAssets[0],
-        id: 'asset_video',
+        id: 'asset_2ee541f7-519a-4564-afd2-758d17f9263d',
         kind: 'video',
         src: '/media/hero.mp4',
         mimeType: 'video/mp4',
-        posterAssetId: 'asset_hero_01',
+        posterAssetId: 'asset_799acd0f-add2-4915-bca7-688cbcf07c63',
         durationSeconds: 12,
       },
     ] as Asset[]
     const slides = [{
       ...imageSlides[0],
-      id: 'hero_video',
+      id: 'hero_b55bc8ea-1ea6-4f4c-9297-dcdf679a986c',
       mediaKind: 'video',
-      assetId: 'asset_video',
-      posterAssetId: 'asset_hero_01',
+      assetId: 'asset_2ee541f7-519a-4564-afd2-758d17f9263d',
+      posterAssetId: 'asset_799acd0f-add2-4915-bca7-688cbcf07c63',
       autoplay: true,
     }] as HeroSlide[]
 
@@ -190,20 +190,20 @@ describe('HeroShowcase', () => {
       ...imageAssets,
       {
         ...imageAssets[0],
-        id: 'asset_video',
+        id: 'asset_2ee541f7-519a-4564-afd2-758d17f9263d',
         kind: 'video',
         src: '/media/hero.mp4',
         mimeType: 'video/mp4',
-        posterAssetId: 'asset_hero_01',
+        posterAssetId: 'asset_799acd0f-add2-4915-bca7-688cbcf07c63',
         durationSeconds: 12,
       },
     ] as Asset[]
     const slides = [{
       ...imageSlides[0],
-      id: 'hero_video',
+      id: 'hero_b55bc8ea-1ea6-4f4c-9297-dcdf679a986c',
       mediaKind: 'video',
-      assetId: 'asset_video',
-      posterAssetId: 'asset_hero_01',
+      assetId: 'asset_2ee541f7-519a-4564-afd2-758d17f9263d',
+      posterAssetId: 'asset_799acd0f-add2-4915-bca7-688cbcf07c63',
       autoplay: true,
     }] as HeroSlide[]
 
@@ -227,20 +227,20 @@ describe('HeroShowcase', () => {
       ...imageAssets,
       {
         ...imageAssets[0],
-        id: 'asset_video',
+        id: 'asset_2ee541f7-519a-4564-afd2-758d17f9263d',
         kind: 'video',
         src: '/media/hero.mp4',
         mimeType: 'video/mp4',
-        posterAssetId: 'asset_hero_01',
+        posterAssetId: 'asset_799acd0f-add2-4915-bca7-688cbcf07c63',
         durationSeconds: 12,
       },
     ] as Asset[]
     const slides = [{
       ...imageSlides[0],
-      id: 'hero_video',
+      id: 'hero_b55bc8ea-1ea6-4f4c-9297-dcdf679a986c',
       mediaKind: 'video',
-      assetId: 'asset_video',
-      posterAssetId: 'asset_hero_01',
+      assetId: 'asset_2ee541f7-519a-4564-afd2-758d17f9263d',
+      posterAssetId: 'asset_799acd0f-add2-4915-bca7-688cbcf07c63',
       autoplay: true,
     }] as HeroSlide[]
     const wrapper = mount(HeroShowcase, {

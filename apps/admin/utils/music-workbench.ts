@@ -1,5 +1,6 @@
 import type { Asset, Release, Track, YujianContentSnapshot } from '@yujian/schema'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from './snapshot-workbench'
+import { createEntityId } from './identity'
 
 export interface MusicDraft {
   originalId: string | null
@@ -19,7 +20,7 @@ export interface MusicApplyResult {
 
 /** 生成带类型前缀的随机 ID；应用事务仍会检查与快照记录的冲突。 */
 function musicId(prefix: 'release' | 'track'): string {
-  return `${prefix}_${crypto.randomUUID().replaceAll('-', '_')}`
+  return createEntityId(`${prefix}_`)
 }
 
 /** 创建未填写的曲目副本，不为标题、时长或平台链接编造内容。 */

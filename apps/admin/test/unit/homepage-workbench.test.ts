@@ -31,7 +31,7 @@ describe('首页草稿事务', () => {
   it('生成随机前缀 ID 与空必填字段', () => {
     const slide = createHeroSlide()
     expect(slide).toEqual({
-      id: expect.stringMatching(/^hero_[a-z0-9_]+$/), mediaKind: 'image', assetId: '',
+      id: expect.stringMatching(/^hero_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), mediaKind: 'image', assetId: '',
       headline: { 'zh-CN': '' }, focalPoint: { x: 50, y: 50 }, autoplay: false,
     })
     expect(createHeroSlide().id).not.toBe(slide.id)
@@ -65,7 +65,7 @@ describe('首页草稿事务', () => {
     value.moments[0]!.target = { kind: 'internal', contentId: id }
     const draft = createHomepageDraft(value)
     ;(section(draft, 'hero').itemIds as string[]).push(id)
-    draft.sections.push({ ...structuredClone(section(draft, 'hero')), id: 'section_second_hero' })
+    draft.sections.push({ ...structuredClone(section(draft, 'hero')), id: 'section_9eda8021-b0a8-46c6-8901-ce6e90e22203' })
     removeHomepageHero(draft, id)
     expect(draft.heroSlides.some(slide => slide.id === id)).toBe(false)
     expect(draft.sections.filter(item => item.type === 'hero').every(item => !(item.itemIds as string[]).includes(id))).toBe(true)
@@ -90,7 +90,7 @@ describe('首页草稿事务', () => {
     const draft = createHomepageDraft(value)
     draft.sections.reverse()
     section(draft, 'video').enabled = false
-    section(draft, 'music').itemIds = ['release_01', 'release_01', 'release_02']
+    section(draft, 'music').itemIds = ['release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_f9462a63-70d9-40b3-a0cc-a792f1b5499e']
     section(draft, 'music').limit = 2
     section(draft, 'music').moreLink = { provider: 'website', url: 'https://example.com/music' }
     const result = applyHomepageDraft(text, text, draft)
@@ -102,11 +102,11 @@ describe('首页草稿事务', () => {
     const value = snapshot()
     const text = JSON.stringify(value)
     const draft = createHomepageDraft(value)
-    if (change === 'id') draft.sections[0]!.id = 'section_renamed'
+    if (change === 'id') draft.sections[0]!.id = 'section_2eead546-1cb4-41e5-a5ca-9e39ea66b1de'
     if (change === 'type') Object.assign(draft.sections[0]!, { type: 'artist', layoutVariant: 'split', itemIds: [] })
     if (change === 'layoutVariant') Object.assign(draft.sections[0]!, { layoutVariant: 'split' })
     if (change === 'remove') draft.sections.pop()
-    if (change === 'add') draft.sections.push({ ...structuredClone(draft.sections[0]!), id: 'section_extra' })
+    if (change === 'add') draft.sections.push({ ...structuredClone(draft.sections[0]!), id: 'section_065874b5-3b0e-4122-83d5-f30d82e60744' })
     if (change === 'duplicate') draft.sections[1] = structuredClone(draft.sections[0]!)
     const before = structuredClone(draft)
     expect(applyHomepageDraft(text, text, draft)).toMatchObject({ text, error: 'immutable-section' })
@@ -148,7 +148,7 @@ describe('首页草稿事务', () => {
     const value = snapshot()
     const text = JSON.stringify(value, null, 4)
     const draft = createHomepageDraft(value)
-    Object.assign(section(draft, 'hero'), { itemIds: Array.from({ length: count }, () => 'hero_studio') })
+    Object.assign(section(draft, 'hero'), { itemIds: Array.from({ length: count }, () => 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb') })
     const before = structuredClone(draft)
     const result = applyHomepageDraft(text, text, draft)
     expect(result).toMatchObject({ text, error: 'invalid-draft' })
@@ -160,7 +160,7 @@ describe('首页草稿事务', () => {
     const value = snapshot()
     const text = JSON.stringify(value)
     const draft = createHomepageDraft(value)
-    Object.assign(section(draft, 'hero'), { itemIds: Array.from({ length: count }, () => 'hero_studio') })
+    Object.assign(section(draft, 'hero'), { itemIds: Array.from({ length: count }, () => 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb') })
     const result = applyHomepageDraft(text, text, draft)
     expect(result.error).toBeNull()
     expect(JSON.parse(result.text).homepage.sections[0].itemIds).toHaveLength(count)
@@ -170,7 +170,7 @@ describe('首页草稿事务', () => {
     const value = snapshot()
     const text = JSON.stringify(value)
     const draft = createHomepageDraft(value)
-    draft.heroSlides[0]![field] = 'asset_preview_sample'
+    draft.heroSlides[0]![field] = 'asset_71734f61-5250-4825-a8b3-0192448be437'
     const result = applyHomepageDraft(text, text, draft)
     expect(result).toMatchObject({ text, error: 'invalid-draft' })
     expect(result.issues.some(issue => issue.path === `/heroSlides/0/${field}` && issue.source === 'semantic')).toBe(true)
@@ -178,7 +178,7 @@ describe('首页草稿事务', () => {
 
   it.each(['disabled', 'limit', 'removed', 'time-window'] as const)('完整校验拒绝隐藏内部目标：%s', (change) => {
     const value = snapshot()
-    if (change === 'time-window') value.moments[0]!.target = { kind: 'internal', contentId: 'hero_studio' }
+    if (change === 'time-window') value.moments[0]!.target = { kind: 'internal', contentId: 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb' }
     const text = JSON.stringify(value)
     const draft = createHomepageDraft(value)
     if (change === 'disabled') section(draft, 'music').enabled = false
@@ -192,10 +192,10 @@ describe('首页草稿事务', () => {
 
   it('删除仍被片段目标引用的宣传位时不清理目标而拒绝应用', () => {
     const value = snapshot()
-    value.moments[0]!.target = { kind: 'internal', contentId: 'hero_studio' }
+    value.moments[0]!.target = { kind: 'internal', contentId: 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb' }
     const text = JSON.stringify(value)
     const draft = createHomepageDraft(value)
-    removeHomepageHero(draft, 'hero_studio')
+    removeHomepageHero(draft, 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb')
     const result = applyHomepageDraft(text, text, draft)
     expect(result).toMatchObject({ text, error: 'invalid-draft' })
     expect(result.issues).toContainEqual({ path: '/moments/0/target/contentId', source: 'semantic', code: 'missing-reference' })
@@ -214,7 +214,7 @@ describe('首页草稿事务', () => {
   it('不允许用有效首页草稿覆盖其他模块已经无效的快照', () => {
     const value = snapshot()
     const draft = createHomepageDraft(value)
-    value.tracks[0]!.previewAssetId = 'asset_missing'
+    value.tracks[0]!.previewAssetId = 'asset_773e3dac-5b2c-40b5-83d6-1eaa5f4def9c'
     const text = JSON.stringify(value)
     expect(applyHomepageDraft(text, text, draft)).toMatchObject({ text, error: 'invalid-snapshot' })
   })
@@ -269,7 +269,7 @@ describe('首页条目选项与逐位置可见性', () => {
     const hero = section(draft, 'hero')
     expect(homepageItemVisibility(value, draft, hero)).toEqual(['visible', 'time-window', 'time-window'])
     const resolved = resolveHomepageSections({ ...value, heroSlides: draft.heroSlides }, 'en')
-    expect(resolved.find(item => item.type === 'hero')?.items.map(item => item.id)).toEqual(['hero_studio'])
+    expect(resolved.find(item => item.type === 'hero')?.items.map(item => item.id)).toEqual(['hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb'])
     hero.enabled = false
     expect(homepageItemVisibility(value, draft, hero)).toEqual(['disabled', 'disabled', 'disabled'])
   })
@@ -277,18 +277,18 @@ describe('首页条目选项与逐位置可见性', () => {
   it('现场先筛 scheduled 与严格未来时间，再按含重复的位置计 limit', () => {
     const value = snapshot()
     value.events.push(
-      { ...value.events[0]!, id: 'event_equal', dateTime: value.generatedAt },
-      { ...value.events[0]!, id: 'event_sold', status: 'sold-out' },
-      { ...value.events[0]!, id: 'event_cancelled', status: 'cancelled' },
-      { ...value.events[0]!, id: 'event_past', dateTime: '2026-08-28T00:00:00Z' },
+      { ...value.events[0]!, id: 'event_0ad8f2a4-d0ed-4afb-9037-10cebec13752', dateTime: value.generatedAt },
+      { ...value.events[0]!, id: 'event_ddc71348-db6d-4609-b17f-dce4b79bd768', status: 'sold-out' },
+      { ...value.events[0]!, id: 'event_78633559-ba9a-4553-ade9-cd85e22fe4d0', status: 'cancelled' },
+      { ...value.events[0]!, id: 'event_708ad0b2-00f9-4227-9f10-4a51108eaa58', dateTime: '2026-08-28T00:00:00Z' },
     )
     const draft = createHomepageDraft(value)
     const events = section(draft, 'event')
-    events.itemIds = ['event_equal', 'event_sold', 'event_cancelled', 'event_past', 'event_01', 'event_01', 'event_02']
+    events.itemIds = ['event_0ad8f2a4-d0ed-4afb-9037-10cebec13752', 'event_ddc71348-db6d-4609-b17f-dce4b79bd768', 'event_78633559-ba9a-4553-ade9-cd85e22fe4d0', 'event_708ad0b2-00f9-4227-9f10-4a51108eaa58', 'event_dc200c4c-abbb-476e-984d-405470f2dbea', 'event_dc200c4c-abbb-476e-984d-405470f2dbea', 'event_b9413813-c666-4987-bb0c-2850fd7fa156']
     events.limit = 2
     expect(homepageItemVisibility(value, draft, events)).toEqual(['time-window', 'time-window', 'time-window', 'time-window', 'visible', 'visible', 'limit'])
     const resolved = resolveHomepageSections({ ...value, homepage: { sections: draft.sections } }, 'zh-CN')
-    expect(resolved.find(item => item.type === 'event')?.items.map(item => item.id)).toEqual(['event_01', 'event_01'])
+    expect(resolved.find(item => item.type === 'event')?.items.map(item => item.id)).toEqual(['event_dc200c4c-abbb-476e-984d-405470f2dbea', 'event_dc200c4c-abbb-476e-984d-405470f2dbea'])
     events.enabled = false
     expect(homepageItemVisibility(value, draft, events).every(state => state === 'disabled')).toBe(true)
   })
@@ -298,10 +298,10 @@ describe('首页条目选项与逐位置可见性', () => {
     const draft = createHomepageDraft(value)
     const hero = section(draft, 'hero')
     draft.heroSlides[0]!.startsAt = 'incomplete'
-    hero.itemIds = ['hero_studio', 'hero_missing']
+    hero.itemIds = ['hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb', 'hero_2bc0af39-db42-40a8-a085-a589d34aac7d']
     expect(homepageItemVisibility(value, draft, hero)).toEqual(['time-window', 'time-window'])
     const events = section(draft, 'event')
-    events.itemIds = ['event_missing']
+    events.itemIds = ['event_859ea9cf-0be8-4afd-b5ff-9b94dc67823a']
     expect(homepageItemVisibility(value, draft, events)).toEqual(['time-window'])
     events.itemIds = []
     expect(homepageItemVisibility(value, draft, events)).toEqual([])

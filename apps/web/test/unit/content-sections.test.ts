@@ -70,7 +70,7 @@ describe('MomentSection', () => {
       kind: 'external',
       link: { provider: 'bilibili', url: 'https://space.bilibili.com/21096618' },
     }
-    moments[1]!.target = { kind: 'internal', contentId: 'video_01' }
+    moments[1]!.target = { kind: 'internal', contentId: 'video_b634e94d-b468-4e4b-b784-22eda2c49314' }
     const wrapper = mount(MomentSection, {
       props: { items: moments, assets: snapshot.assets, locale: 'zh-CN' },
     })
@@ -81,7 +81,7 @@ describe('MomentSection', () => {
       target: '_blank',
       rel: 'noopener noreferrer',
     })
-    expect(items[1]!.get('a').attributes('href')).toBe('#video_01')
+    expect(items[1]!.get('a').attributes('href')).toBe('#video_b634e94d-b468-4e4b-b784-22eda2c49314')
     expect(items[1]!.get('a').attributes('target')).toBeUndefined()
   })
 })

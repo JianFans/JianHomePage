@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"yujian.me/server/internal/auth"
 	"yujian.me/server/internal/content"
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	"yujian.me/server/internal/observability"
 	"yujian.me/server/internal/publish"
 )
@@ -206,13 +206,7 @@ func NewRouter(options RouterOptions) http.Handler {
 		root.Handle("/media/", options.LocalUploads)
 	}
 	root.Handle("/api/", middleware.Authenticate(handler.withBodyLimit(api)))
-	requestID := options.RequestID
-	if requestID == nil {
-		requestID = func(*http.Request) string {
-			return "req-" + rand.Text()
-		}
-	}
-	return requestIDMiddleware(corsMiddleware(root, options.AllowedOrigins), requestID)
+	return requestIDMiddleware(corsMiddleware(root, options.AllowedOrigins), options.RequestID)
 }
 
 func (handler *Handler) withBodyLimit(next http.Handler) http.Handler {
@@ -229,11 +223,22 @@ func requestIDMiddleware(next http.Handler, generator func(*http.Request) string
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requestID := strings.TrimSpace(request.Header.Get("X-Request-ID"))
 		state, _ := request.Context().Value(requestLogKey{}).(*requestLog)
-		if !validExternalRequestID(requestID) || (state != nil && state.generatedByLogging) {
-			requestID = strings.TrimSpace(generator(request))
+		if !identity.Valid(requestID, "req_") || (state != nil && state.generatedByLogging) {
+			requestID = ""
 		}
-		if !validRequestID(requestID) {
-			requestID = "req-unknown"
+		if requestID == "" && generator != nil {
+			candidate := strings.TrimSpace(generator(request))
+			if identity.Valid(candidate, "req_") {
+				requestID = candidate
+			}
+		}
+		if requestID == "" {
+			var err error
+			requestID, err = identity.New("req_")
+			if err != nil {
+				writeJSON(writer, http.StatusServiceUnavailable, errorResponse{Code: "service_unavailable", Message: "Service unavailable."})
+				return
+			}
 		}
 		request.Header.Set("X-Request-ID", requestID)
 		writer.Header().Set("X-Request-ID", requestID)

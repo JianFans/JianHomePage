@@ -14,7 +14,7 @@
         "operationId": "inspectPublisherBuild",
         "description": "Administrator-only inspection of a durable cloud deployment task. Never triggers a new deployment.",
         "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
-        "parameters": [{ "name": "buildId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [{ "name": "buildId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^build_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } }],
         "responses": {
           "200": { "description": "Frozen task and recovery history", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherBuild" } } } },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
@@ -26,7 +26,7 @@
         "operationId": "recoverPublisherBuild",
         "description": "Administrator-only resolution of an uncertain submitting task. Cookie authentication requires exact Origin and X-CSRF-Token. Records the authenticated subject, never a body-supplied identity. Existing cloud deployment IDs are verified against the frozen project and Production environment. Confirmed absence marks failure without resubmitting.",
         "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
-        "parameters": [{ "name": "buildId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [{ "name": "buildId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^build_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherRecovery" } } } },
         "responses": {
           "200": { "description": "Recovered durable task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublisherBuild" } } } },
@@ -628,9 +628,9 @@
       }
     },
     "parameters": {
-      "VersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string" } },
-      "AssetId": { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
-      "PublishId": { "name": "publishId", "in": "path", "required": true, "schema": { "type": "string" } }
+      "VersionId": { "name": "versionId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^ver_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } },
+      "AssetId": { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } },
+      "PublishId": { "name": "publishId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } }
     },
     "requestBodies": {
       "RevisionRequest": {
@@ -750,7 +750,8 @@
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" },
           "id": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^ver_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
           },
           "status": {
             "enum": [
@@ -776,7 +777,8 @@
             "description": "可选显示名称；省略或为空时回退版本 ID。"
           },
           "sourceVersionId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^ver_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
           }
         },
         "description": "只含元数据，不包含 snapshot。"
@@ -868,7 +870,8 @@
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" },
           "id": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^ver_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
           },
           "status": {
             "enum": [
@@ -898,7 +901,8 @@
             "description": "可选显示名称；省略或为空时回退版本 ID。"
           },
           "sourceVersionId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^ver_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
           }
         }
       },
@@ -939,7 +943,7 @@
         "type": "object",
         "required": ["id", "src", "status", "metadata", "rights"],
         "properties": {
-          "id": { "type": "string" },
+          "id": { "type": "string", "pattern": "^asset_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
           "src": {
             "description": "可直接写入内容快照的稳定公开地址；生产环境使用 HTTPS，/media/* 仅用于本地开发。",
             "oneOf": [
@@ -988,8 +992,8 @@
         "type": "object",
         "required": ["id", "request", "target", "phase", "deploymentId", "previewUrl", "error", "reconciliation", "createdAt"],
         "properties": {
-          "id": { "type": "string" },
-          "request": { "type": "object", "required": ["releaseId", "snapshotKey", "snapshotChecksum"], "properties": { "releaseId": { "type": "string" }, "snapshotKey": { "type": "string" }, "snapshotChecksum": { "type": "string" } } },
+          "id": { "type": "string", "pattern": "^build_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+          "request": { "type": "object", "required": ["releaseId", "snapshotKey", "snapshotChecksum"], "properties": { "releaseId": { "type": "string", "pattern": "^rel_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }, "snapshotKey": { "type": "string" }, "snapshotChecksum": { "type": "string" } } },
           "target": { "type": "object", "required": ["projectId", "region", "codeRevision", "publicUrl"], "properties": { "projectId": { "type": "string" }, "region": { "enum": ["china", "global"] }, "codeRevision": { "type": "string" }, "publicUrl": { "type": "string", "format": "uri" } } },
           "phase": { "enum": ["queued", "building", "submitting", "deployed", "succeeded", "failed"] },
           "deploymentId": { "type": "string" },
@@ -1003,24 +1007,24 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["versionId"],
-        "properties": { "versionId": { "type": "string" } }
+        "properties": { "versionId": { "type": "string", "pattern": "^ver_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } }
       },
       "RollbackRequest": {
         "type": "object",
         "additionalProperties": false,
         "required": ["versionId"],
-        "properties": { "versionId": { "type": "string" } }
+        "properties": { "versionId": { "type": "string", "pattern": "^ver_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } }
       },
       "PublishJob": {
         "type": "object",
         "required": ["id", "versionId", "status", "snapshotKey", "snapshotChecksum"],
         "properties": {
-          "id": { "type": "string" },
-          "versionId": { "type": "string" },
+          "id": { "type": "string", "pattern": "^pub_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+          "versionId": { "type": "string", "pattern": "^ver_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
           "status": { "enum": ["pending", "building", "succeeded", "failed"] },
           "snapshotKey": { "type": "string" },
           "snapshotChecksum": { "type": "string" },
-          "buildId": { "type": "string" },
+          "buildId": { "type": "string", "pattern": "^build_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
           "errorMessage": { "type": "string" }
         }
       },
@@ -1030,7 +1034,7 @@
         "properties": {
           "code": { "type": "string" },
           "message": { "type": "string" },
-          "requestId": { "type": "string" }
+          "requestId": { "type": "string", "pattern": "^req_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
         }
       }
     }

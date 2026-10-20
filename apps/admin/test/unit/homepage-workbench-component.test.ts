@@ -34,11 +34,11 @@ describe('首页工作台界面', () => {
     const { wrapper, readOnly, busy } = mountHomepage()
     readOnly.value = true
     await wrapper.vm.$nextTick()
-    const next = wrapper.get('[data-testid="homepage-hero-hero_stage"]')
+    const next = wrapper.get('[data-testid="homepage-hero-hero_cec07764-0923-4dcc-a57b-a8630ce91f51"]')
     expect(next.element.matches(':disabled')).toBe(false)
     expect(next.element.closest('fieldset[disabled]')).toBeNull()
     await next.trigger('click')
-    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_stage')
+    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_cec07764-0923-4dcc-a57b-a8630ce91f51')
     for (const element of wrapper.findAll('input, select, textarea, [data-testid="homepage-hero-add"], [data-testid="homepage-hero-remove"], [data-testid="homepage-section-up"], [data-testid="homepage-section-down"], [data-testid="homepage-apply"]')) {
       // Happy DOM does not implement inherited fieldset state in :disabled.
       expect(element.element.hasAttribute('disabled') || element.element.closest('fieldset[disabled]') !== null, element.element.outerHTML).toBe(true)
@@ -64,7 +64,7 @@ describe('首页工作台界面', () => {
 
   it('初始选择首个宣传位并绑定双语，清空英文移除键', async () => {
     const { wrapper, draft, locale } = mountHomepage()
-    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_studio')
+    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb')
     await wrapper.get('[data-testid="homepage-headline-zh"]').setValue('新的宣传位')
     await wrapper.get('[data-testid="homepage-headline-en"]').setValue('New hero')
     expect(draft.value!.heroSlides[0]!.headline).toEqual({ 'zh-CN': '新的宣传位', en: 'New hero' })
@@ -84,52 +84,52 @@ describe('首页工作台界面', () => {
     await wrapper.get('[data-testid="homepage-hero-remove"]').trigger('click')
     expect(draft.value!.heroSlides.some(hero => hero.id === newId)).toBe(false)
     expect(draft.value!.sections[0]!.itemIds).not.toContain(newId)
-    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_release')
+    expect(wrapper.get('[data-testid="homepage-hero-id"]').text()).toBe('hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c')
   })
 
   it('删除待添加宣传位后清空选择并禁用添加，删除其他记录保留有效选择', async () => {
     const { wrapper, draft } = mountHomepage()
-    const panel = wrapper.get('[data-testid="homepage-section-section_hero"]')
+    const panel = wrapper.get('[data-testid="homepage-section-section_b94a248c-1c93-4f9a-98df-059f4fde1cf5"]')
     const select = panel.get('[data-testid="homepage-item-add-select"]')
     const add = panel.get('[data-testid="homepage-item-add"]')
-    await select.setValue('hero_studio')
-    await wrapper.get('[data-testid="homepage-hero-hero_release"]').trigger('click')
+    await select.setValue('hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb')
+    await wrapper.get('[data-testid="homepage-hero-hero_758af7a3-cc08-47c4-a49a-9e1f22abdb3c"]').trigger('click')
     await wrapper.get('[data-testid="homepage-hero-remove"]').trigger('click')
-    expect(select.element).toHaveProperty('value', 'hero_studio')
+    expect(select.element).toHaveProperty('value', 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb')
     expect(add.attributes('disabled')).toBeUndefined()
 
-    await wrapper.get('[data-testid="homepage-hero-hero_studio"]').trigger('click')
+    await wrapper.get('[data-testid="homepage-hero-hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb"]').trigger('click')
     await wrapper.get('[data-testid="homepage-hero-remove"]').trigger('click')
     expect(select.element).toHaveProperty('value', '')
     expect(add.attributes('disabled')).toBeDefined()
-    expect(draft.value!.sections[0]!.itemIds).toEqual(['hero_stage'])
+    expect(draft.value!.sections[0]!.itemIds).toEqual(['hero_cec07764-0923-4dcc-a57b-a8630ce91f51'])
 
-    await select.setValue('hero_stage')
+    await select.setValue('hero_cec07764-0923-4dcc-a57b-a8630ce91f51')
     expect(add.attributes('disabled')).toBeUndefined()
     await add.trigger('click')
-    expect(draft.value!.sections[0]!.itemIds).toEqual(['hero_stage', 'hero_stage'])
+    expect(draft.value!.sections[0]!.itemIds).toEqual(['hero_cec07764-0923-4dcc-a57b-a8630ce91f51', 'hero_cec07764-0923-4dcc-a57b-a8630ce91f51'])
   })
 
   it('筛选媒体与海报选项，切换媒体类型保留旧引用待完整校验', async () => {
     const { wrapper, draft } = mountHomepage()
     const assetOptions = wrapper.get('[data-testid="homepage-hero-asset"]').findAll('option').map(option => option.attributes('value'))
-    expect(assetOptions).toContain('asset_hero_studio')
-    expect(assetOptions).not.toContain('asset_preview_sample')
+    expect(assetOptions).toContain('asset_e020cc5b-3c4e-4779-803e-8ccd74d7c0ad')
+    expect(assetOptions).not.toContain('asset_71734f61-5250-4825-a8b3-0192448be437')
     await wrapper.get('[data-testid="homepage-media-kind"]').setValue('video')
-    expect(draft.value!.heroSlides[0]!.assetId).toBe('asset_hero_studio')
-    expect(wrapper.get('[data-testid="homepage-hero-asset"]').findAll('option').some(option => option.attributes('value') === 'asset_cover_01')).toBe(false)
-    expect(wrapper.get('[data-testid="homepage-poster-asset"]').findAll('option').some(option => option.attributes('value') === 'asset_cover_01')).toBe(true)
+    expect(draft.value!.heroSlides[0]!.assetId).toBe('asset_e020cc5b-3c4e-4779-803e-8ccd74d7c0ad')
+    expect(wrapper.get('[data-testid="homepage-hero-asset"]').findAll('option').some(option => option.attributes('value') === 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2')).toBe(false)
+    expect(wrapper.get('[data-testid="homepage-poster-asset"]').findAll('option').some(option => option.attributes('value') === 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2')).toBe(true)
   })
 
   it('可选素材、关联作品和 UTC 时间清空时移除键，非法时间保留原文', async () => {
     const { wrapper, draft } = mountHomepage()
-    await wrapper.get('[data-testid="homepage-mobile-asset"]').setValue('asset_hero_stage')
-    await wrapper.get('[data-testid="homepage-poster-asset"]').setValue('asset_cover_01')
-    await wrapper.get('[data-testid="homepage-release"]').setValue('release_01')
+    await wrapper.get('[data-testid="homepage-mobile-asset"]').setValue('asset_24dbb73c-be93-4839-813b-f81fd5806009')
+    await wrapper.get('[data-testid="homepage-poster-asset"]').setValue('asset_2f183eda-5f01-4c34-93f6-47739c136bb2')
+    await wrapper.get('[data-testid="homepage-release"]').setValue('release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff')
     await wrapper.get('[data-testid="homepage-starts-at"]').setValue('2026-09-01T02:03:04Z')
     await wrapper.get('[data-testid="homepage-ends-at"]').setValue('incomplete')
     const hero = draft.value!.heroSlides[0]!
-    expect(hero).toMatchObject({ mobileAssetId: 'asset_hero_stage', posterAssetId: 'asset_cover_01', releaseId: 'release_01', startsAt: '2026-09-01T02:03:04Z', endsAt: 'incomplete' })
+    expect(hero).toMatchObject({ mobileAssetId: 'asset_24dbb73c-be93-4839-813b-f81fd5806009', posterAssetId: 'asset_2f183eda-5f01-4c34-93f6-47739c136bb2', releaseId: 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', startsAt: '2026-09-01T02:03:04Z', endsAt: 'incomplete' })
     expect(wrapper.get('[data-testid="homepage-starts-at"]').attributes('type')).toBe('text')
     expect(wrapper.text()).toContain('UTC ISO 8601')
     for (const id of ['mobile-asset', 'poster-asset', 'release', 'starts-at', 'ends-at']) await wrapper.get(`[data-testid="homepage-${id}"]`).setValue('')
@@ -151,8 +151,8 @@ describe('首页工作台界面', () => {
     await wrapper.get('[data-testid="homepage-target-custom-label"]').setValue(false)
     expect(hero.target!.kind === 'external' && hero.target!.link).not.toHaveProperty('label')
     await wrapper.get('[data-testid="homepage-target-kind"]').setValue('internal')
-    await wrapper.get('[data-testid="homepage-target-content"]').setValue('release_01')
-    expect(hero.target).toEqual({ kind: 'internal', contentId: 'release_01' })
+    await wrapper.get('[data-testid="homepage-target-content"]').setValue('release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff')
+    expect(hero.target).toEqual({ kind: 'internal', contentId: 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff' })
     expect(wrapper.get('[data-testid="homepage-target-visibility"]').text()).toContain('展示')
     await wrapper.get('[data-testid="homepage-target-kind"]').setValue('none')
     expect(hero).not.toHaveProperty('target')
@@ -161,17 +161,17 @@ describe('首页工作台界面', () => {
   it('编排按位置移动与移除重复引用，不改板块身份或布局', async () => {
     const { wrapper, draft } = mountHomepage()
     const section = draft.value!.sections.find(section => section.type === 'music')!
-    section.itemIds = ['release_01', 'release_01', 'release_02']
+    section.itemIds = ['release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_f9462a63-70d9-40b3-a0cc-a792f1b5499e']
     await wrapper.vm.$nextTick()
-    const panel = wrapper.get('[data-testid="homepage-section-section_music"]')
+    const panel = wrapper.get('[data-testid="homepage-section-section_1941aa2b-341c-471c-9408-760fbd9edcea"]')
     await panel.findAll('[data-testid="homepage-item-up"]')[2]!.trigger('click')
-    expect(section.itemIds).toEqual(['release_01', 'release_02', 'release_01'])
+    expect(section.itemIds).toEqual(['release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_f9462a63-70d9-40b3-a0cc-a792f1b5499e', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff'])
     await panel.findAll('[data-testid="homepage-item-remove"]')[2]!.trigger('click')
-    await panel.get('[data-testid="homepage-item-add-select"]').setValue('release_01')
+    await panel.get('[data-testid="homepage-item-add-select"]').setValue('release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff')
     await panel.get('[data-testid="homepage-item-add"]').trigger('click')
-    expect(section.itemIds).toEqual(['release_01', 'release_02', 'release_01'])
+    expect(section.itemIds).toEqual(['release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff', 'release_f9462a63-70d9-40b3-a0cc-a792f1b5499e', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff'])
     await panel.get('[data-testid="homepage-section-up"]').trigger('click')
-    expect(draft.value!.sections[0]).toMatchObject({ id: 'section_music', type: 'music', layoutVariant: 'cover-reel' })
+    expect(draft.value!.sections[0]).toMatchObject({ id: 'section_1941aa2b-341c-471c-9408-760fbd9edcea', type: 'music', layoutVariant: 'cover-reel' })
   })
 
   it('重复板块 ID 按位置重排时清空旧内容选择，嵌套字段编辑仍保留选择', async () => {
@@ -182,43 +182,43 @@ describe('首页工作台界面', () => {
     source.homepage.sections = [music, hero, ...source.homepage.sections.slice(2)]
     expect(analyzeSnapshotText(JSON.stringify(source)).issues).toEqual([])
     const { wrapper, draft } = mountHomepage(true, source)
-    const panels = wrapper.findAll('[data-testid="homepage-section-section_music"]')
+    const panels = wrapper.findAll('[data-testid="homepage-section-section_1941aa2b-341c-471c-9408-760fbd9edcea"]')
     expect(panels).toHaveLength(2)
-    await panels[0]!.get('[data-testid="homepage-item-add-select"]').setValue('release_01')
+    await panels[0]!.get('[data-testid="homepage-item-add-select"]').setValue('release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff')
     await panels[0]!.get('[data-testid="homepage-section-enabled"]').setValue(false)
-    expect(panels[0]!.get('[data-testid="homepage-item-add-select"]').element).toHaveProperty('value', 'release_01')
+    expect(panels[0]!.get('[data-testid="homepage-item-add-select"]').element).toHaveProperty('value', 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff')
     expect(panels[0]!.get('[data-testid="homepage-item-add"]').attributes('disabled')).toBeUndefined()
     await panels[0]!.get('[data-testid="homepage-section-down"]').trigger('click')
     expect(draft.value!.sections.slice(0, 2).map(section => [section.id, section.type, section.layoutVariant])).toEqual([
-      ['section_music', 'hero', 'immersive'], ['section_music', 'music', 'cover-reel'],
+      ['section_1941aa2b-341c-471c-9408-760fbd9edcea', 'hero', 'immersive'], ['section_1941aa2b-341c-471c-9408-760fbd9edcea', 'music', 'cover-reel'],
     ])
-    const reordered = wrapper.findAll('[data-testid="homepage-section-section_music"]')
+    const reordered = wrapper.findAll('[data-testid="homepage-section-section_1941aa2b-341c-471c-9408-760fbd9edcea"]')
     for (const panel of reordered) {
       expect(panel.get('[data-testid="homepage-item-add-select"]').element).toHaveProperty('value', '')
       expect(panel.get('[data-testid="homepage-item-add"]').attributes('disabled')).toBeDefined()
     }
-    await reordered[1]!.get('[data-testid="homepage-item-add-select"]').setValue('release_01')
+    await reordered[1]!.get('[data-testid="homepage-item-add-select"]').setValue('release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff')
     await reordered[1]!.get('[data-testid="homepage-item-add"]').trigger('click')
     expect(draft.value!.sections[0]!.itemIds).toEqual(hero.itemIds)
-    expect(draft.value!.sections[1]!.itemIds).toEqual([...music.itemIds, 'release_01'])
+    expect(draft.value!.sections[1]!.itemIds).toEqual([...music.itemIds, 'release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff'])
   })
 
   it('允许宣传位暂时为空且最多五个引用、艺人为最多一个，并展示各板块 limit 边界', async () => {
     const { wrapper, draft } = mountHomepage()
     const hero = draft.value!.sections[0]!
-    hero.itemIds = ['hero_studio']
+    hero.itemIds = ['hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb']
     await wrapper.vm.$nextTick()
-    const heroPanel = wrapper.get('[data-testid="homepage-section-section_hero"]')
+    const heroPanel = wrapper.get('[data-testid="homepage-section-section_b94a248c-1c93-4f9a-98df-059f4fde1cf5"]')
     expect(heroPanel.get('[data-testid="homepage-item-remove"]').attributes('disabled')).toBeUndefined()
     await heroPanel.get('[data-testid="homepage-item-remove"]').trigger('click')
     expect(hero.itemIds).toEqual([])
-    hero.itemIds.push('hero_studio')
-    hero.itemIds.push('hero_studio', 'hero_studio', 'hero_studio', 'hero_studio')
+    hero.itemIds.push('hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb')
+    hero.itemIds.push('hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb', 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb', 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb', 'hero_7cfbd2b5-69b4-41f6-9dbd-275c587b70cb')
     await wrapper.vm.$nextTick()
     expect(heroPanel.get('[data-testid="homepage-item-add"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-testid="homepage-section-section_artist"] [data-testid="homepage-item-add"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="homepage-section-section_5258d853-1b97-41b2-b1a8-b67e6163743b"] [data-testid="homepage-item-add"]').attributes('disabled')).toBeDefined()
     for (const [type, max] of [['music', '8'], ['video', '5'], ['event', '6'], ['moment', '8']]) {
-      const limit = wrapper.get(`[data-testid="homepage-section-section_${type}"] [data-testid="homepage-section-limit"]`)
+      const limit = wrapper.get(`[data-section-type="${type}"] [data-testid="homepage-section-limit"]`)
       expect(limit.attributes()).toMatchObject({ min: '1', max })
     }
   })
@@ -229,8 +229,8 @@ describe('首页工作台界面', () => {
     if (music.type === 'music') music.limit = 1
     draft.value!.heroSlides[0]!.startsAt = '2030-01-01T00:00:00Z'
     await wrapper.vm.$nextTick()
-    expect(wrapper.get('[data-testid="homepage-section-section_hero"]').text()).toContain('时间窗口外')
-    const panel = wrapper.get('[data-testid="homepage-section-section_music"]')
+    expect(wrapper.get('[data-testid="homepage-section-section_b94a248c-1c93-4f9a-98df-059f4fde1cf5"]').text()).toContain('时间窗口外')
+    const panel = wrapper.get('[data-testid="homepage-section-section_1941aa2b-341c-471c-9408-760fbd9edcea"]')
     expect(panel.text()).toContain('超过展示上限')
     await panel.get('[data-testid="homepage-section-enabled"]').setValue(false)
     expect(panel.text()).toContain('板块未启用')
@@ -238,7 +238,7 @@ describe('首页工作台界面', () => {
 
   it('音乐更多链接显式启停并稳定绑定 provider、地址与选填标签', async () => {
     const { wrapper, draft } = mountHomepage()
-    const panel = wrapper.get('[data-testid="homepage-section-section_music"]')
+    const panel = wrapper.get('[data-testid="homepage-section-section_1941aa2b-341c-471c-9408-760fbd9edcea"]')
     await panel.get('[data-testid="homepage-more-enabled"]').setValue(false)
     const music = draft.value!.sections.find(section => section.type === 'music')!
     expect(music).not.toHaveProperty('moreLink')
@@ -251,8 +251,8 @@ describe('首页工作台界面', () => {
   it('内部曲目目标跟随作品实际展示位置提示可见性', async () => {
     const { wrapper, draft } = mountHomepage()
     await wrapper.get('[data-testid="homepage-target-kind"]').setValue('internal')
-    await wrapper.get('[data-testid="homepage-target-content"]').setValue('track_01')
-    expect(draft.value!.heroSlides[0]!.target).toEqual({ kind: 'internal', contentId: 'track_01' })
+    await wrapper.get('[data-testid="homepage-target-content"]').setValue('track_e60c46c7-28d6-418e-8905-167307dc8354')
+    expect(draft.value!.heroSlides[0]!.target).toEqual({ kind: 'internal', contentId: 'track_e60c46c7-28d6-418e-8905-167307dc8354' })
     expect(wrapper.get('[data-testid="homepage-target-visibility"]').text()).toBe('展示')
     const music = draft.value!.sections.find(section => section.type === 'music')!
     music.enabled = false

@@ -37,7 +37,7 @@ it('从发布快照生成静态 SEO head', async () => {
   snapshot.site.canonicalUrl = 'https://release.yujian.me'
   snapshot.site.seo.title['zh-CN'] = '发布快照标题'
   snapshot.site.seo.description['zh-CN'] = '发布快照描述'
-  snapshot.site.seo.ogAssetId = 'asset_hero_stage'
+  snapshot.site.seo.ogAssetId = 'asset_24dbb73c-be93-4839-813b-f81fd5806009'
   const root = mkdtempSync(join(tmpdir(), 'yujian-nuxt-config-'))
   const snapshotPath = join(root, 'release.json')
   writeFileSync(snapshotPath, JSON.stringify(snapshot))

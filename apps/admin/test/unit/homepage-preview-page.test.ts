@@ -139,9 +139,9 @@ describe('首页预览接收页面', () => {
     const videoSnapshot = structuredClone(snapshot)
     const slide = videoSnapshot.heroSlides[0]!
     const image = videoSnapshot.assets.find(asset => asset.id === slide.assetId)!
-    videoSnapshot.assets.push({ ...image, id: 'asset_preview_video', kind: 'video', src: '/media/preview.mp4', mimeType: 'video/mp4' })
+    videoSnapshot.assets.push({ ...image, id: 'asset_8d9b963f-c48b-4e18-9aef-b6b533cf69c2', kind: 'video', src: '/media/preview.mp4', mimeType: 'video/mp4' })
     slide.mediaKind = 'video'
-    slide.assetId = 'asset_preview_video'
+    slide.assetId = 'asset_8d9b963f-c48b-4e18-9aef-b6b533cf69c2'
     slide.autoplay = true
     const wrapper = await mountSuspended(PreviewPage)
     send(createSnapshotMessage({ snapshot: videoSnapshot, locale: 'en' }))

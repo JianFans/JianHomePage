@@ -66,25 +66,25 @@ describe('admin API client', () => {
       const headers = new Headers(init?.headers)
       expect(headers.get('Authorization')).toBe('Bearer session-token')
       expect(headers.get('If-Match')).toBe('"3"')
-      return response(200, { id: 'ver_1', revision: 4 })
+      return response(200, { id: 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d', revision: 4 })
     })
     const api = createAdminApi({ baseUrl: 'https://api.yujian.me/', token: 'session-token', fetcher })
 
-    const result = await api.updateVersion('ver_1', 3, { schemaVersion: '1.0.0' })
+    const result = await api.updateVersion('ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d', 3, { schemaVersion: '1.0.0' })
 
     expect(result.revision).toBe(4)
-    expect(fetcher).toHaveBeenCalledWith('https://api.yujian.me/api/v1/versions/ver_1', expect.anything())
+    expect(fetcher).toHaveBeenCalledWith('https://api.yujian.me/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d', expect.anything())
   })
 
   it('sends an explicit idempotency key for publish requests', async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers)
       expect(headers.get('Idempotency-Key')).toBe('publish-fixed')
-      return response(202, { id: 'pub_1', status: 'building' })
+      return response(202, { id: 'pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a', status: 'building' })
     })
     const api = createAdminApi({ baseUrl: 'https://api.yujian.me', fetcher })
 
-    await api.publish('ver_1', 'publish-fixed')
+    await api.publish('ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d', 'publish-fixed')
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
@@ -140,7 +140,7 @@ describe('admin API client', () => {
     const api = createAdminApi({ baseUrl: 'https://api.yujian.me', token: 'session-token', fetcher })
 
     await api.uploadAssetBlob({
-      asset: { id: 'asset_1', src: '', status: 'pending', metadata: {}, rights: { source: { 'zh-CN': '官方授权' } } },
+      asset: { id: 'asset_551aed01-404d-4e4b-b2d3-0974f521eab8', src: '', status: 'pending', metadata: {}, rights: { source: { 'zh-CN': '官方授权' } } },
       uploadUrl: 'https://upload.example.test/signed',
       headers: { 'X-Yujian-Checksum': 'sha256:test', 'Content-Type': 'image/webp' },
       expiresAt: '2026-10-09T09:00:00Z',
@@ -150,13 +150,13 @@ describe('admin API client', () => {
   it('turns structured API errors into safe typed errors', async () => {
     const api = createAdminApi({
       baseUrl: 'https://api.yujian.me',
-      fetcher: async () => response(409, { code: 'conflict', message: '冲突', requestId: 'req-1' }),
+      fetcher: async () => response(409, { code: 'conflict', message: '冲突', requestId: 'req_550e8400-e29b-41d4-a716-446655440000' }),
     })
 
-    await expect(api.getVersion('ver_1')).rejects.toMatchObject({
+    await expect(api.getVersion('ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d')).rejects.toMatchObject({
       status: 409,
       code: 'conflict',
-      requestId: 'req-1',
+      requestId: 'req_550e8400-e29b-41d4-a716-446655440000',
     })
   })
 
@@ -164,6 +164,6 @@ describe('admin API client', () => {
     expect(parseSnapshotJSON('[]')).toEqual({ snapshot: null, error: '快照必须是 JSON 对象' })
     expect(parseSnapshotJSON('[]', 'en')).toEqual({ snapshot: null, error: 'Snapshot must be a JSON object' })
     expect(parseSnapshotJSON('{', 'en')).toEqual({ snapshot: null, error: 'Invalid JSON' })
-    expect(parseSnapshotJSON('{"releaseId":"rel_1"}')).toEqual({ snapshot: { releaseId: 'rel_1' }, error: null })
+    expect(parseSnapshotJSON('{"releaseId":"rel_b73feb78-c751-4ccb-be54-8a8039247ca0"}')).toEqual({ snapshot: { releaseId: 'rel_b73feb78-c751-4ccb-be54-8a8039247ca0' }, error: null })
   })
 })

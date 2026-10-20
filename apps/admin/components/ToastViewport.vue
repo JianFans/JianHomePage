@@ -6,16 +6,16 @@ import type { AdminLocale } from '../utils/admin-locale'
 
 const props = defineProps<{ items: readonly ToastMessage[]; locale: AdminLocale }>()
 const emit = defineEmits<{
-  dismiss: [id: number]
-  pause: [id: number, reason: string]
-  resume: [id: number, reason: string]
+  dismiss: [id: string]
+  pause: [id: string, reason: string]
+  resume: [id: string, reason: string]
   visibility: [hidden: boolean]
 }>()
 const icons = { success: Check, info: Info, warning: TriangleAlert, error: CircleAlert }
 const closeLabel = computed(() => props.locale === 'en' ? 'Dismiss message' : '关闭提示')
 
 /** 聚焦在同一条消息内移动时继续暂停，离开整条消息后才恢复。 */
-function focusOut(id: number, event: FocusEvent) {
+function focusOut(id: string, event: FocusEvent) {
   if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) emit('resume', id, 'focus')
 }
 /** 隐藏页面暂停计时，恢复后不丢失消息的剩余展示时间。 */

@@ -13,11 +13,11 @@ import (
 	"unicode/utf8"
 
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	"yujian.me/server/internal/ports"
 	snapshotdata "yujian.me/server/internal/snapshot"
 )
 
-var storedReleaseID = regexp.MustCompile(`^rel_[a-z0-9_]+$`)
 var storedSnapshotChecksum = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
 // SnapshotStore keeps immutable site inputs in PostgreSQL, separate from media objects.
@@ -110,7 +110,7 @@ func parseStoredSnapshotKey(key string) (string, string, error) {
 		return "", "", domain.ErrInvalidInput
 	}
 	parts := strings.Split(key, "/")
-	if len(parts) != 3 || parts[0] != "snapshots" || !storedReleaseID.MatchString(parts[1]) {
+	if len(parts) != 3 || parts[0] != "snapshots" || !identity.Valid(parts[1], "rel_") {
 		return "", "", domain.ErrInvalidInput
 	}
 	checksum := strings.TrimSuffix(parts[2], ".json")

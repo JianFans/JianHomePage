@@ -14,7 +14,7 @@ afterEach(/** 还原全局 fetch 和 spy，防止跨测试共享网络响应或�
 
 describe('素材工作台组件', () => {
   it('保存快照期间阻止素材插入', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_new')] })))
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_e00f16b8-04fb-4f57-876e-04c32db91a17')] })))
     const wrapper = mountWorkbench()
     await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
     await flushPromises()
@@ -54,36 +54,36 @@ describe('素材工作台组件', () => {
   })
 
   it('切换 API 后同 ID 素材不继承旧连接的替代文本', /** 两个服务端返回同一 ID 时，旧连接的替代文本不能使新素材绕过插入门禁。 */ async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_shared')] })))
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_2352331a-7bdd-4626-8e56-de156f3de268')] })))
     const wrapper = mountWorkbench()
     await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-asset-id="asset_shared"] [data-testid="asset-alt-zh"]').setValue('旧连接的替代文本')
+    await wrapper.get('[data-asset-id="asset_2352331a-7bdd-4626-8e56-de156f3de268"] [data-testid="asset-alt-zh"]').setValue('旧连接的替代文本')
     await wrapper.setProps({ apiBaseUrl: 'https://api-b.example' })
-    expect(wrapper.find('[data-asset-id="asset_shared"]').exists()).toBe(false)
+    expect(wrapper.find('[data-asset-id="asset_2352331a-7bdd-4626-8e56-de156f3de268"]').exists()).toBe(false)
     await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
     await flushPromises()
-    const card = wrapper.get('[data-asset-id="asset_shared"]')
+    const card = wrapper.get('[data-asset-id="asset_2352331a-7bdd-4626-8e56-de156f3de268"]')
     expect((card.get('[data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('')
     expect(card.get('[data-testid="asset-insert"]').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
   it.each([
-    ['/media/assets/asset_local/source.webp', 'http://127.0.0.1:8080/media/assets/asset_local/source.webp'],
-    ['https://media.yujian.me/assets/asset_local/source.webp', 'https://media.yujian.me/assets/asset_local/source.webp'],
+    ['/media/assets/asset_d0404e46-dfde-4c91-ba4c-06bf89bd6b9a/source.webp', 'http://127.0.0.1:8080/media/assets/asset_d0404e46-dfde-4c91-ba4c-06bf89bd6b9a/source.webp'],
+    ['https://media.yujian.me/assets/asset_d0404e46-dfde-4c91-ba4c-06bf89bd6b9a/source.webp', 'https://media.yujian.me/assets/asset_d0404e46-dfde-4c91-ba4c-06bf89bd6b9a/source.webp'],
   ])('仅为图片预览解析地址 %s，快照保留原始地址', /** 相对地址仅在展示时基于 API origin 解析，插入快照仍使用服务端原始地址。 */ async (src, preview) => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [{ ...asset('asset_local'), src }] })))
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [{ ...asset('asset_d0404e46-dfde-4c91-ba4c-06bf89bd6b9a'), src }] })))
     const wrapper = mountWorkbench()
     await wrapper.setProps({ apiBaseUrl: 'http://127.0.0.1:8080' })
     await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
     await flushPromises()
-    const card = wrapper.get('[data-asset-id="asset_local"]')
+    const card = wrapper.get('[data-asset-id="asset_d0404e46-dfde-4c91-ba4c-06bf89bd6b9a"]')
     expect(card.get('img').attributes('src')).toBe(preview)
     await card.get('[data-testid="asset-alt-zh"]').setValue('本地封面')
     await card.get('[data-testid="asset-insert"]').trigger('click')
     const snapshot = JSON.parse(String(wrapper.emitted('update:editorText')?.[0]?.[0]))
-    expect(snapshot.assets.find((item: { id: string }) => item.id === 'asset_local').src).toBe(src)
+    expect(snapshot.assets.find((item: { id: string }) => item.id === 'asset_d0404e46-dfde-4c91-ba4c-06bf89bd6b9a').src).toBe(src)
     wrapper.unmount()
   })
 
@@ -121,8 +121,8 @@ describe('素材工作台组件', () => {
     const existingId = fixtureData.assets[0]!.id
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
       items: [
-        asset('asset_new', 'ready'),
-        asset('asset_pending', 'pending'),
+        asset('asset_e00f16b8-04fb-4f57-876e-04c32db91a17', 'ready'),
+        asset('asset_c0952b7b-4e99-417d-92b8-72dd780f8e3a', 'pending'),
         asset(existingId, 'ready'),
       ],
     })))
@@ -131,8 +131,8 @@ describe('素材工作台组件', () => {
     await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
     await flushPromises()
 
-    const ready = wrapper.get('[data-asset-id="asset_new"]')
-    const pending = wrapper.get('[data-asset-id="asset_pending"]')
+    const ready = wrapper.get('[data-asset-id="asset_e00f16b8-04fb-4f57-876e-04c32db91a17"]')
+    const pending = wrapper.get('[data-asset-id="asset_c0952b7b-4e99-417d-92b8-72dd780f8e3a"]')
     const duplicate = wrapper.get(`[data-asset-id="${existingId}"]`)
     expect(ready.get('[data-testid="asset-insert"]').attributes('disabled')).toBeDefined()
     expect(pending.get('[data-testid="asset-insert"]').attributes('disabled')).toBeDefined()
@@ -146,13 +146,13 @@ describe('素材工作台组件', () => {
     const text = emitted?.[0]?.[0]
     expect(typeof text).toBe('string')
     expect(analyzeSnapshotText(String(text)).issues).toHaveLength(0)
-    expect(String(text)).toContain('asset_new')
+    expect(String(text)).toContain('asset_e00f16b8-04fb-4f57-876e-04c32db91a17')
   })
 
   it('只在服务端返回游标时显示加载更多并追加素材', /** 两页响应验证游标传递、列表追加，以及末页隐藏加载更多入口。 */ async () => {
     const fetcher = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ items: [asset('asset_a')], nextCursor: 'next-page' }))
-      .mockResolvedValueOnce(jsonResponse({ items: [asset('asset_b')] }))
+      .mockResolvedValueOnce(jsonResponse({ items: [asset('asset_0f5179cb-849b-4786-84ae-ae17f29ffbda')], nextCursor: 'next-page' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [asset('asset_47f68d47-98a9-4288-be7c-c76c3dbcad67')] }))
     vi.stubGlobal('fetch', fetcher)
     const wrapper = mountWorkbench()
 
@@ -173,7 +173,7 @@ describe('素材工作台组件', () => {
       const url = String(input)
       if (url.endsWith('/api/v1/assets/uploads')) return uploadGate.promise
       if (url === 'https://upload.example.test/signed') return new Response(null, { status: 200 })
-      if (url.endsWith('/api/v1/assets/asset_uploaded/complete')) return jsonResponse(asset('asset_uploaded'))
+      if (url.endsWith('/api/v1/assets/asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c/complete')) return jsonResponse(asset('asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c'))
       return jsonResponse({ items: [] })
     })
     vi.stubGlobal('fetch', fetcher)
@@ -196,15 +196,15 @@ describe('素材工作台组件', () => {
     })
 
     uploadGate.resolve(jsonResponse({
-      asset: { ...asset('asset_uploaded', 'pending') },
+      asset: { ...asset('asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c', 'pending') },
       uploadUrl: 'https://upload.example.test/signed',
       headers: { 'Content-Type': 'image/webp' },
       expiresAt: '2026-10-09T09:00:00Z',
     }))
     await flushPromises()
     expect(wrapper.get('[data-testid="asset-stage"]').text()).toMatch(/完成|complete/i)
-    expect(wrapper.find('[data-asset-id="asset_uploaded"]').exists()).toBe(true)
-    expect((wrapper.get('[data-asset-id="asset_uploaded"] [data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('封面')
+    expect(wrapper.find('[data-asset-id="asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c"]').exists()).toBe(true)
+    expect((wrapper.get('[data-asset-id="asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c"] [data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('封面')
     wrapper.findAll('form.asset-upload input').forEach((field) => {
       expect(field.attributes('disabled')).toBeUndefined()
     })
@@ -220,20 +220,20 @@ describe('素材工作台组件', () => {
       const url = String(input)
       if (url.endsWith('/api/v1/assets/uploads')) {
         return jsonResponse({
-          asset: { ...asset('asset_retry', 'pending') },
+          asset: { ...asset('asset_28704982-30ec-412b-a928-249ffbb47349', 'pending') },
           uploadUrl: 'https://upload.example.test/signed',
           headers: { 'Content-Type': 'image/webp' },
           expiresAt: '2026-10-09T09:00:00Z',
         })
       }
       if (url === 'https://upload.example.test/signed') return new Response(null, { status: 200 })
-      if (url.endsWith('/api/v1/assets/asset_retry/complete')) {
+      if (url.endsWith('/api/v1/assets/asset_28704982-30ec-412b-a928-249ffbb47349/complete')) {
         completeAttempts++
         return completeAttempts === 1
           ? jsonResponse({ code: 'metadata_pending' }, 503)
-          : jsonResponse(asset('asset_retry'))
+          : jsonResponse(asset('asset_28704982-30ec-412b-a928-249ffbb47349'))
       }
-      return jsonResponse({ items: completeAttempts >= 2 ? [asset('asset_retry')] : [] })
+      return jsonResponse({ items: completeAttempts >= 2 ? [asset('asset_28704982-30ec-412b-a928-249ffbb47349')] : [] })
     })
     vi.stubGlobal('fetch', fetcher)
     const wrapper = mountWorkbench()
@@ -262,14 +262,14 @@ describe('素材工作台组件', () => {
     await flushPromises()
 
     if (status) {
-      expect(wrapper.find('[data-asset-id="asset_retry"]').exists()).toBe(false)
+      expect(wrapper.find('[data-asset-id="asset_28704982-30ec-412b-a928-249ffbb47349"]').exists()).toBe(false)
       await wrapper.get('[data-testid="asset-status-filter"]').setValue('')
       await flushPromises()
     }
 
-    const card = wrapper.get('[data-asset-id="asset_retry"]')
+    const card = wrapper.get('[data-asset-id="asset_28704982-30ec-412b-a928-249ffbb47349"]')
     expect((card.get('[data-testid="asset-alt-zh"]').element as HTMLInputElement).value).toBe('修改后的封面')
-    expect((card.get('input[aria-label="替代文本 · 英文: asset_retry"]').element as HTMLInputElement).value).toBe('Updated cover')
+    expect((card.get('input[aria-label="替代文本 · 英文: asset_28704982-30ec-412b-a928-249ffbb47349"]').element as HTMLInputElement).value).toBe('Updated cover')
     expect(card.get('[data-testid="asset-insert"]').attributes('disabled')).toBeUndefined()
   })
 })

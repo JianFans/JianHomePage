@@ -260,6 +260,7 @@ function moveSection(index: number, direction: -1 | 1) {
           :key="index"
           class="music-placement"
           :data-testid="`homepage-section-${section.id}`"
+          :data-section-type="section.type"
         >
           <div class="music-track-heading">
             <span>{{ copy.types[section.type] }} · <code>{{ section.id }}</code></span>

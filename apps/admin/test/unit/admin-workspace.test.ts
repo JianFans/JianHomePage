@@ -43,7 +43,7 @@ async function mountWorkspace(locale: Ref<AdminLocale> = ref('zh-CN'), session: 
 /** 创建具有合法快照的版本测试对象。 */
 function version(overrides: Partial<AdminVersion> = {}): AdminVersion {
   return {
-    id: 'ver_1',
+    id: 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d',
     status: 'draft',
     revision: 1,
     snapshot: structuredClone(fixture),
@@ -55,10 +55,10 @@ function version(overrides: Partial<AdminVersion> = {}): AdminVersion {
 /** 创建可按场景覆盖状态的发布任务测试对象。 */
 function publishJob(overrides: Partial<AdminPublishJob> = {}): AdminPublishJob {
   return {
-    id: 'pub_1',
-    versionId: 'ver_1',
+    id: 'pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a',
+    versionId: 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d',
     status: 'building',
-    snapshotKey: 'snapshots/ver_1.json',
+    snapshotKey: 'snapshots/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d.json',
     snapshotChecksum: 'sha256:version',
     ...overrides,
   }
@@ -72,7 +72,7 @@ it('keeps the write lock if a concurrent summary request fails', async () => {
     .mockResolvedValueOnce(jsonResponse(version()))
     .mockReturnValueOnce(list.promise)
     .mockReturnValueOnce(write.promise))
-  workspace.versionId = 'ver_1'
+  workspace.versionId = 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d'
   await workspace.loadVersion()
   const listing = workspace.listVersions()
   const saving = workspace.saveDraft()
@@ -122,14 +122,14 @@ describe('管理工作区', () => {
       .mockResolvedValueOnce(jsonResponse(version()))
       .mockReturnValueOnce(late.promise)
       .mockResolvedValueOnce(jsonResponse(version({ revision: 2 }))))
-    workspace.versionId = 'ver_1'
+    workspace.versionId = 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d'
     await workspace.loadVersion()
     const listing = workspace.listVersions()
     workspace.editorText += '\n'
     await workspace.saveDraft()
     late.resolve(jsonResponse({ items: [version({ revision: 1 })] }))
     await listing
-    expect(workspace.versions.find(item => item.id === 'ver_1')?.revision).toBe(2)
+    expect(workspace.versions.find(item => item.id === 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d')?.revision).toBe(2)
     expect(workspace.listing).toBe(false)
     wrapper.unmount()
   })
@@ -137,18 +137,18 @@ describe('管理工作区', () => {
     const { wrapper, workspace } = await mountWorkspace()
     const fetcher = vi.fn()
       .mockResolvedValueOnce(jsonResponse(version({ status: 'published' })))
-      .mockResolvedValueOnce(jsonResponse(version({ id: 'ver_copy', name: '新编排', sourceVersionId: 'ver_1' })))
+      .mockResolvedValueOnce(jsonResponse(version({ id: 'ver_9cb0468e-f117-476b-be75-eed979e0c719', name: '新编排', sourceVersionId: 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d' })))
     vi.stubGlobal('fetch', fetcher)
-    workspace.versionId = 'ver_1'
+    workspace.versionId = 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d'
     await workspace.loadVersion()
     expect(workspace.editable).toBe(false)
     await workspace.saveDraft()
     expect(fetcher).toHaveBeenCalledTimes(1)
-    await workspace.cloneVersion('ver_1', '新编排')
-    expect(workspace.version?.id).toBe('ver_copy')
+    await workspace.cloneVersion('ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d', '新编排')
+    expect(workspace.version?.id).toBe('ver_9cb0468e-f117-476b-be75-eed979e0c719')
     expect(workspace.editable).toBe(true)
     expect(workspace.dirty).toBe(false)
-    expect(fetcher.mock.calls[1]?.[0]).toContain('/ver_1/clone')
+    expect(fetcher.mock.calls[1]?.[0]).toContain('/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d/clone')
     expect(JSON.parse(fetcher.mock.calls[1]?.[1].body)).toEqual({ name: '新编排' })
     wrapper.unmount()
   })
@@ -158,15 +158,15 @@ describe('管理工作区', () => {
     const late = deferred<Response>()
     vi.stubGlobal('fetch', vi.fn()
       .mockReturnValueOnce(late.promise)
-      .mockResolvedValueOnce(jsonResponse({ items: [version({ id: 'ver_new' })], nextCursor: 'page2' }))
-      .mockResolvedValueOnce(jsonResponse({ items: [version({ id: 'ver_new' }), version({ id: 'ver_old' })] })))
+      .mockResolvedValueOnce(jsonResponse({ items: [version({ id: 'ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526' })], nextCursor: 'page2' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [version({ id: 'ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526' }), version({ id: 'ver_b88f6af7-86cb-4fc4-b1dc-76722b17792e' })] })))
     const first = workspace.listVersions()
     await workspace.listVersions()
-    late.resolve(jsonResponse({ items: [version({ id: 'ver_stale' })] }))
+    late.resolve(jsonResponse({ items: [version({ id: 'ver_bf32989f-4df2-41c3-a592-4489f3041589' })] }))
     await first
-    expect(workspace.versions.map(item => item.id)).toEqual(['ver_new'])
+    expect(workspace.versions.map(item => item.id)).toEqual(['ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526'])
     await workspace.listVersions(true)
-    expect(workspace.versions.map(item => item.id)).toEqual(['ver_new', 'ver_old'])
+    expect(workspace.versions.map(item => item.id)).toEqual(['ver_85ffbe4c-6a0a-40c9-93a7-4acb67a8c526', 'ver_b88f6af7-86cb-4fc4-b1dc-76722b17792e'])
     expect(workspace.nextCursor).toBe('')
     wrapper.unmount()
   })
@@ -197,8 +197,8 @@ describe('管理工作区', () => {
     const { workspace } = await mountWorkspace()
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(jsonResponse(version()))
-      .mockResolvedValueOnce(jsonResponse({ code: 'revision_conflict', message: 'Conflict', requestId: 'req_conflict' }, 409)))
-    workspace.versionId = 'ver_1'
+      .mockResolvedValueOnce(jsonResponse({ code: 'revision_conflict', message: 'Conflict', requestId: 'req_aea90e7b-6a5e-42cb-9962-2eba1e8cfc5f' }, 409)))
+    workspace.versionId = 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d'
     await workspace.loadVersion()
     expect(workspace.dirty).toBe(false)
     const text = `${workspace.editorText}\n`
@@ -209,7 +209,7 @@ describe('管理工作区', () => {
     expect(workspace.editorText).toBe(text)
     expect(workspace.version?.revision).toBe(1)
     expect(workspace.dirty).toBe(true)
-    expect(workspace.workflow.requestId).toBe('req_conflict')
+    expect(workspace.workflow.requestId).toBe('req_aea90e7b-6a5e-42cb-9962-2eba1e8cfc5f')
   })
 
   it('保存期间拒绝并发载入和导入，迟到响应不会覆盖新文本', async () => {
@@ -220,7 +220,7 @@ describe('管理工作区', () => {
     vi.stubGlobal('fetch', fetcher)
     workspace.editorText = JSON.stringify(fixture)
     const saving = workspace.saveDraft()
-    workspace.versionId = 'ver_other'
+    workspace.versionId = 'ver_6e951bd5-bd9c-4f24-8450-4e9fe3c5ff49'
     await workspace.loadVersion()
     const read = vi.fn().mockResolvedValue('{}')
     await workspace.importSnapshot({ name: 'other.json', size: 2, text: read })
@@ -232,7 +232,7 @@ describe('管理工作区', () => {
     resolveResponse(jsonResponse(version()))
     await saving
     expect(workspace.editorText).toBe(newerText)
-    expect(workspace.version?.id).toBe('ver_1')
+    expect(workspace.version?.id).toBe('ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d')
     expect(workspace.dirty).toBe(true)
   })
 
@@ -258,7 +258,7 @@ describe('管理工作区', () => {
     expect(workspace.editorAnalysis.issues).toHaveLength(0)
     expect(workspace.canSave).toBe(true)
     expect(workspace.exportSnapshot()).toMatchObject({
-      filename: 'rel_fixture_20260829.json',
+      filename: 'rel_14c9e5f2-718a-4271-b3e1-643f1a1d6ccc.json',
       mimeType: 'application/json',
     })
 
@@ -273,7 +273,7 @@ describe('管理工作区', () => {
       text: async () => contents,
     })
     await vi.advanceTimersByTimeAsync(1000)
-    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_14c9e5f2-718a-4271-b3e1-643f1a1d6ccc')
     expect(workspace.workflow).toMatchObject({ status: 'success', message: '已导入快照' })
   })
 
@@ -290,13 +290,13 @@ describe('管理工作区', () => {
 
     await vi.advanceTimersByTimeAsync(1000)
 
-    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_14c9e5f2-718a-4271-b3e1-643f1a1d6ccc')
     expect(workspace.canSave).toBe(true)
 
     workspace.editorText = '[]'
     await nextTick()
 
-    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_fixture_20260829')
+    expect(workspace.editorAnalysis.snapshot?.releaseId).toBe('rel_14c9e5f2-718a-4271-b3e1-643f1a1d6ccc')
     expect(workspace.canSave).toBe(true)
     expect(workspace.exportSnapshot()).toBeNull()
 
@@ -331,8 +331,8 @@ describe('管理工作区', () => {
     const { workspace } = await mountWorkspace()
     const first = deferred<string>()
     const second = deferred<string>()
-    const firstContents = JSON.stringify({ ...fixture, releaseId: 'rel_first' })
-    const secondContents = JSON.stringify({ ...fixture, releaseId: 'rel_second' })
+    const firstContents = JSON.stringify({ ...fixture, releaseId: 'rel_9f13c342-c17e-4887-a9be-e6ae3e63ac16' })
+    const secondContents = JSON.stringify({ ...fixture, releaseId: 'rel_2a788c8b-8417-4da8-a053-8687d3bf5a49' })
 
     const firstImport = workspace.importSnapshot({
       name: 'first.json',
@@ -361,7 +361,7 @@ describe('管理工作区', () => {
   it('忽略过期导入的成功结果并保留最新导入错误', async () => {
     const { workspace } = await mountWorkspace()
     const stale = deferred<string>()
-    const staleContents = JSON.stringify({ ...fixture, releaseId: 'rel_stale' })
+    const staleContents = JSON.stringify({ ...fixture, releaseId: 'rel_134548aa-63f4-4733-ac15-af998adfd668' })
     const staleImport = workspace.importSnapshot({
       name: 'stale.json',
       size: staleContents.length,
@@ -390,10 +390,10 @@ describe('管理工作区', () => {
       if (url.endsWith('/api/v1/versions') && method === 'POST') {
         return jsonResponse(currentVersion, 201)
       }
-      if (url.endsWith('/api/v1/versions/ver_1') && method === 'PUT') {
+      if (url.endsWith('/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d') && method === 'PUT') {
         currentVersion = version({
           revision: 2,
-          snapshot: { ...structuredClone(fixture), releaseId: 'rel_fixture_revision_2' },
+          snapshot: { ...structuredClone(fixture), releaseId: 'rel_d587e6bf-9f67-420a-8346-ee2da4c2458d' },
         })
         return jsonResponse(currentVersion)
       }
@@ -411,11 +411,11 @@ describe('管理工作区', () => {
         return jsonResponse(currentJob, 202)
       }
       if (url.endsWith('/refresh')) {
-        currentJob = publishJob({ status: 'succeeded', buildId: 'build_1' })
+        currentJob = publishJob({ status: 'succeeded', buildId: 'build_12b823dc-69a5-4093-93ed-5a85034ddbea' })
         currentVersion = version({ status: 'published', revision: 6, reviewApproved: true })
         return jsonResponse(currentJob)
       }
-      if (url.endsWith('/api/v1/versions/ver_1') && method === 'GET') return jsonResponse(currentVersion)
+      if (url.endsWith('/api/v1/versions/ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d') && method === 'GET') return jsonResponse(currentVersion)
       throw new Error(`unexpected request: ${method} ${url}`)
     })
     vi.stubGlobal('fetch', fetcher)
@@ -425,7 +425,7 @@ describe('管理工作区', () => {
     await workspace.saveDraft()
     expect(workspace.canSubmitReview).toBe(true)
 
-    workspace.editorText = JSON.stringify({ ...fixture, releaseId: 'rel_fixture_revision_2' })
+    workspace.editorText = JSON.stringify({ ...fixture, releaseId: 'rel_d587e6bf-9f67-420a-8346-ee2da4c2458d' })
     await workspace.saveDraft()
     expect(workspace.version?.revision).toBe(2)
 
@@ -445,7 +445,7 @@ describe('管理工作区', () => {
     await workspace.publish()
     expect(publishKeys[1]).toBe(publishKeys[0])
     await workspace.refreshPublish()
-    expect(workspace.publishJob).toMatchObject({ status: 'succeeded', buildId: 'build_1' })
+    expect(workspace.publishJob).toMatchObject({ status: 'succeeded', buildId: 'build_12b823dc-69a5-4093-93ed-5a85034ddbea' })
     expect(workspace.version).toMatchObject({ status: 'published', revision: 6 })
     expect(workspace.versions[0]).toMatchObject({ status: 'published', revision: 6 })
     expect(workspace.canRollback).toBe(true)
@@ -458,21 +458,21 @@ describe('管理工作区', () => {
   it('载入、退回和回滚版本，并保留安全错误状态', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.endsWith('/api/v1/versions/ver_load')) {
-        return jsonResponse(version({ id: 'ver_load', status: 'in_review' }))
+      if (url.endsWith('/api/v1/versions/ver_d700307b-949c-4fb0-b56b-7e6d66348a68')) {
+        return jsonResponse(version({ id: 'ver_d700307b-949c-4fb0-b56b-7e6d66348a68', status: 'in_review' }))
       }
       if (url.endsWith('/reject')) {
-        return jsonResponse(version({ id: 'ver_load', revision: 2 }))
+        return jsonResponse(version({ id: 'ver_d700307b-949c-4fb0-b56b-7e6d66348a68', revision: 2 }))
       }
       if (url.endsWith('/api/v1/rollbacks')) {
-        return jsonResponse(publishJob({ id: 'rollback_1', versionId: 'ver_load', status: 'pending' }), 202)
+        return jsonResponse(publishJob({ id: 'rollback_1', versionId: 'ver_d700307b-949c-4fb0-b56b-7e6d66348a68', status: 'pending' }), 202)
       }
-      return jsonResponse({ code: 'unavailable', message: '服务不可用', requestId: 'req_1' }, 503)
+      return jsonResponse({ code: 'unavailable', message: '服务不可用', requestId: 'req_dfe7be6c-ee3b-49ca-a362-8de710b914dd' }, 503)
     })
     vi.stubGlobal('fetch', fetcher)
     const { workspace } = await mountWorkspace()
 
-    workspace.versionId = 'ver_load'
+    workspace.versionId = 'ver_d700307b-949c-4fb0-b56b-7e6d66348a68'
     await workspace.loadVersion()
     expect(workspace.version?.status).toBe('in_review')
 
@@ -482,14 +482,14 @@ describe('管理工作区', () => {
     await workspace.rejectReview()
     expect(workspace.version?.status).toBe('draft')
 
-    workspace.version = version({ id: 'ver_load', status: 'published' })
+    workspace.version = version({ id: 'ver_d700307b-949c-4fb0-b56b-7e6d66348a68', status: 'published' })
     expect(workspace.canRollback).toBe(true)
     await workspace.rollback()
     expect(workspace.publishJob).toMatchObject({ id: 'rollback_1', status: 'pending' })
 
     workspace.versionId = 'missing'
     await workspace.loadVersion()
-    expect(workspace.workflow).toEqual({ status: 'error', message: '服务不可用', requestId: 'req_1' })
+    expect(workspace.workflow).toEqual({ status: 'error', message: '服务不可用', requestId: 'req_dfe7be6c-ee3b-49ca-a362-8de710b914dd' })
   })
 })
 
@@ -508,7 +508,7 @@ it('retains an accepted task and its key when the version synchronization fails'
   try {
     workspace.version = version({ status: 'in_review', reviewApproved: true })
     await workspace.publish()
-    expect(workspace.publishJob?.id).toBe('pub_1')
+    expect(workspace.publishJob?.id).toBe('pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a')
     expect(workspace.workflow.status).toBe('error')
     await workspace.publish()
     expect(keys[1]).toBe(keys[0])
@@ -522,22 +522,22 @@ it('refreshes an old task summary without replacing the selected version or unsa
     : jsonResponse(version({ status: 'published', revision: 3 }))))
   const { wrapper, workspace } = await mountWorkspace()
   try {
-    workspace.version = version({ id: 'ver_other' })
+    workspace.version = version({ id: 'ver_6e951bd5-bd9c-4f24-8450-4e9fe3c5ff49' })
     workspace.editorText = 'unsaved text'
     workspace.publishJob = publishJob()
     await workspace.refreshPublish()
-    expect(workspace.version?.id).toBe('ver_other')
+    expect(workspace.version?.id).toBe('ver_6e951bd5-bd9c-4f24-8450-4e9fe3c5ff49')
     expect(workspace.editorText).toBe('unsaved text')
-    expect(workspace.versions.find(item => item.id === 'ver_1')).toMatchObject({ status: 'published', revision: 3 })
+    expect(workspace.versions.find(item => item.id === 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d')).toMatchObject({ status: 'published', revision: 3 })
   } finally { wrapper.unmount() }
 })
 
 it.each([false, true])('synchronizes the previous live version after success, selected=%s', async (selectedPrevious) => {
-  const previous = version({ id: 'ver_previous', status: 'published', revision: 8 })
+  const previous = version({ id: 'ver_24580f8f-438f-44d4-bf71-f1cd7174ede4', status: 'published', revision: 8 })
   const target = version({ status: 'publishing', revision: 5 })
   vi.stubGlobal('fetch', vi.fn(async input => String(input).endsWith('/refresh')
     ? jsonResponse(publishJob({ status: 'succeeded' }))
-    : String(input).endsWith('/ver_previous')
+    : String(input).endsWith('/ver_24580f8f-438f-44d4-bf71-f1cd7174ede4')
       ? jsonResponse({ ...previous, status: 'archived', revision: 9 })
       : jsonResponse({ ...target, status: 'published', revision: 6 })))
   const { wrapper, workspace } = await mountWorkspace()
@@ -560,9 +560,9 @@ it('keeps a current dirty snapshot while refreshing its version status', async (
     .mockResolvedValueOnce(jsonResponse(version({ status: 'in_review', revision: 5, reviewApproved: true }))))
   const { wrapper, workspace } = await mountWorkspace()
   try {
-    workspace.versionId = 'ver_1'
+    workspace.versionId = 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d'
     await workspace.loadVersion()
-    const changed = JSON.stringify({ ...fixture, releaseId: 'rel_unsaved' })
+    const changed = JSON.stringify({ ...fixture, releaseId: 'rel_e37f5566-d13a-46e9-ac61-cbb727c6a539' })
     workspace.editorText = changed
     workspace.publishJob = publishJob()
     await workspace.refreshPublish()
@@ -583,7 +583,7 @@ it.each(['succeeded', 'failed'] as const)('synchronizes rollback acceptance and 
     .mockResolvedValueOnce(jsonResponse(version({ status: finalStatus, revision: 6 }))))
   const { wrapper, workspace } = await mountWorkspace()
   try {
-    workspace.versionId = 'ver_1'
+    workspace.versionId = 'ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d'
     await workspace.loadVersion()
     await workspace.rollback()
     expect(workspace.version).toMatchObject({ status: 'publishing', revision: 5 })
@@ -604,7 +604,7 @@ it('holds the write lock during version synchronization and ignores responses af
   try {
     workspace.version = version({ status: 'in_review', reviewApproved: true })
     const operation = workspace.publish()
-    await vi.waitFor(() => expect(workspace.publishJob?.id).toBe('pub_1'))
+    await vi.waitFor(() => expect(workspace.publishJob?.id).toBe('pub_b2549aa9-b67e-4031-93fc-d0edfa9de14a'))
     expect(workspace.busy).toBe(true)
     active.value = false
     read.resolve(jsonResponse(version({ status: 'published', revision: 3 })))

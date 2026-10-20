@@ -2,13 +2,12 @@ package postgres
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"yujian.me/server/internal/domain"
+	"yujian.me/server/internal/identity"
 	"yujian.me/server/internal/ports"
 	"yujian.me/server/internal/publisher"
 )
@@ -40,7 +39,10 @@ func (r *PublisherRepository) Enqueue(ctx context.Context, key string, request p
 	if err != nil {
 		return publisher.Task{}, err
 	}
-	id := fmt.Sprintf("build_%x", sha256.Sum256([]byte(key)))
+	id, err := identity.New("build_")
+	if err != nil {
+		return publisher.Task{}, err
+	}
 	task, err := scanPublisherTask(r.exec.QueryRowContext(ctx, `INSERT INTO publisher_builds (id,idempotency_key,request,target,phase)
 VALUES ($1,$2,$3::jsonb,$4::jsonb,'queued') ON CONFLICT (idempotency_key) DO NOTHING RETURNING `+publisherColumns, id, key, requestJSON, targetJSON))
 	if err != nil && !errors.Is(err, domain.ErrNotFound) && !errors.Is(mapConstraintError(err), domain.ErrConflict) {

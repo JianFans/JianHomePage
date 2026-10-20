@@ -1,5 +1,6 @@
 import type { Moment, YujianContentSnapshot } from '@yujian/schema'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from './snapshot-workbench'
+import { createEntityId } from './identity'
 
 export interface MomentDraft { moments: Moment[] }
 export type MomentErrorCode = 'stale-snapshot' | 'invalid-snapshot' | 'immutable-moment' | 'invalid-draft'
@@ -13,7 +14,7 @@ export function createMomentDraft(snapshot: YujianContentSnapshot): MomentDraft 
 /** 生成空记录供填写，不编造标题、素材或有效外链。 */
 export function createMoment(): Moment {
   return {
-    id: `moment_${crypto.randomUUID().replaceAll('-', '_')}`,
+    id: createEntityId('moment_'),
     assetId: '',
   }
 }

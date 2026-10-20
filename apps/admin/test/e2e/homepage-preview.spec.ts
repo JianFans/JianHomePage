@@ -79,8 +79,8 @@ async function expectReleasedMedia(page: Page) {
 /** Build a canonical video variant with bytes and checksum matching the locally served asset. */
 function videoSnapshot() {
   const value: YujianContentSnapshot = fixtureSnapshot()
-  value.assets.push({ ...value.assets[0]!, id: 'asset_e2e_video', kind: 'video', src: '/media/e2e-video.mp4', mimeType: 'video/mp4', width: 16, height: 16, byteSize: videoBytes.length, checksum: `sha256:${createHash('sha256').update(videoBytes).digest('hex')}` })
-  Object.assign(value.heroSlides[0]!, { mediaKind: 'video', assetId: 'asset_e2e_video', autoplay: true })
+  value.assets.push({ ...value.assets[0]!, id: 'asset_a1cdf0d9-a267-4cd3-b624-81a1e4442dfa', kind: 'video', src: '/media/e2e-video.mp4', mimeType: 'video/mp4', width: 16, height: 16, byteSize: videoBytes.length, checksum: `sha256:${createHash('sha256').update(videoBytes).digest('hex')}` })
+  Object.assign(value.heroSlides[0]!, { mediaKind: 'video', assetId: 'asset_a1cdf0d9-a267-4cd3-b624-81a1e4442dfa', autoplay: true })
   return value
 }
 
@@ -323,7 +323,7 @@ test('视频禁止自动播放；原生音视频在快照更新和关闭时暂�
 test('相邻宣传位复用视频素材时，切换后原生视频保持禁自动播放', async ({ page }) => {
   await page.route('**/media/e2e-video.mp4', route => route.fulfill({ contentType: 'video/mp4', body: videoBytes, headers: { 'access-control-allow-origin': '*' } }))
   const value = videoSnapshot()
-  Object.assign(value.heroSlides[1]!, { mediaKind: 'video', assetId: 'asset_e2e_video', autoplay: true })
+  Object.assign(value.heroSlides[1]!, { mediaKind: 'video', assetId: 'asset_a1cdf0d9-a267-4cd3-b624-81a1e4442dfa', autoplay: true })
   await importSnapshot(page, value)
   await page.getByTestId('studio-preview').click()
   const frame = await previewFrame(page)
@@ -375,14 +375,14 @@ test('切换宣传视频会取消旧视频尚未完成的下载', async ({ page 
       return route.fulfill({ status: 302, headers: { location: `http://127.0.0.1:${port}/${name}` } })
     })
     const value = videoSnapshot()
-    const asset = value.assets.find(item => item.id === 'asset_e2e_video')!
+    const asset = value.assets.find(item => item.id === 'asset_a1cdf0d9-a267-4cd3-b624-81a1e4442dfa')!
     Object.assign(asset, {
       src: '/media/stream-old.mp4',
       byteSize: videoBytes.length + padding.length,
       checksum: `sha256:${createHash('sha256').update(videoBytes).update(padding).digest('hex')}`,
     })
-    value.assets.push({ ...asset, id: 'asset_stream_new', src: '/media/stream-new.mp4' })
-    Object.assign(value.heroSlides[1]!, { mediaKind: 'video', assetId: 'asset_stream_new', autoplay: true })
+    value.assets.push({ ...asset, id: 'asset_8b221f00-7e42-475a-98b3-9b706e22c851', src: '/media/stream-new.mp4' })
+    Object.assign(value.heroSlides[1]!, { mediaKind: 'video', assetId: 'asset_8b221f00-7e42-475a-98b3-9b706e22c851', autoplay: true })
     await importSnapshot(page, value)
     await page.getByTestId('studio-preview').click()
     const frame = await previewFrame(page)

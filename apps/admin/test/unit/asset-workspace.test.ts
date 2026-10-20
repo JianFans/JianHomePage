@@ -23,7 +23,7 @@ describe('asset workspace state machine', () => {
   })
   it('invalidates completion retries and library state when the API connection changes', /** 切换服务端后旧确认目标和分页失效，但未提交的表单仍可用于新上传。 */ async () => {
     const firstApi = createApi()
-    firstApi.listAssets.mockResolvedValueOnce({ items: [readyAsset('asset_a')], nextCursor: 'cursor-a' })
+    firstApi.listAssets.mockResolvedValueOnce({ items: [readyAsset('asset_0f5179cb-849b-4786-84ae-ae17f29ffbda')], nextCursor: 'cursor-a' })
     firstApi.completeAssetUpload.mockRejectedValueOnce(new Error('temporary failure'))
     const secondApi = createApi()
     const baseUrl = ref('https://api-a.example')
@@ -59,7 +59,7 @@ describe('asset workspace state machine', () => {
     const firstApi = createApi()
     firstApi.listAssets.mockReturnValueOnce(oldList.promise)
     const secondApi = createApi()
-    secondApi.listAssets.mockResolvedValueOnce({ items: [readyAsset('asset_b')] })
+    secondApi.listAssets.mockResolvedValueOnce({ items: [readyAsset('asset_47f68d47-98a9-4288-be7c-c76c3dbcad67')] })
     const baseUrl = ref('https://api-a.example')
     const workspace = useAssetWorkspace({
       apiBaseUrl: baseUrl, token: ref('token'), digest: () => hash.promise,
@@ -73,10 +73,10 @@ describe('asset workspace state machine', () => {
     baseUrl.value = 'https://api-b.example'
     expect(workspace.loading.value).toBe(false)
     await workspace.loadAssets()
-    oldList.resolve({ items: [readyAsset('asset_a')], nextCursor: 'cursor-a' })
+    oldList.resolve({ items: [readyAsset('asset_0f5179cb-849b-4786-84ae-ae17f29ffbda')], nextCursor: 'cursor-a' })
     hash.resolve('sha256:' + 'a'.repeat(64))
     await Promise.all([loading, uploading])
-    expect(workspace.assets.value.map(item => item.id)).toEqual(['asset_b'])
+    expect(workspace.assets.value.map(item => item.id)).toEqual(['asset_47f68d47-98a9-4288-be7c-c76c3dbcad67'])
     expect(workspace.nextCursor.value).toBe('')
     expect(workspace.stage.value).toBe('idle')
     expect(firstApi.createAssetUpload).not.toHaveBeenCalled()
@@ -100,7 +100,7 @@ describe('asset workspace state machine', () => {
     token.value = 'refreshed-token'
     expect(workspace.canRetryComplete.value).toBe(true)
     await workspace.retryComplete()
-    expect(refreshedApi.completeAssetUpload).toHaveBeenCalledWith('asset_uploaded')
+    expect(refreshedApi.completeAssetUpload).toHaveBeenCalledWith('asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c')
     expect(workspace.stage.value).toBe('succeeded')
   })
 
@@ -127,8 +127,8 @@ describe('asset workspace state machine', () => {
       rights: { source: { 'zh-CN': '官方授权' } },
     }))
     expect(api.uploadAssetBlob).toHaveBeenCalledTimes(1)
-    expect(api.completeAssetUpload).toHaveBeenCalledWith('asset_uploaded')
-    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_uploaded'])
+    expect(api.completeAssetUpload).toHaveBeenCalledWith('asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c')
+    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c'])
     expect(workspace.file.value).toBeNull()
   })
 
@@ -175,18 +175,18 @@ describe('asset workspace state machine', () => {
   it('appends pages without duplicate IDs and resets results for a status filter', /** 重叠分页按 ID 去重，状态变化则重新请求固定页大小并清除旧游标。 */ async () => {
     const api = createApi()
     api.listAssets
-      .mockResolvedValueOnce({ items: [readyAsset('asset_a'), readyAsset('asset_b')], nextCursor: 'next' })
-      .mockResolvedValueOnce({ items: [readyAsset('asset_b'), readyAsset('asset_c')] })
-      .mockResolvedValueOnce({ items: [readyAsset('asset_ready')] })
+      .mockResolvedValueOnce({ items: [readyAsset('asset_0f5179cb-849b-4786-84ae-ae17f29ffbda'), readyAsset('asset_47f68d47-98a9-4288-be7c-c76c3dbcad67')], nextCursor: 'next' })
+      .mockResolvedValueOnce({ items: [readyAsset('asset_47f68d47-98a9-4288-be7c-c76c3dbcad67'), readyAsset('asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6')] })
+      .mockResolvedValueOnce({ items: [readyAsset('asset_4c1ba641-5c3b-4477-91ea-7a24acc8aa17')] })
     const workspace = createWorkspace(api)
 
     await workspace.loadAssets()
     await workspace.loadMore()
-    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_a', 'asset_b', 'asset_c'])
+    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_0f5179cb-849b-4786-84ae-ae17f29ffbda', 'asset_47f68d47-98a9-4288-be7c-c76c3dbcad67', 'asset_f964af2b-2c43-4b26-99fe-2f3b32e0b3d6'])
 
     await workspace.setStatusFilter('ready')
     expect(api.listAssets).toHaveBeenLastCalledWith({ status: 'ready', limit: 50 })
-    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_ready'])
+    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_4c1ba641-5c3b-4477-91ea-7a24acc8aa17'])
     expect(workspace.nextCursor.value).toBe('')
   })
 
@@ -194,18 +194,18 @@ describe('asset workspace state machine', () => {
     const api = createApi()
     api.listAssets.mockResolvedValueOnce({
       items: [
-        readyAsset('asset_cover', 'cover.webp', 'image/webp'),
-        readyAsset('asset_song', 'song.mp3', 'audio/mpeg'),
+        readyAsset('asset_1640be1f-25cb-4df5-9f39-b7bffd72f5a1', 'cover.webp', 'image/webp'),
+        readyAsset('asset_15cae191-c6eb-4a04-a805-2bd5b0242011', 'song.mp3', 'audio/mpeg'),
       ],
     })
     const workspace = createWorkspace(api)
     await workspace.loadAssets()
 
     workspace.kindFilter.value = 'audio'
-    expect(workspace.filteredAssets.value.map(asset => asset.id)).toEqual(['asset_song'])
+    expect(workspace.filteredAssets.value.map(asset => asset.id)).toEqual(['asset_15cae191-c6eb-4a04-a805-2bd5b0242011'])
     workspace.kindFilter.value = 'all'
     workspace.searchText.value = 'COVER'
-    expect(workspace.filteredAssets.value.map(asset => asset.id)).toEqual(['asset_cover'])
+    expect(workspace.filteredAssets.value.map(asset => asset.id)).toEqual(['asset_1640be1f-25cb-4df5-9f39-b7bffd72f5a1'])
     expect(api.listAssets).toHaveBeenCalledTimes(1)
   })
 
@@ -239,7 +239,7 @@ describe('asset workspace state machine', () => {
     pendingList.resolve({ items: [] })
     await loading
 
-    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_uploaded'])
+    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c'])
     expect(workspace.loading.value).toBe(false)
   })
 
@@ -259,13 +259,13 @@ describe('asset workspace state machine', () => {
     expect(workspace.assets.value).toEqual([])
     expect(workspace.loading.value).toBe(true)
     pendingList.resolve({ items: [
-      { ...readyAsset('asset_other'), status },
+      { ...readyAsset('asset_effdd871-571a-464b-b609-ba85347b5360'), status },
       ...(status === 'pending' ? [{ ...readyAsset(), status }] : []),
     ], nextCursor: 'next-page' })
     await loading
 
-    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_other'])
-    expect(workspace.filteredAssets.value.map(asset => asset.id)).toEqual(['asset_other'])
+    expect(workspace.assets.value.map(asset => asset.id)).toEqual(['asset_effdd871-571a-464b-b609-ba85347b5360'])
+    expect(workspace.filteredAssets.value.map(asset => asset.id)).toEqual(['asset_effdd871-571a-464b-b609-ba85347b5360'])
     expect(workspace.nextCursor.value).toBe('next-page')
     expect(workspace.loading.value).toBe(false)
   })
@@ -298,7 +298,7 @@ function createWorkspace(api: ReturnType<typeof createApi>) {
 }
 
 /** 构造可被快照工作台消费的已确认素材。 */
-function readyAsset(id = 'asset_uploaded', fileName = 'cover.webp', contentType = 'image/webp'): AdminAsset {
+function readyAsset(id = 'asset_a2a76b6c-d817-4bb7-8064-a9efbceb644c', fileName = 'cover.webp', contentType = 'image/webp'): AdminAsset {
   return {
     id,
     src: `https://media.yujian.me/assets/${id}/source`,

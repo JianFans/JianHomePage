@@ -1,5 +1,6 @@
 import type { Event, YujianContentSnapshot } from '@yujian/schema'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from './snapshot-workbench'
+import { createEntityId } from './identity'
 
 export interface EventDraft { events: Event[] }
 export type EventErrorCode = 'stale-snapshot' | 'invalid-snapshot' | 'immutable-event' | 'invalid-draft'
@@ -13,7 +14,7 @@ export function createEventDraft(snapshot: YujianContentSnapshot): EventDraft {
 /** 生成空记录供填写，不编造标题、素材或有效外链。 */
 export function createEvent(): Event {
   return {
-    id: `event_${crypto.randomUUID().replaceAll('-', '_')}`,
+    id: createEntityId('event_'),
     title: { 'zh-CN': '' }, city: { 'zh-CN': '' }, venue: { 'zh-CN': '' },
     dateTime: '', status: 'scheduled', detailUrl: '',
   }

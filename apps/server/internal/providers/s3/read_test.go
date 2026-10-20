@@ -26,7 +26,7 @@ func TestSignedReadURLIsRestrictedToMediaKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SignedReadURL(context.Background(), "snapshots/rel_test/sha256.json", time.Minute); err == nil {
+	if _, err := store.SignedReadURL(context.Background(), "snapshots/rel_b73feb78-c751-4ccb-be54-8a8039247ca0/sha256.json", time.Minute); err == nil {
 		t.Fatal("signed a publish snapshot key")
 	} else if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Fatalf("unexpected non-media-key error: %v", err)

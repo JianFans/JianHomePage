@@ -1,20 +1,20 @@
 import { onScopeDispose, readonly, ref } from 'vue'
+import { createEntityId } from '../utils/identity'
 
 export type ToastTone = 'info' | 'success' | 'warning' | 'error'
-export interface ToastMessage { id: number; message: string; tone: ToastTone }
+export interface ToastMessage { id: string; message: string; tone: ToastTone }
 interface Lifetime { remaining: number; started: number; timer?: ReturnType<typeof setTimeout>; pauses: Set<string> }
 
 /** 管理独立的消息队列；暂停原因分别计数，防止指针移出恢复仍在聚焦的消息。 */
 export function useToasts() {
   const items = ref<ToastMessage[]>([])
   const queue: ToastMessage[] = []
-  const lifetimes = new Map<number, Lifetime>()
+  const lifetimes = new Map<string, Lifetime>()
   const globalPauses = new Set<string>()
-  let sequence = 0
   let disposed = false
 
   /** 只为当前可见且没有暂停原因的消息启动剩余计时。 */
-  function start(id: number) {
+  function start(id: string) {
     const life = lifetimes.get(id)
     if (!life || life.timer !== undefined || life.pauses.size || globalPauses.size || disposed) return
     life.started = Date.now()
@@ -39,8 +39,8 @@ export function useToasts() {
   }
 
   /** 创建文本消息，错误提示保留更长阅读时间。 */
-  function notify(message: string, tone: ToastTone = 'info'): number {
-    const id = ++sequence
+  function notify(message: string, tone: ToastTone = 'info'): string {
+    const id = createEntityId('toast_')
     if (disposed) return id
     lifetimes.set(id, { remaining: tone === 'error' ? 7000 : 5000, started: 0, pauses: new Set() })
     queue.push({ id, message, tone })
@@ -49,7 +49,7 @@ export function useToasts() {
   }
 
   /** 关闭指定消息，并释放其计时资源和队列位置。 */
-  function dismiss(id: number) {
+  function dismiss(id: string) {
     const life = lifetimes.get(id)
     if (life) stop(life)
     lifetimes.delete(id)
@@ -60,7 +60,7 @@ export function useToasts() {
   }
 
   /** 每种交互独立暂停，重复进入同一原因不重置时间。 */
-  function pause(id: number, reason: string) {
+  function pause(id: string, reason: string) {
     const life = lifetimes.get(id)
     if (!life) return
     stop(life)
@@ -68,7 +68,7 @@ export function useToasts() {
   }
 
   /** 只有最后一个暂停原因结束时才恢复可见消息。 */
-  function resume(id: number, reason: string) {
+  function resume(id: string, reason: string) {
     lifetimes.get(id)?.pauses.delete(reason)
     if (items.value.some(item => item.id === id)) start(id)
   }

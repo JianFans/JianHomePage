@@ -206,7 +206,7 @@ Authorization: Bearer <session-token>
 {
   "code": "conflict",
   "message": "Resource was modified by another request.",
-  "requestId": "req-123"
+  "requestId": "req_550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
@@ -268,6 +268,7 @@ Authorization: Bearer <session-token>
 - `0004_asset_source_url` 会在同一迁移事务中锁定缺少公开地址的旧素材，使用当前对象存储适配器的 `PublicURL` 回填，并拒绝非 `NULL` 的空字符串。升级期间必须保持 `MEDIA_PUBLIC_BASE_URL` 为旧内容正在使用的稳定域名；解析或并发回填失败时服务会回滚迁移并拒绝启动。为兼容滚动升级中的旧实例和旧二进制回滚，本版本允许 `source_url` 为 `NULL`；旧实例全部退出并度过回滚窗口后，后续迁移必须再次回填期间产生的 `NULL`，再设置 `NOT NULL`。
 - 滚动升级期间，旧实例仍可能写入没有 `source_url` 的素材。新实例读取素材列表时只补全实际返回页中缺少的地址，并原子持久化首次胜出的地址；不改写状态、元数据或已存在的地址。解析或持久化失败会使该次列表请求失败，不返回空 `src`。旧实例退出前应保持稳定公开域名，不能借滚动升级更换历史素材的域名。
 - `0005_asset_list_indexes` 为单状态筛选添加状态、创建时间和 ID 的复合索引，为未删除列表添加部分索引。迁移在启动事务中执行，首次构建索引会暂时阻塞素材表写入；应在维护窗口执行，并为大表预留启动时间。索引不改变旧实例读写契约，也无需重写素材数据。
+- `0010_uuid_ids` 是不兼容的停服升级：先停止所有旧版服务实例和写入流量，再启动新版；迁移成功后不得重启旧二进制。迁移只检查执行时业务表是否为空，不会阻止旧实例之后写入旧格式 ID。任一业务表（包括 `publish_snapshots`）已有记录时，迁移事务会回滚并拒绝启动，不能自动映射旧 ID 及其快照引用。预发布环境请改用空数据库。审计行会保留，`audit_log.id` 转为 UUID；COS 对象不会检查、迁移或删除，旧对象不会自动关联到新素材记录。若升级失败，先保持服务停止；回退需同时恢复升级前的数据库备份和旧二进制。
 - 审核、发布、回滚、资源删除都写入审计日志。
 - 生产部署应通过 HTTPS、密钥服务和独立数据库运行，并为 `/healthz` 配置存活探针。
 
@@ -278,8 +279,9 @@ Authorization: Bearer <session-token>
 ```bash
 go test ./internal/store/postgres -run TestPostgresAsset -count=1 -v
 go test ./internal/store/postgres -run TestPostgresPublisher -count=1 -v
+go test ./internal/store/postgres -run TestPostgresUUIDMigration -count=1 -v
 ```
 
-测试账号需要创建和删除 Schema 的权限。每个测试创建独立 Schema，执行两次迁移检查可重复性，结束后删除测试 Schema；不会访问现有应用表。分页测试创建 100,000 条临时素材，对仓储实际执行的 SQL 运行 `EXPLAIN (ANALYZE, BUFFERS)`，检查首、深页排序和游标、索引使用及扫描行数。未提供测试数据库时，这些集成测试明确跳过，其他单元测试仍正常执行。
+测试账号需要创建和删除 Schema 的权限。每个测试创建独立 Schema，结束后删除测试 Schema；不会访问现有应用表。UUID 迁移测试从 `0009_publish_snapshots` 旧结构验证旧业务数据保护、审计 ID 转换及重复启动。分页测试创建 100,000 条临时素材，对仓储实际执行的 SQL 运行 `EXPLAIN (ANALYZE, BUFFERS)`，检查首、深页排序和游标、索引使用及扫描行数。未提供测试数据库时，这些集成测试明确跳过，其他单元测试仍正常执行。
 
 发布集成测试检查历史迁移兼容、单活动任务竞争、固定连接锁、服务重建及结果不明后的人工恢复。云端适配器使用受控测试实现，不证明真实 Pages 账号、权限或网络已验证。

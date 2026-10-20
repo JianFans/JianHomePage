@@ -20,7 +20,7 @@ type publisherStub struct {
 // Inspect counts calls to detect authentication paths reaching the domain service.
 func (s *publisherStub) Inspect(context.Context, string) (publisher.Task, error) {
 	s.calls++
-	return publisher.Task{ID: "build_test", Phase: "submitting"}, s.err
+	return publisher.Task{ID: "build_18c66304-8e14-4453-9f71-5a0bd40ed814", Phase: "submitting"}, s.err
 }
 
 // Recover retains the authenticated audit input for HTTP boundary assertions.
@@ -39,7 +39,7 @@ func TestPublisherRecoveryRequiresAdministrator(t *testing.T) {
 			middleware, _ := auth.NewMiddleware(auth.MiddlewareOptions{AllowDevIdentity: true})
 			router := NewRouter(RouterOptions{Publisher: service, Middleware: middleware})
 			recorder := httptest.NewRecorder()
-			router.ServeHTTP(recorder, authenticatedRequest(http.MethodPost, "/api/v1/publisher/builds/build_test/recovery", `{"confirmedAbsent":true,"note":"Checked cloud console"}`, role))
+			router.ServeHTTP(recorder, authenticatedRequest(http.MethodPost, "/api/v1/publisher/builds/build_18c66304-8e14-4453-9f71-5a0bd40ed814/recovery", `{"confirmedAbsent":true,"note":"Checked cloud console"}`, role))
 			want := http.StatusForbidden
 			if role == "admin" {
 				want = http.StatusOK
@@ -68,7 +68,7 @@ func TestPublisherRecoveryRejectsMalformedBody(t *testing.T) {
 		t.Run(body, func(t *testing.T) {
 			service := &publisherStub{}
 			recorder := httptest.NewRecorder()
-			NewRouter(RouterOptions{Publisher: service, Middleware: middleware}).ServeHTTP(recorder, authenticatedRequest(http.MethodPost, "/api/v1/publisher/builds/build_test/recovery", body, "admin"))
+			NewRouter(RouterOptions{Publisher: service, Middleware: middleware}).ServeHTTP(recorder, authenticatedRequest(http.MethodPost, "/api/v1/publisher/builds/build_18c66304-8e14-4453-9f71-5a0bd40ed814/recovery", body, "admin"))
 			if recorder.Code != http.StatusBadRequest || service.calls != 0 {
 				t.Fatalf("status=%d calls=%d: %s", recorder.Code, service.calls, recorder.Body)
 			}
@@ -81,7 +81,7 @@ func TestPublisherRecoveryRejectsMalformedBody(t *testing.T) {
 func TestPublisherEndpointsEnforceAuthenticationAndMapDomainErrors(t *testing.T) {
 	middleware, _ := auth.NewMiddleware(auth.MiddlewareOptions{AllowDevIdentity: true})
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		target := "/api/v1/publisher/builds/build_test"
+		target := "/api/v1/publisher/builds/build_18c66304-8e14-4453-9f71-5a0bd40ed814"
 		if method == http.MethodPost {
 			target += "/recovery"
 		}
@@ -122,7 +122,7 @@ func TestPublisherEndpointsEnforceAuthenticationAndMapDomainErrors(t *testing.T)
 func TestPublisherInspectionAndUnavailableService(t *testing.T) {
 	middleware, _ := auth.NewMiddleware(auth.MiddlewareOptions{AllowDevIdentity: true})
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		target := "/api/v1/publisher/builds/build_test"
+		target := "/api/v1/publisher/builds/build_18c66304-8e14-4453-9f71-5a0bd40ed814"
 		body := ""
 		if method == http.MethodPost {
 			target += "/recovery"

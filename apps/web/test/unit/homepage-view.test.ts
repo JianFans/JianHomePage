@@ -67,7 +67,7 @@ describe('HomepageView explicit rendering boundary', () => {
     await wrapper.setProps({ snapshot: structuredClone(snapshot) })
     expect(wrapper.find('footer .platform-links').exists()).toBe(true)
     section.enabled = true
-    // @ts-expect-error Deliberately supply a missing reference to verify defensive rendering.
+    // Deliberately supply a missing reference to verify defensive rendering.
     section.itemIds = ['missing_artist']
     await wrapper.setProps({ snapshot: structuredClone(snapshot) })
     expect(wrapper.find('footer .platform-links').exists()).toBe(true)
