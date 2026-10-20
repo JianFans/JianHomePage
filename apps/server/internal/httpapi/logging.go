@@ -196,7 +196,7 @@ func logOperation(r *http.Request, err error, status int, code, message string, 
 	}
 	attrs = append(attrs, resourceFields(r)...)
 	attrs = append(attrs, fields...)
-	if err != nil && !expectedDomainRejection(err) {
+	if err != nil && (status >= http.StatusInternalServerError || !expectedDomainRejection(err)) {
 		attrs = append(attrs, observability.Error(err))
 	}
 	observability.Logger(r.Context()).Log(r.Context(), requestLevel(status), message, attrs...)

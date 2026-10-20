@@ -163,7 +163,7 @@ type diagnosticValidator struct{}
 // Validate isolates transport diagnostics from the independent schema suite.
 func (diagnosticValidator) Validate([]byte) error { return nil }
 
-type diagnosticBuildTrigger struct{}
+type diagnosticBuildTrigger struct{ statusErr error }
 
 // Trigger represents a durable build accepted after the immutable snapshot write.
 func (diagnosticBuildTrigger) Trigger(context.Context, ports.BuildRequest) (ports.BuildRun, error) {
@@ -171,6 +171,9 @@ func (diagnosticBuildTrigger) Trigger(context.Context, ports.BuildRequest) (port
 }
 
 // Status leaves the accepted build running for the HTTP admission test.
-func (diagnosticBuildTrigger) Status(context.Context, string) (ports.BuildRun, error) {
+func (trigger diagnosticBuildTrigger) Status(context.Context, string) (ports.BuildRun, error) {
+	if trigger.statusErr != nil {
+		return ports.BuildRun{}, trigger.statusErr
+	}
 	return ports.BuildRun{ID: "build_1", Status: domain.PublishBuilding}, nil
 }
