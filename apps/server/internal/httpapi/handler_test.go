@@ -96,10 +96,19 @@ func (stub *contentServiceStub) RejectReview(ctx context.Context, actor domain.P
 }
 
 type publishServiceStub struct {
+	latestFn   func(context.Context, domain.Principal) (domain.PublishJob, error)
 	publishFn  func(context.Context, domain.Principal, string, string) (domain.PublishJob, error)
 	getFn      func(context.Context, domain.Principal, string) (domain.PublishJob, error)
 	refreshFn  func(context.Context, domain.Principal, string) (domain.PublishJob, error)
 	rollbackFn func(context.Context, domain.Principal, string, string) (domain.PublishJob, error)
+}
+
+// LatestPublishJob supplies persisted history independently of browser memory.
+func (stub *publishServiceStub) LatestPublishJob(ctx context.Context, actor domain.Principal) (domain.PublishJob, error) {
+	if stub.latestFn == nil {
+		return domain.PublishJob{}, domain.ErrNotFound
+	}
+	return stub.latestFn(ctx, actor)
 }
 
 type assetServiceStub struct {

@@ -8,6 +8,7 @@ import VideoWorkbench from './VideoWorkbench.vue'
 import EventWorkbench from './EventWorkbench.vue'
 import MomentWorkbench from './MomentWorkbench.vue'
 import SnapshotInsights from './SnapshotInsights.vue'
+import PublishStatusPanel from './PublishStatusPanel.vue'
 import type { StudioWorkspace } from '../composables/useStudioWorkspace'
 import type { AdminLocale } from '../utils/admin-locale'
 import { studioVersionStatus, type StudioModule } from '../utils/studio-copy'
@@ -67,6 +68,19 @@ function navigate(module: StudioModule) { emit('navigate', module) }
             />
           </button>
         </div>
+        <PublishStatusPanel
+          v-if="studio.canPublish"
+          :job="workspace.publishJob"
+          :locale="locale"
+          :busy="workspace.busy"
+          :unsaved="studio.unsaved"
+          :can-recover="Boolean(session.principal?.roles.includes('admin'))"
+          :refreshing="workspace.publishRefreshing"
+          :read-error="workspace.publishReadError"
+          @refresh="workspace.publishJob ? workspace.refreshPublish() : workspace.restorePublish()"
+          @retry="workspace.retryPublish"
+          @recover="workspace.recoverPublish"
+        />
         <div class="studio-section-heading">
           <h2>{{ copy.latest }}</h2><button
             type="button"
@@ -208,6 +222,19 @@ function navigate(module: StudioModule) { emit('navigate', module) }
             {{ copy.refresh }}
           </button>
         </div>
+        <PublishStatusPanel
+          v-if="studio.canPublish"
+          :job="workspace.publishJob"
+          :locale="locale"
+          :busy="workspace.busy"
+          :unsaved="studio.unsaved"
+          :can-recover="Boolean(session.principal?.roles.includes('admin'))"
+          :refreshing="workspace.publishRefreshing"
+          :read-error="workspace.publishReadError"
+          @refresh="workspace.publishJob ? workspace.refreshPublish() : workspace.restorePublish()"
+          @retry="workspace.retryPublish"
+          @recover="workspace.recoverPublish"
+        />
         <div class="studio-history-list">
           <button
             v-for="item in workspace.versions"
@@ -281,15 +308,6 @@ function navigate(module: StudioModule) { emit('navigate', module) }
             @click="emit('workflow', 'rollback')"
           >
             {{ copy.rollback }}
-          </button>
-          <button
-            v-if="workspace.publishJob"
-            class="button"
-            type="button"
-            :disabled="workspace.busy"
-            @click="workspace.refreshPublish"
-          >
-            {{ copy.refresh }} · {{ workspace.publishJob.status }}
           </button>
         </div>
       </section>

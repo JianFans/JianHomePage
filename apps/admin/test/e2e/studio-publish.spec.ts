@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { backend, navigate, selectVersion } from './studio'
+import type { AdminPublishJob } from '../../utils/admin-api'
 
 for (const selectedPrevious of [false, true]) test(`发布及刷新同步新旧版本修订，当前选择旧版本=${selectedPrevious}`, async ({ page }) => {
   const api = await backend(page)
@@ -35,10 +36,103 @@ for (const selectedPrevious of [false, true]) test(`发布及刷新同步新旧�
     await selectVersion(page, previous.id)
     await expect(page.getByTestId('studio-version-name')).toHaveText('Previous version')
   }
-  await page.getByRole('button', { name: 'Refresh · building', exact: true }).click()
+  await page.getByTestId('publish-refresh').click()
   await expect(page.locator('.studio-meta')).toContainText(selectedPrevious ? 'Archived' : 'Published')
   await expect(page.locator('.studio-meta')).toContainText(selectedPrevious ? 'Revision 3' : 'Revision 6')
   await expect(page.getByTestId('version-ver_14cea400-a42f-4560-9770-3de88cae9d5a')).toContainText('Published')
   await expect(page.getByTestId('version-ver_8bb3a437-061d-4dcd-805e-7d5e6f716921')).toContainText('Archived')
   await expect(page.getByRole('button', { name: 'Rollback', exact: true })).toBeEnabled()
+})
+
+/** 云端仅替换 HTTP 边界，任务恢复、表单和轮询由真实管理端驱动。 */
+function task(): AdminPublishJob {
+  return { id: 'pub_d12f724e-a67b-4212-ae95-44b9aa602de8', versionId: 'ver_14cea400-a42f-4560-9770-3de88cae9d5a', operation: 'publish', status: 'building', buildId: 'build_981ab54b-e9e9-4230-8803-a6af5c970ad3', snapshotKey: 'snapshots/test', snapshotChecksum: 'sha256:browser', build: { phase: 'deployed', deploymentId: 'dp-test', configurationMismatch: false } }
+}
+
+test('重新进入恢复持久任务并自动显示部署终态，不创建新任务', async ({ page }) => {
+  const api = await backend(page)
+  const job = task()
+  const record = api.records.get(job.versionId)!
+  record.status = 'publishing'
+  await page.addInitScript(() => localStorage.setItem('yujian:admin-locale', 'en'))
+  await page.route('**/api/v1/publishes/latest', route => route.fulfill({ json: job }))
+  await page.route(`**/api/v1/publishes/${job.id}`, route => {
+    record.status = 'published'
+    record.revision++
+    job.status = 'succeeded'
+    job.build!.phase = 'succeeded'
+    return route.fulfill({ json: job })
+  })
+  await page.goto('/')
+  await expect(page.getByTestId('publish-status')).toContainText('Deployment accepted')
+  await expect(page.getByTestId('publish-status')).toContainText('dp-test')
+  await expect(page.getByTestId('publish-status').getByRole('status')).toHaveText('Published', { timeout: 12000 })
+  await expect(page.locator('.studio-meta')).toContainText('Published')
+  expect(api.writes).toHaveLength(0)
+  await page.reload()
+  await expect(page.getByTestId('publish-status').getByRole('status')).toHaveText('Published')
+  expect(api.writes).toHaveLength(0)
+})
+
+test('失败任务确认后以新幂等键重试，保留旧版本选择', async ({ page }) => {
+  const api = await backend(page)
+  const job = task()
+  job.status = 'failed'
+  job.build = { phase: 'failed', error: 'Preparation failed', configurationMismatch: false }
+  const record = api.records.get(job.versionId)!
+  Object.assign(record, { status: 'in_review', reviewApproved: true })
+  await page.addInitScript(() => localStorage.setItem('yujian:admin-locale', 'en'))
+  await page.route('**/api/v1/publishes/latest', route => route.fulfill({ json: job }))
+  const keys: string[] = []
+  await page.route('**/api/v1/publishes', route => {
+    expect(route.request().postDataJSON()).toEqual({ versionId: record.id })
+    keys.push(route.request().headers()['idempotency-key']!)
+    return route.fulfill({ status: 202, json: { ...job, id: `pub_retry_${keys.length}` } })
+  })
+  await page.goto('/')
+  await expect(page.getByTestId('studio-version-name')).toHaveText('Working draft')
+  await selectVersion(page, 'ver_8bb3a437-061d-4dcd-805e-7d5e6f716921')
+  for (let i = 0; i < 2; i++) {
+    await page.getByTestId('publish-retry').click()
+    expect(keys).toHaveLength(i)
+    await page.getByTestId('publish-confirm').click()
+    await expect(page.getByTestId('publish-status')).toContainText(`pub_retry_${i + 1}`)
+  }
+  expect(keys[0]).toBeTruthy()
+  expect(keys[1]).not.toBe(keys[0])
+  await expect(page.getByTestId('studio-version-name')).toHaveText('Previous version')
+})
+
+test('结果不明的部署由管理员核实，失败保留输入，配置变化仍可确认未创建', async ({ page }) => {
+  const api = await backend(page)
+  const job = task()
+  job.build = { phase: 'submitting', error: 'Deployment outcome unknown', configurationMismatch: true }
+  api.records.get(job.versionId)!.status = 'publishing'
+  await page.addInitScript(() => localStorage.setItem('yujian:admin-locale', 'en'))
+  await page.route('**/api/v1/publishes/latest', route => route.fulfill({ json: job }))
+  let attempts = 0
+  await page.route(`**/api/v1/publisher/builds/${job.buildId}/recovery`, route => {
+    expect(route.request().headers()['x-csrf-token']).toBe('csrf-browser-contract')
+    expect(route.request().postDataJSON()).toEqual({ confirmedAbsent: true, note: 'Checked original project' })
+    if (++attempts === 1) return route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Unavailable' } })
+    return route.fulfill({ json: { phase: 'failed' } })
+  })
+  await page.route(`**/api/v1/publishes/${job.id}/refresh`, route => {
+    job.status = 'failed'
+    job.build!.phase = 'failed'
+    api.records.get(job.versionId)!.status = 'in_review'
+    return route.fulfill({ json: job })
+  })
+  await page.goto('/')
+  await expect(page.getByTestId('publish-status')).toContainText('Verification required')
+  await page.getByTestId('publish-recover').click()
+  await expect(page.getByTestId('publish-confirm')).toBeDisabled()
+  await page.getByRole('textbox', { name: 'Verification note (one line)' }).fill('Checked original project')
+  await page.getByRole('checkbox').check()
+  await page.getByTestId('publish-confirm').click()
+  await expect(page.getByTestId('toast-viewport')).toContainText('Unavailable')
+  await expect(page.getByRole('textbox', { name: 'Verification note (one line)' })).toHaveValue('Checked original project')
+  await page.getByTestId('publish-confirm').click()
+  await expect(page.getByTestId('publish-retry')).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })

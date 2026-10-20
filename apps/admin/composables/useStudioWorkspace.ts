@@ -177,6 +177,7 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
     try {
       await session.restore()
       if (!session.authenticated) return
+      if (canPublish.value) await workspace.restorePublish()
       await workspace.listVersions()
       if (!session.authenticated || workspace.listError) return
       if (workspace.version) return

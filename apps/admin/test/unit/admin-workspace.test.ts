@@ -114,6 +114,52 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+it('重试失败任务使用新键及原任务版本，不替换当前选择', async () => {
+  const { wrapper, workspace } = await mountWorkspace()
+  const keys: string[] = []
+  let attempt = 0
+  vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+    if (String(input).endsWith('/publishes')) {
+      keys.push(new Headers(init?.headers).get('Idempotency-Key')!)
+      expect(JSON.parse(String(init?.body)).versionId).toBe('ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d')
+      return jsonResponse(publishJob({ id: `job_${++attempt}`, status: attempt === 1 ? 'failed' : 'building', operation: 'publish' }))
+    }
+    return jsonResponse(version({ status: 'in_review', reviewApproved: true }))
+  }))
+  workspace.version = version({ status: 'in_review', reviewApproved: true })
+  await workspace.publish()
+  workspace.version = version({ id: 'ver_other' })
+  await workspace.retryPublish()
+  expect(keys).toHaveLength(2)
+  expect(keys[1]).not.toBe(keys[0])
+  expect(workspace.publishJob?.id).toBe('job_2')
+  expect(workspace.version?.id).toBe('ver_other')
+  wrapper.unmount()
+})
+
+it('重试响应丢失后复用同一键，不能把一次回滚变成两次云端创建', async () => {
+  const { wrapper, workspace } = await mountWorkspace()
+  const old = publishJob({ status: 'failed', operation: 'rollback' })
+  workspace.publishJob = old
+  const keys: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+    if (String(input).endsWith('/rollbacks')) {
+      keys.push(new Headers(init?.headers).get('Idempotency-Key')!)
+      if (keys.length === 1) throw new Error('Response lost')
+      return jsonResponse(publishJob({ id: 'job_retry', operation: 'rollback' }))
+    }
+    if (String(input).endsWith('/latest')) return jsonResponse(old)
+    return jsonResponse(version())
+  }))
+  await workspace.retryPublish()
+  await workspace.retryPublish()
+  expect(keys).toHaveLength(2)
+  expect(keys[0]).toBeTruthy()
+  expect(keys[1]).toBe(keys[0])
+  expect(workspace.publishJob?.id).toBe('job_retry')
+  wrapper.unmount()
+})
+
 describe('管理工作区', () => {
   it('保存后的新修订不会被迟到的旧摘要页覆盖', async () => {
     const { wrapper, workspace } = await mountWorkspace()

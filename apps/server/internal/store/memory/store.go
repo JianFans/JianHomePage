@@ -335,6 +335,23 @@ func (repository *PublishRepository) GetPublishJobByIdempotencyKey(_ context.Con
 	return value, err
 }
 
+// GetLatestPublishJob mirrors the durable repository's ordering without relying on map iteration.
+func (repository *PublishRepository) GetLatestPublishJob(_ context.Context) (domain.PublishJob, error) {
+	var value domain.PublishJob
+	err := repository.withRead(func() error {
+		for _, job := range repository.state.jobs {
+			if value.ID == "" || job.CreatedAt.After(value.CreatedAt) || (job.CreatedAt.Equal(value.CreatedAt) && job.ID > value.ID) {
+				value = job
+			}
+		}
+		if value.ID == "" {
+			return domain.ErrNotFound
+		}
+		return nil
+	})
+	return value, err
+}
+
 func (repository *PublishRepository) GetActivePublishJob(_ context.Context) (domain.PublishJob, error) {
 	var value domain.PublishJob
 	err := repository.withRead(func() error {

@@ -39,6 +39,7 @@ export async function backend(page: Page, value: Snapshot = fixtureSnapshot()) {
       expect(request.headers().authorization).toBeUndefined()
     }
     if (path.endsWith('/auth/logout')) return route.fulfill({ status: 204 })
+    if (path.endsWith('/publishes/latest')) return route.fulfill({ status: 204 })
     if (path.endsWith('/assets')) return route.fulfill({ json: { items: [] } })
     if (path.endsWith('/versions')) return route.fulfill({ json: { items: [...records.values()].map((record) => {
       const { snapshot: content, ...summary } = record

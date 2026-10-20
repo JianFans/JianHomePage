@@ -101,6 +101,20 @@ func (repository *memoryRepository) GetPublishJobByIdempotencyKey(_ context.Cont
 	return repository.jobs[id], nil
 }
 
+// GetLatestPublishJob restores the newest test operation using the production ordering.
+func (repository *memoryRepository) GetLatestPublishJob(context.Context) (domain.PublishJob, error) {
+	var latest domain.PublishJob
+	for _, job := range repository.jobs {
+		if latest.ID == "" || job.CreatedAt.After(latest.CreatedAt) || (job.CreatedAt.Equal(latest.CreatedAt) && job.ID > latest.ID) {
+			latest = job
+		}
+	}
+	if latest.ID == "" {
+		return latest, domain.ErrNotFound
+	}
+	return latest, nil
+}
+
 func (repository *memoryRepository) GetActivePublishJob(context.Context) (domain.PublishJob, error) {
 	for _, job := range repository.jobs {
 		if job.Status == domain.PublishPending || job.Status == domain.PublishBuilding {
