@@ -316,15 +316,20 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     else if (workflow.value.status === 'error') await publishMonitor.restore()
   }
 
-  /** 核实操作只解析旧任务；随后刷新领域任务以释放位置或继续观察已绑定部署。 */
+  /** 先保留已接受的核实结果，后续读取失败只重试状态同步，不重复恢复写入。 */
   async function recoverPublish(input: { note: string; deploymentId?: string; confirmedAbsent?: true }): Promise<boolean> {
     const job = publishJob.value
-    if (!job?.buildId || busy.value || dirty.value) return false
-    await runPublishJob(job.operation || publishOperation.value, async () => {
-      await api().recoverPublish(job.buildId!, input)
-      return api().refreshPublish(job.id)
+    if (!job?.buildId || job.status !== 'building' || job.build?.phase !== 'submitting' || busy.value || dirty.value) return false
+    const currentEpoch = epoch
+    const accepted = await run('publishing', async () => {
+      publishMonitor.stop()
+      const recovered = await api().recoverPublish(job.buildId!, input)
+      if (disposed || epoch !== currentEpoch || publishJob.value?.id !== job.id || publishJob.value.buildId !== job.buildId) return false
+      publishJob.value = { ...job, build: { ...job.build!, phase: recovered.phase, deploymentId: recovered.deploymentId, error: recovered.error } }
+      return true
     }, locale.value === 'en' ? 'Recovery recorded' : '核实结果已记录')
-    return workflow.value.status === 'success'
+    if (accepted) await publishMonitor.refresh()
+    return accepted === true
   }
 
   /** 任务刷新只更新关联版本，不替换当前选择，也不覆盖未保存的 JSON 输入。 */

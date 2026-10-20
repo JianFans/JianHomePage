@@ -659,3 +659,76 @@ it('holds the write lock during version synchronization and ignores responses af
     expect(workspace.workflow.status).toBe('idle')
   } finally { wrapper.unmount() }
 })
+
+it.each(['deployed', 'failed'] as const)('保留已接受的核实结果 %s，刷新失败只重试读取', async (phase) => {
+  const { wrapper, workspace } = await mountWorkspace()
+  vi.useFakeTimers()
+  let recoveries = 0
+  let reads = 0
+  const recovered = { phase, deploymentId: phase === 'deployed' ? 'dp-verified' : '', error: phase === 'failed' ? 'Confirmed absent' : '' }
+  const job = publishJob({ buildId: 'build_verified', build: { phase: 'submitting', error: 'Unknown outcome', configurationMismatch: phase === 'failed' } })
+  const terminal = phase === 'deployed' ? 'succeeded' : 'failed'
+  vi.stubGlobal('fetch', vi.fn(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/recovery')) { recoveries++; return jsonResponse(recovered) }
+    if (url.endsWith('/refresh')) return jsonResponse({ message: 'Unavailable' }, 503)
+    if (url.endsWith(`/${job.id}`)) return ++reads === 1
+      ? jsonResponse({ message: 'Unavailable' }, 503)
+      : jsonResponse({ ...job, status: terminal, build: { ...job.build, ...recovered, phase: terminal } })
+    return jsonResponse(version({ status: terminal === 'succeeded' ? 'published' : 'in_review' }))
+  }))
+  try {
+    workspace.publishJob = job
+    const accepted = await workspace.recoverPublish(phase === 'deployed' ? { note: 'Checked', deploymentId: 'dp-verified' } : { note: 'Checked', confirmedAbsent: true })
+    expect(workspace.publishJob?.build).toMatchObject(recovered)
+    expect(accepted).toBe(true)
+    expect(workspace.workflow).toMatchObject({ status: 'success', message: '核实结果已记录' })
+    expect(workspace.publishReadError).toBe(true)
+    expect(await workspace.recoverPublish({ note: 'Do not repeat', confirmedAbsent: true })).toBe(false)
+    expect(recoveries).toBe(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(workspace.publishJob?.status).toBe(terminal)
+    expect(workspace.publishReadError).toBe(false)
+    expect(recoveries).toBe(1)
+  } finally { wrapper.unmount() }
+})
+
+it.each(['expired', 'replaced', 'unmounted'] as const)('核实响应在上下文 %s 后到达时不写回', async (context) => {
+  const active = ref(true)
+  const response = deferred<Response>()
+  const fetcher = vi.fn().mockReturnValue(response.promise)
+  const { wrapper, workspace } = await mountWorkspace(ref('en'), { active })
+  vi.stubGlobal('fetch', fetcher)
+  const job = publishJob({ buildId: 'build_old', build: { phase: 'submitting', error: 'Unknown outcome', configurationMismatch: false } })
+  workspace.publishJob = job
+  try {
+    const recovering = workspace.recoverPublish({ note: 'Checked', confirmedAbsent: true })
+    if (context === 'expired') active.value = false
+    else if (context === 'replaced') workspace.publishJob = { ...job, id: 'pub_new' }
+    else wrapper.unmount()
+    response.resolve(jsonResponse({ phase: 'failed', deploymentId: '', error: 'Confirmed absent' }))
+    expect(await recovering).toBe(false)
+    expect(workspace.publishJob?.build?.phase).toBe('submitting')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  } finally { if (context !== 'unmounted') wrapper.unmount() }
+})
+
+it('核实开始前的迟到状态读取不覆盖已经保存的结果', async () => {
+  const { wrapper, workspace } = await mountWorkspace()
+  const old = deferred<Response>()
+  const job = publishJob({ buildId: 'build_verified', build: { phase: 'submitting', error: 'Unknown outcome', configurationMismatch: false } })
+  let reads = 0
+  vi.stubGlobal('fetch', vi.fn(async input => {
+    if (String(input).endsWith('/recovery')) return jsonResponse({ phase: 'failed', deploymentId: '', error: 'Confirmed absent' })
+    if (++reads === 1) return old.promise
+    return jsonResponse({ message: 'Unavailable' }, 503)
+  }))
+  try {
+    workspace.publishJob = job
+    const reading = workspace.restorePublish()
+    await workspace.recoverPublish({ note: 'Checked', confirmedAbsent: true })
+    old.resolve(jsonResponse(job))
+    await reading
+    expect(workspace.publishJob?.build?.phase).toBe('failed')
+  } finally { wrapper.unmount() }
+})

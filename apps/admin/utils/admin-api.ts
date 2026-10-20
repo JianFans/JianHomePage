@@ -43,6 +43,13 @@ export interface AdminPublishJob {
   }
 }
 
+/** 恢复响应只取已确认状态，不把冻结目标及审计记录放入界面任务。 */
+export interface AdminPublisherRecovery {
+  phase: 'deployed' | 'failed'
+  deploymentId: string
+  error: string
+}
+
 export interface AdminAssetMetadata {
   fileName?: string
   contentType?: string
@@ -310,7 +317,7 @@ export function createAdminApi(options: AdminApiOptions) {
     },
     /** 仅管理员可结束不确定任务或绑定核实后的部署，操作者由会话决定。 */
     recoverPublish(buildId: string, input: { note: string; deploymentId?: string; confirmedAbsent?: true }) {
-      return request<unknown>(`/api/v1/publisher/builds/${encodeURIComponent(buildId)}/recovery`, json(input))
+      return request<AdminPublisherRecovery>(`/api/v1/publisher/builds/${encodeURIComponent(buildId)}/recovery`, json(input))
     },
     /** 请求服务端刷新外部构建状态。 */
     refreshPublish(publishId: string) {

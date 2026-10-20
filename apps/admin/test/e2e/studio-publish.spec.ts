@@ -125,7 +125,7 @@ test('失败任务确认后以新幂等键重试，保留旧版本选择', async
   await expect(page.getByTestId('studio-version-name')).toHaveText('Previous version')
 })
 
-test('结果不明的部署由管理员核实，失败保留输入，配置变化仍可确认未创建', async ({ page }) => {
+test('核实失败保留输入，成功后刷新失败不重新核实并自动同步', async ({ page }) => {
   const api = await backend(page)
   const job = task()
   job.build = { phase: 'submitting', error: 'Deployment outcome unknown', configurationMismatch: true }
@@ -137,11 +137,13 @@ test('结果不明的部署由管理员核实，失败保留输入，配置变�
     expect(route.request().headers()['x-csrf-token']).toBe('csrf-browser-contract')
     expect(route.request().postDataJSON()).toEqual({ confirmedAbsent: true, note: 'Checked original project' })
     if (++attempts === 1) return route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Unavailable' } })
-    return route.fulfill({ json: { phase: 'failed' } })
+    job.build = { phase: 'failed', deploymentId: '', error: 'Confirmed absent', configurationMismatch: true }
+    return route.fulfill({ json: job.build })
   })
-  await page.route(`**/api/v1/publishes/${job.id}/refresh`, route => {
+  let reads = 0
+  await page.route(`**/api/v1/publishes/${job.id}`, route => {
+    if (++reads === 1) return route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Unavailable' } })
     job.status = 'failed'
-    job.build!.phase = 'failed'
     api.records.get(job.versionId)!.status = 'in_review'
     return route.fulfill({ json: job })
   })
@@ -155,6 +157,10 @@ test('结果不明的部署由管理员核实，失败保留输入，配置变�
   await expect(page.getByTestId('toast-viewport')).toContainText('Unavailable')
   await expect(page.getByRole('textbox', { name: 'Verification note (one line)' })).toHaveValue('Checked original project')
   await page.getByTestId('publish-confirm').click()
-  await expect(page.getByTestId('publish-retry')).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByTestId('publish-status')).toContainText('Synchronizing publish result')
+  await expect(page.getByTestId('publish-status')).toContainText('Status could not be read')
+  await expect(page.getByTestId('publish-recover')).toHaveCount(0)
+  await expect(page.getByTestId('publish-retry')).toBeVisible({ timeout: 12000 })
+  expect(attempts).toBe(2)
 })
