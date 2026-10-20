@@ -9,6 +9,18 @@ import (
 
 var safeRequestID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}={0,2}$`)
 
+// preparationError proves CreatePagesDeployment was never attempted, even if a temporary artifact was uploaded.
+type preparationError struct{ cause error }
+
+// Error excludes provider response content, retaining diagnostics through Unwrap.
+func (err *preparationError) Error() string { return "Pages deployment preparation failed" }
+
+// Unwrap retains safe provider classifications and transport causes.
+func (err *preparationError) Unwrap() error { return err.cause }
+
+// DeploymentNotCreated permits ending a failed task without risking a duplicate deployment.
+func (*preparationError) DeploymentNotCreated() bool { return true }
+
 type cloudError struct {
 	action, code, requestID string
 	status                  int

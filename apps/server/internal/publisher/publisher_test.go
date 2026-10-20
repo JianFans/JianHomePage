@@ -395,6 +395,54 @@ func TestRecoverVerifiedAbsenceRecordsResolution(t *testing.T) {
 	}
 }
 
+// TestRecoverAbsenceAfterConfigurationChange releases the old slot without submitting to a different target.
+func TestRecoverAbsenceAfterConfigurationChange(t *testing.T) {
+	s, m, p, r := publisherFixture(t)
+	p.err = errors.New("connection lost")
+	if _, err := s.Trigger(t.Context(), r); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	s.options.Target.Region = "china"
+	absent := true
+	task, err := s.Recover(t.Context(), m.task.ID, RecoveryInput{ConfirmedAbsent: &absent, Note: "Verified no deployment in the original account", ActorSubject: "admin-1"})
+	if err != nil || task.Phase != "failed" {
+		t.Fatalf("absence recovery blocked: %#v %v", task, err)
+	}
+	if p.deployCount != 1 || p.getCount != 0 || len(task.Reconciliation) != 1 {
+		t.Fatalf("unexpected cloud writes or missing audit: %#v", task)
+	}
+}
+
+// absentDeploymentError models an adapter's explicit pre-creation failure contract.
+type absentDeploymentError struct{}
+
+func (absentDeploymentError) Error() string              { return "private provider text" }
+func (absentDeploymentError) DeploymentNotCreated() bool { return true }
+
+// TestPreparationFailureEndsTask proves that a failed project lookup does not require uncertain recovery.
+func TestPreparationFailureEndsTask(t *testing.T) {
+	s, m, p, r := publisherFixture(t)
+	p.err = absentDeploymentError{}
+	if _, err := s.Trigger(t.Context(), r); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if m.task.Phase != "failed" || m.task.Error == "" || strings.Contains(m.task.Error, "private") {
+		t.Fatalf("unsafe preparation failure: %#v", m.task)
+	}
+	if err := s.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if p.deployCount != 1 {
+		t.Fatalf("unexpected automatic retry: %d", p.deployCount)
+	}
+}
+
 // TestRecoverBindsOnlyVerifiedProductionDeployment checks real provider identity before binding.
 func TestRecoverBindsOnlyVerifiedProductionDeployment(t *testing.T) {
 	for _, name := range []string{"production", "project", "environment", "id", "network", "target", "phase"} {
