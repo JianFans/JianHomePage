@@ -45,6 +45,7 @@ type AssetService interface {
 
 // PublishService is the application boundary used by the HTTP adapter.
 type PublishService interface {
+	LatestPublishJob(context.Context, domain.Principal) (domain.PublishJob, error)
 	Publish(context.Context, domain.Principal, string, string) (domain.PublishJob, error)
 	GetPublishJob(context.Context, domain.Principal, string) (domain.PublishJob, error)
 	RefreshStatus(context.Context, domain.Principal, string) (domain.PublishJob, error)
@@ -144,13 +145,15 @@ type assetListResponse struct {
 }
 
 type publishResponse struct {
-	ID               string               `json:"id"`
-	VersionID        string               `json:"versionId"`
-	Status           domain.PublishStatus `json:"status"`
-	SnapshotKey      string               `json:"snapshotKey"`
-	SnapshotChecksum string               `json:"snapshotChecksum"`
-	BuildID          string               `json:"buildId,omitempty"`
-	ErrorMessage     string               `json:"errorMessage,omitempty"`
+	ID               string                  `json:"id"`
+	VersionID        string                  `json:"versionId"`
+	Status           domain.PublishStatus    `json:"status"`
+	SnapshotKey      string                  `json:"snapshotKey"`
+	SnapshotChecksum string                  `json:"snapshotChecksum"`
+	BuildID          string                  `json:"buildId,omitempty"`
+	ErrorMessage     string                  `json:"errorMessage,omitempty"`
+	Operation        domain.PublishOperation `json:"operation,omitempty"`
+	Build            *publishBuildResponse   `json:"build,omitempty"`
 }
 
 // NewRouter builds the public health endpoint and authenticated management API.
@@ -188,6 +191,7 @@ func NewRouter(options RouterOptions) http.Handler {
 	register("POST /api/v1/assets/{assetId}/complete", auth.PermissionCreateAsset, handler.completeAssetUpload)
 	register("DELETE /api/v1/assets/{assetId}", auth.PermissionDeleteAsset, handler.deleteAsset)
 	register("POST /api/v1/publishes", auth.PermissionPublish, handler.createPublish)
+	register("GET /api/v1/publishes/latest", auth.PermissionPublish, handler.latestPublish)
 	register("GET /api/v1/publishes/{publishId}", auth.PermissionPublish, handler.getPublish)
 	register("POST /api/v1/publishes/{publishId}/refresh", auth.PermissionPublish, handler.refreshPublish)
 	register("POST /api/v1/rollbacks", auth.PermissionRollback, handler.createRollback)
@@ -526,7 +530,7 @@ func (handler *Handler) createPublish(writer http.ResponseWriter, request *http.
 		writePublishError(writer, request, err)
 		return
 	}
-	writeJSON(writer, http.StatusAccepted, toPublishResponse(job))
+	writeJSON(writer, http.StatusAccepted, handler.publishResponse(request, job))
 }
 
 func (handler *Handler) getPublish(writer http.ResponseWriter, request *http.Request) {
@@ -542,7 +546,7 @@ func (handler *Handler) getPublish(writer http.ResponseWriter, request *http.Req
 		writePublishError(writer, request, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, toPublishResponse(job))
+	writeJSON(writer, http.StatusOK, handler.publishResponse(request, job))
 }
 
 func (handler *Handler) refreshPublish(writer http.ResponseWriter, request *http.Request) {
@@ -558,7 +562,7 @@ func (handler *Handler) refreshPublish(writer http.ResponseWriter, request *http
 		writePublishError(writer, request, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, toPublishResponse(job))
+	writeJSON(writer, http.StatusOK, handler.publishResponse(request, job))
 }
 
 func (handler *Handler) createRollback(writer http.ResponseWriter, request *http.Request) {
@@ -583,7 +587,7 @@ func (handler *Handler) createRollback(writer http.ResponseWriter, request *http
 		writePublishError(writer, request, err)
 		return
 	}
-	writeJSON(writer, http.StatusAccepted, toPublishResponse(job))
+	writeJSON(writer, http.StatusAccepted, handler.publishResponse(request, job))
 }
 
 func principal(writer http.ResponseWriter, request *http.Request) (domain.Principal, bool) {
@@ -646,7 +650,7 @@ func toAssetResponse(asset domain.AssetRecord) assetResponse {
 }
 
 func toPublishResponse(job domain.PublishJob) publishResponse {
-	return publishResponse{ID: job.ID, VersionID: job.VersionID, Status: job.Status, SnapshotKey: job.SnapshotKey, SnapshotChecksum: job.SnapshotChecksum, BuildID: job.BuildID, ErrorMessage: job.ErrorMessage}
+	return publishResponse{ID: job.ID, VersionID: job.VersionID, Status: job.Status, SnapshotKey: job.SnapshotKey, SnapshotChecksum: job.SnapshotChecksum, BuildID: job.BuildID, ErrorMessage: job.ErrorMessage, Operation: job.Operation}
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {

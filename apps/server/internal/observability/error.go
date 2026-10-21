@@ -45,6 +45,9 @@ func errorAttrs(err error, depth int) []slog.Attr {
 		return []slog.Attr{slog.String("message", "[cause limit reached]")}
 	}
 	attrs := []slog.Attr{slog.String("type", fmt.Sprintf("%T", err))}
+	if migration, ok := err.(interface{ MigrationName() string }); ok {
+		attrs = append(attrs, slog.String("migration", migration.MigrationName()))
+	}
 	var api smithy.APIError
 	var database *pgconn.PgError
 	var safe interface{ SafeProviderCode() string }

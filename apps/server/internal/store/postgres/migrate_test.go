@@ -1,13 +1,30 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	"yujian.me/server/internal/observability"
+
 	snapshotdata "yujian.me/server/internal/snapshot"
 )
+
+// TestMigrationFailureLogsIdentityWithoutDatabaseMessage keeps startup failures actionable and private.
+func TestMigrationFailureLogsIdentityWithoutDatabaseMessage(t *testing.T) {
+	failure := &pgconn.PgError{Code: "P0001", Severity: "ERROR", Message: "private database row"}
+	fake := &execFake{tx: &migrationTxFake{failOn: 2, failErr: failure}}
+	err := Migrate(context.Background(), fake)
+	var output bytes.Buffer
+	slog.New(slog.NewJSONHandler(&output, nil)).Error("server stopped", observability.Error(err))
+	if !errors.Is(err, failure) || !strings.Contains(output.String(), `"migration":"0001_initial.sql"`) || !strings.Contains(output.String(), `"sqlstate":"P0001"`) || strings.Contains(output.String(), "private database row") {
+		t.Fatalf("migration diagnostic: %s", output.String())
+	}
+}
 
 type execFake struct {
 	tx         *migrationTxFake

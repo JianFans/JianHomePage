@@ -237,3 +237,102 @@ test('右下 Toast 独立堆叠，减少动态效果下可用键盘关闭', asyn
   await viewport.getByRole('button', { name: 'Dismiss message' }).first().click()
   await expect(viewport.locator('.toast-message')).toHaveCount(1)
 })
+
+test('Toast 新消息立即淘汰最旧消息，长文本与出入动画没有滚动条', async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await startStudio(page)
+  const viewport = page.getByTestId('toast-viewport')
+  await viewport.getByRole('button', { name: 'Dismiss message' }).click()
+  let sequence = 0
+  await page.route('**/api/v1/versions/ver_14cea400-a42f-4560-9770-3de88cae9d5a', route => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    return route.fulfill({ status: 409, json: { code: 'conflict', message: `Message ${++sequence}: ${'unbrokentext'.repeat(12)} · 请保留输入并重试，不需要等待旧提示结束。` } })
+  })
+  const samples = page.evaluate(async () => {
+    const failures: string[] = []
+    const until = performance.now() + 3000
+    while (performance.now() < until) {
+      const nodes = [document.documentElement, document.body, ...document.querySelectorAll<HTMLElement>('.toast-viewport, .toast-message')]
+      for (const node of nodes) {
+        const style = getComputedStyle(node)
+        if (node.scrollWidth > node.clientWidth + 1 || (['auto', 'scroll'].includes(style.overflowY) && node.scrollHeight > node.clientHeight + 1 && style.scrollbarWidth !== 'none')) failures.push(node.className || node.tagName)
+      }
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    }
+    return failures
+  })
+  for (let i = 1; i <= 4; i++) {
+    await page.getByTestId('snapshot-save').click()
+    await expect(viewport.locator('.toast-message').first()).toContainText(`Message ${i}:`)
+  }
+  await expect(viewport.locator('.toast-message')).toHaveCount(3)
+  await expect(viewport).not.toContainText('Message 1:')
+  expect(await samples).toEqual([])
+  await page.screenshot({ path: testInfo.outputPath('studio-toast-animation.png') })
+})
+
+test('Toast 视口和关闭按钮聚焦期间暂停，离开视口后自动关闭', async ({ page }) => {
+  await page.clock.install()
+  await startStudio(page)
+  const viewport = page.getByTestId('toast-viewport')
+  await expect(viewport.locator('.toast-message')).toHaveCount(1)
+  await viewport.focus()
+  await page.clock.fastForward(10_000)
+  await expect(viewport.locator('.toast-message')).toHaveCount(1)
+  await viewport.getByRole('button', { name: 'Dismiss message' }).focus()
+  await page.clock.fastForward(10_000)
+  await expect(viewport.locator('.toast-message')).toHaveCount(1)
+  await page.getByTestId('snapshot-save').focus()
+  await page.clock.fastForward(5000)
+  await expect(viewport.locator('.toast-message')).toHaveCount(0)
+})
+
+test('关闭聚焦的 Toast 后，离场动画结束会恢复剩余消息计时', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.clock.install()
+  const api = await startStudio(page)
+  const viewport = page.getByTestId('toast-viewport')
+  api.conflict = true
+  await page.getByTestId('snapshot-save').click()
+  await expect(viewport.locator('.toast-message')).toHaveCount(2)
+  await viewport.getByRole('button', { name: 'Dismiss message' }).first().click()
+  await page.mouse.move(0, 0)
+  await expect(viewport.locator('.toast-message')).toHaveCount(1)
+  await page.clock.fastForward(5000)
+  await expect(viewport.locator('.toast-message')).toHaveCount(0)
+})
+
+test('窄屏长 Toast 保持在视口内，可滚动阅读并用键盘关闭', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 420 })
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await startStudio(page)
+  const viewport = page.getByTestId('toast-viewport')
+  await viewport.getByRole('button', { name: 'Dismiss message' }).click()
+  let sequence = 0
+  await page.route('**/api/v1/versions/ver_14cea400-a42f-4560-9770-3de88cae9d5a', route => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    return route.fulfill({ status: 409, json: { code: 'conflict', message: `Long ${++sequence}: ${'请保留输入，核对版本后再重试。'.repeat(60)} End ${sequence}` } })
+  })
+  for (let i = 1; i <= 3; i++) {
+    await page.getByTestId('snapshot-save').press('Enter')
+    await expect(viewport.locator('.toast-message').first()).toContainText(`Long ${i}:`)
+  }
+  const bounds = await viewport.boundingBox()
+  expect(bounds!.y).toBeGreaterThanOrEqual(0)
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(420)
+  expect(await viewport.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
+  await viewport.focus()
+  await page.keyboard.press('End')
+  await expect.poll(() => viewport.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+  const oldest = viewport.locator('.toast-message').last()
+  await expect(oldest).toContainText('End 1')
+  const dismiss = oldest.getByRole('button', { name: 'Dismiss message' })
+  await dismiss.scrollIntoViewIfNeeded()
+  await dismiss.focus()
+  const buttonBounds = await dismiss.boundingBox()
+  expect(buttonBounds!.y).toBeGreaterThanOrEqual(0)
+  expect(buttonBounds!.y + buttonBounds!.height).toBeLessThanOrEqual(420)
+  await page.keyboard.press('Enter')
+  await expect(viewport.locator('.toast-message')).toHaveCount(2)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+})

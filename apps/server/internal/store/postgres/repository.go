@@ -345,6 +345,11 @@ func (repository *PublishRepository) GetPublishJobByIdempotencyKey(ctx context.C
 	return scanPublishJob(repository.exec.QueryRowContext(ctx, publishJobQuery+" WHERE idempotency_key = $1", key))
 }
 
+// GetLatestPublishJob orders by creation and identity to restore one stable history entry.
+func (repository *PublishRepository) GetLatestPublishJob(ctx context.Context) (domain.PublishJob, error) {
+	return scanPublishJob(repository.exec.QueryRowContext(ctx, publishJobQuery+" ORDER BY created_at DESC, id DESC LIMIT 1"))
+}
+
 func (repository *PublishRepository) GetActivePublishJob(ctx context.Context) (domain.PublishJob, error) {
 	return scanPublishJob(repository.exec.QueryRowContext(ctx, publishJobQuery+
 		" WHERE status IN ('pending', 'building') ORDER BY created_at DESC LIMIT 1"))

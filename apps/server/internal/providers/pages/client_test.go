@@ -142,6 +142,48 @@ func TestDeploySendsOfficialProtocol(t *testing.T) {
 	}
 }
 
+// TestDeployFailureBoundary distinguishes failed preparation from uncertain creation.
+func TestDeployFailureBoundary(t *testing.T) {
+	for _, stage := range []string{"DescribePagesProjects", "DescribePagesCosTempToken", "COSUpload", "CreatePagesDeployment"} {
+		t.Run(stage, func(t *testing.T) {
+			var actions []string
+			client := testClient(t, "china", func(w http.ResponseWriter, r *http.Request) {
+				action := "COSUpload"
+				if r.Method != http.MethodPut {
+					action, _ = readAction(t, r)["Action"].(string)
+				}
+				actions = append(actions, action)
+				if action == stage {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				switch action {
+				case "DescribePagesProjects":
+					reply(w, map[string]any{"Projects": []any{map[string]any{"ProjectId": "project-1", "Provider": "Upload"}}})
+				case "DescribePagesCosTempToken":
+					reply(w, credentials())
+				case "COSUpload":
+					w.WriteHeader(http.StatusOK)
+				default:
+					t.Errorf("unexpected action %s", action)
+				}
+			})
+			_, err := client.Deploy(t.Context(), "project-1", map[string][]byte{"index.html": []byte("page")})
+			if err == nil {
+				t.Fatal("expected failure")
+			}
+			var boundary interface{ DeploymentNotCreated() bool }
+			knownAbsent := errors.As(err, &boundary) && boundary.DeploymentNotCreated()
+			if knownAbsent != (stage != "CreatePagesDeployment") {
+				t.Fatalf("incorrect boundary for %s: %v", stage, err)
+			}
+			if actions[len(actions)-1] != stage {
+				t.Fatalf("continued past failure: %v", actions)
+			}
+		})
+	}
+}
+
 // TestGetValidatesCloudIdentityAndStatus rejects ambiguous provider results.
 func TestGetValidatesCloudIdentityAndStatus(t *testing.T) {
 	for _, tc := range []struct{ name, status, project, id, env, want string }{

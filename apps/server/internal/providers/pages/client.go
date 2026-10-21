@@ -60,7 +60,13 @@ func NewClient(config Config) (*Client, error) {
 }
 
 // Deploy submits one production deployment without replaying cloud writes.
-func (c *Client) Deploy(ctx context.Context, projectID string, files map[string][]byte) (Deployment, error) {
+func (c *Client) Deploy(ctx context.Context, projectID string, files map[string][]byte) (result Deployment, returnErr error) {
+	creationStarted := false
+	defer func() {
+		if returnErr != nil && !creationStarted {
+			returnErr = &preparationError{cause: returnErr}
+		}
+	}()
 	if !identifier.MatchString(projectID) {
 		return Deployment{}, errors.New("invalid Pages project identity")
 	}
@@ -96,6 +102,7 @@ func (c *Client) Deploy(ctx context.Context, projectID string, files map[string]
 		ProjectID   *string `json:"ProjectId"`
 		Environment *string `json:"Env"`
 	}
+	creationStarted = true
 	if err := c.request(ctx, map[string]any{"Action": "CreatePagesDeployment", "ProjectId": projectID, "Env": "Production", "ViaMeta": "Upload", "Provider": "Upload", "DistType": "Zip", "TempBucketPath": objectKey}, &created); err != nil {
 		return Deployment{}, err
 	}

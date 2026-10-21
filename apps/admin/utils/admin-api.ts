@@ -34,6 +34,20 @@ export interface AdminPublishJob {
   snapshotChecksum: string
   buildId?: string
   errorMessage?: string
+  operation?: 'publish' | 'rollback'
+  build?: {
+    phase: 'queued' | 'building' | 'submitting' | 'deployed' | 'succeeded' | 'failed'
+    deploymentId?: string
+    error?: string
+    configurationMismatch: boolean
+  }
+}
+
+/** 恢复响应只取已确认状态，不把冻结目标及审计记录放入界面任务。 */
+export interface AdminPublisherRecovery {
+  phase: 'deployed' | 'failed'
+  deploymentId: string
+  error: string
 }
 
 export interface AdminAssetMetadata {
@@ -230,8 +244,8 @@ export function createAdminApi(options: AdminApiOptions) {
       return request<AdminVersion>('/api/v1/versions', json({ snapshot, ...(name ? { name } : {}) }))
     },
     /** 按稳定版本 ID 读取内容版本。 */
-    getVersion(versionId: string) {
-      return request<AdminVersion>(`/api/v1/versions/${encodeURIComponent(versionId)}`)
+    getVersion(versionId: string, signal?: AbortSignal) {
+      return request<AdminVersion>(`/api/v1/versions/${encodeURIComponent(versionId)}`, { signal })
     },
     /** 使用乐观锁修订号更新已有草稿。 */
     updateVersion(versionId: string, revision: number, snapshot: Record<string, unknown>) {
@@ -294,8 +308,16 @@ export function createAdminApi(options: AdminApiOptions) {
       })
     },
     /** 读取发布任务的当前状态。 */
-    getPublish(publishId: string) {
-      return request<AdminPublishJob>(`/api/v1/publishes/${encodeURIComponent(publishId)}`)
+    getPublish(publishId: string, signal?: AbortSignal) {
+      return request<AdminPublishJob>(`/api/v1/publishes/${encodeURIComponent(publishId)}`, { signal })
+    },
+    /** 页面重载后读取服务端最新任务；204 表示尚无发布历史。 */
+    async latestPublish(signal?: AbortSignal) {
+      return await request<AdminPublishJob | undefined>('/api/v1/publishes/latest', { signal }) || null
+    },
+    /** 仅管理员可结束不确定任务或绑定核实后的部署，操作者由会话决定。 */
+    recoverPublish(buildId: string, input: { note: string; deploymentId?: string; confirmedAbsent?: true }) {
+      return request<AdminPublisherRecovery>(`/api/v1/publisher/builds/${encodeURIComponent(buildId)}/recovery`, json(input))
     },
     /** 请求服务端刷新外部构建状态。 */
     refreshPublish(publishId: string) {

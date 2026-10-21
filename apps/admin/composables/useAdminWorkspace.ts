@@ -8,7 +8,7 @@ import {
   type AdminVersionSummary,
 } from '../utils/admin-api'
 import { idleWorkflow, workflowError, workflowSuccess, type WorkflowState } from '../utils/admin-workflow'
-import { createOperationKeyStore, type PublishOperation } from '../utils/idempotency'
+import { createIdempotencyKey, createOperationKeyStore, type PublishOperation } from '../utils/idempotency'
 import {
   analyzeSnapshotText,
   createSnapshotExport,
@@ -20,6 +20,7 @@ import {
 } from '../utils/snapshot-workbench'
 import type { AdminLocale } from '../utils/admin-locale'
 import { createInitialSnapshot } from '../utils/initial-snapshot'
+import { usePublishMonitor } from './usePublishMonitor'
 
 const EDITOR_ANALYSIS_DEBOUNCE_MS = 250
 
@@ -51,6 +52,7 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   const workflow = ref<WorkflowState>(idleWorkflow())
   const importing = ref(false)
   const operationKeys = createOperationKeyStore()
+  const retryKeys = new Map<string, string>()
   let importSequence = 0
   let listSequence = 0
   let epoch = 0
@@ -95,6 +97,16 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
   const canReject = computed(() => canApprove.value && Boolean(rejectReason.value.trim()))
   const canPublish = computed(() => version.value?.status === 'in_review' && version.value.reviewApproved === true && !busy.value && !dirty.value)
   const canRollback = computed(() => (version.value?.status === 'published' || version.value?.status === 'archived') && !busy.value)
+  const publishMonitor = usePublishMonitor({
+    job: publishJob, active: session.active, paused: busy,
+    read: (id, signal) => api().getPublish(id, signal),
+    latest: signal => api().latestPublish(signal),
+    updated: async (job, current, signal) => {
+      publishOperation.value = job.operation || publishOperation.value
+      if (publishOperation.value) operationKeys.settle(publishOperation.value, job.versionId, job.status)
+      if (job.status === 'succeeded' || job.status === 'failed') await synchronizePublishVersions(job, current, signal)
+    },
+  })
 
   /** 使用最新连接地址和令牌创建一次性 API 客户端。 */
   function api() {
@@ -274,7 +286,8 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (!version.value || dirty.value || busy.value) return
     const current = version.value
     const key = operationKeys.get('publish', current.id)
-    await runPublishJob('publish', () => api().publish(current.id, key), locale.value === 'en' ? 'Publish job created' : '发布任务已创建')
+    const accepted = await runPublishJob('publish', () => api().publish(current.id, key), locale.value === 'en' ? 'Publish job created' : '发布任务已创建')
+    if (!accepted && workflow.value.status === 'error') await publishMonitor.restore()
   }
 
   /** 刷新当前发布任务，并在终态释放对应幂等键。 */
@@ -288,44 +301,81 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     if (!version.value) return
     const current = version.value
     const key = operationKeys.get('rollback', current.id)
-    await runPublishJob('rollback', () => api().rollback(current.id, key), locale.value === 'en' ? 'Rollback job created' : '回滚任务已创建')
+    const accepted = await runPublishJob('rollback', () => api().rollback(current.id, key), locale.value === 'en' ? 'Rollback job created' : '回滚任务已创建')
+    if (!accepted && workflow.value.status === 'error') await publishMonitor.restore()
+  }
+
+  /** 失败重试使用新任务与新幂等键，保留原操作类型、审核约束和历史记录。 */
+  async function retryPublish() {
+    const job = publishJob.value
+    if (!job || job.status !== 'failed' || busy.value || dirty.value) return
+    const operation = job.operation || publishOperation.value || 'publish'
+    const key = retryKeys.get(job.id) || createIdempotencyKey(operation)
+    retryKeys.set(job.id, key)
+    const accepted = await runPublishJob(operation, () => operation === 'rollback' ? api().rollback(job.versionId, key) : api().publish(job.versionId, key), locale.value === 'en' ? 'Retry created' : '已创建重试任务')
+    if (accepted) retryKeys.delete(job.id)
+    else if (workflow.value.status === 'error') await publishMonitor.restore()
+  }
+
+  /** 先保留已接受的核实结果，后续读取失败只重试状态同步，不重复恢复写入。 */
+  async function recoverPublish(input: { note: string; deploymentId?: string; confirmedAbsent?: true }): Promise<boolean> {
+    const job = publishJob.value
+    if (!job?.buildId || job.status !== 'building' || job.build?.phase !== 'submitting' || busy.value || dirty.value) return false
+    const currentEpoch = epoch
+    const accepted = await run('publishing', async () => {
+      publishMonitor.stop()
+      const recovered = await api().recoverPublish(job.buildId!, input)
+      if (disposed || epoch !== currentEpoch || publishJob.value?.id !== job.id || publishJob.value.buildId !== job.buildId) return false
+      publishJob.value = { ...job, build: { ...job.build!, phase: recovered.phase, deploymentId: recovered.deploymentId, error: recovered.error } }
+      return true
+    }, locale.value === 'en' ? 'Recovery recorded' : '核实结果已记录')
+    if (accepted) await publishMonitor.refresh()
+    return accepted === true
+  }
+
+  /** 任务刷新只更新关联版本，不替换当前选择，也不覆盖未保存的 JSON 输入。 */
+  async function synchronizePublishVersions(job: AdminPublishJob, current: () => boolean, signal?: AbortSignal) {
+    const relatedIds = new Set([job.versionId])
+    if (job.status === 'succeeded') {
+      for (const item of versions.value) if (item.status === 'published') relatedIds.add(item.id)
+      if (version.value?.status === 'published') relatedIds.add(version.value.id)
+    }
+    for (const id of relatedIds) {
+      const next = await api().getVersion(id, signal)
+      if (!current()) return
+      if (version.value?.id === next.id) setVersion(next, !dirty.value)
+      else {
+        listSequence++
+        listing.value = false
+        const { snapshot, ...summary } = next
+        void snapshot
+        const index = versions.value.findIndex(item => item.id === next.id)
+        if (index < 0) versions.value.unshift(summary)
+        else versions.value[index] = summary
+      }
+    }
   }
 
   /** 先保留已接受任务，再同步关联版本；读取失败不能丢失任务或重发云操作。 */
   async function runPublishJob(operation: PublishOperation | null, request: () => Promise<AdminPublishJob>, message: string) {
     const currentEpoch = epoch
+    let accepted = false
     await run('publishing', async () => {
       const job = await request()
       if (disposed || currentEpoch !== epoch) return
+      accepted = true
       publishOperation.value = operation
       publishJob.value = job
       if (operation) operationKeys.settle(operation, job.versionId, job.status)
-      const relatedIds = new Set([job.versionId])
-      // Success can also archive the previous live version. Read it rather than infer its state.
-      if (job.status === 'succeeded') {
-        for (const item of versions.value) if (item.status === 'published') relatedIds.add(item.id)
-        if (version.value?.status === 'published') relatedIds.add(version.value.id)
-      }
-      for (const id of relatedIds) {
-        const next = await api().getVersion(id)
-        if (disposed || currentEpoch !== epoch) return
-        if (version.value?.id === next.id) setVersion(next, !dirty.value)
-        else {
-          // A historical job must not replace the currently selected editing context.
-          listSequence++
-          listing.value = false
-          const { snapshot, ...summary } = next
-          void snapshot
-          const index = versions.value.findIndex(item => item.id === next.id)
-          if (index < 0) versions.value.unshift(summary)
-          else versions.value[index] = summary
-        }
-      }
+      await synchronizePublishVersions(job, () => !disposed && currentEpoch === epoch)
     }, message)
+    return accepted
   }
 
   /** 仅在服务端退出成功后清理内容和基线，失效会话仍保留可导出的输入。 */
   function clear() {
+    publishMonitor.stop()
+    retryKeys.clear()
     epoch++
     importSequence++
     listSequence++
@@ -355,6 +405,10 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     draftName,
     editable,
     publishJob,
+    publishRefreshing: publishMonitor.refreshing,
+    publishReadError: publishMonitor.error,
+    refreshPublishStatus: publishMonitor.refresh,
+    restorePublish: publishMonitor.restore,
     editorText,
     rejectReason,
     workflow,
@@ -382,6 +436,8 @@ export function useAdminWorkspace(locale: Readonly<Ref<AdminLocale>> = ref<Admin
     rejectReview,
     publish,
     refreshPublish,
+    retryPublish,
+    recoverPublish,
     rollback,
   }
 }

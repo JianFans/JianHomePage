@@ -34,6 +34,7 @@ type Repository interface {
 	GetPublishJob(context.Context, string) (domain.PublishJob, error)
 	GetPublishJobByIdempotencyKey(context.Context, string) (domain.PublishJob, error)
 	GetActivePublishJob(context.Context) (domain.PublishJob, error)
+	GetLatestPublishJob(context.Context) (domain.PublishJob, error)
 	GetSuccessfulPublishByVersion(context.Context, string) (domain.PublishJob, error)
 	UpdatePublishJob(context.Context, domain.PublishJob, domain.PublishStatus) error
 	LockPublishSlot(context.Context, string) error
@@ -113,6 +114,15 @@ func (service *Service) GetPublishJob(
 		return domain.PublishJob{}, failureAt("authorize", domain.ErrForbidden)
 	}
 	job, err := service.repository.GetPublishJob(ctx, id)
+	return job, failureAt("job.lookup", err)
+}
+
+// LatestPublishJob restores the most recent production operation after a browser reload.
+func (service *Service) LatestPublishJob(ctx context.Context, actor domain.Principal) (domain.PublishJob, error) {
+	if !hasPermission(actor, auth.PermissionPublish) {
+		return domain.PublishJob{}, failureAt("authorize", domain.ErrForbidden)
+	}
+	job, err := service.repository.GetLatestPublishJob(ctx)
 	return job, failureAt("job.lookup", err)
 }
 

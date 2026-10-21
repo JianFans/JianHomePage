@@ -107,6 +107,7 @@ func TestOpenAPIContainsManagementOperationsAndSecurity(t *testing.T) {
 		"DELETE /api/v1/assets/{assetId}":                  "deleteAsset",
 		"POST /api/v1/publishes":                           "createPublish",
 		"GET /api/v1/publishes/{publishId}":                "getPublish",
+		"GET /api/v1/publishes/latest":                     "latestPublish",
 		"POST /api/v1/publishes/{publishId}/refresh":       "refreshPublish",
 		"POST /api/v1/rollbacks":                           "createRollback",
 		"GET /api/v1/publisher/builds/{buildId}":           "inspectPublisherBuild",

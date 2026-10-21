@@ -5,18 +5,41 @@ import { useToasts } from '../../composables/useToasts'
 afterEach(() => { vi.useRealTimers() })
 
 describe('右下角提示生命周期', () => {
-  it('前三条独立显示，关闭一条后按顺序补入队列', () => {
+  it('新消息立即替换最旧消息，旧消息不会在关闭后补回', () => {
     vi.useFakeTimers()
     const scope = effectScope()
     const toasts = scope.run(() => useToasts())!
     const ids = ['甲', '乙', '丙', '丁'].map(message => toasts.notify(message))
     expect(ids.every(id => /^toast_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id))).toBe(true)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(toasts.items.value.map(item => item.message)).toEqual(['甲', '乙', '丙'])
+    expect(toasts.items.value.map(item => item.message)).toEqual(['丁', '丙', '乙'])
+    expect(vi.getTimerCount()).toBe(3)
+    toasts.dismiss(ids[0]!)
+    expect(toasts.items.value.map(item => item.message)).toEqual(['丁', '丙', '乙'])
     toasts.dismiss(ids[1]!)
-    expect(toasts.items.value.map(item => item.message)).toEqual(['甲', '丙', '丁'])
+    expect(toasts.items.value.map(item => item.message)).toEqual(['丁', '丙'])
     scope.stop()
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('淘汰暂停的旧消息后，新消息仍有完整展示时间', () => {
+    vi.useFakeTimers()
+    const scope = effectScope()
+    const toasts = scope.run(() => useToasts())!
+    const first = toasts.notify('旧消息')
+    toasts.pause(first, 'focus')
+    toasts.notify('第二条')
+    toasts.notify('第三条')
+    vi.advanceTimersByTime(4000)
+    toasts.notify('最新消息')
+    toasts.resume(first, 'focus')
+    vi.advanceTimersByTime(1000)
+    expect(toasts.items.value.map(item => item.message)).toEqual(['最新消息'])
+    vi.advanceTimersByTime(3999)
+    expect(toasts.items.value).toHaveLength(1)
+    vi.advanceTimersByTime(1)
+    expect(toasts.items.value).toHaveLength(0)
+    scope.stop()
   })
 
   it('悬停和聚焦分别暂停，离开指针不会提前恢复仍聚焦的消息', () => {

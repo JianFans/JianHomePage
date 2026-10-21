@@ -534,6 +534,16 @@
         }
       }
     },
+    "/api/v1/publishes/latest": {
+      "get": {
+        "operationId": "latestPublish",
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+        "responses": {
+          "200": { "description": "最新发布或回滚任务，包含可用的安全构建状态", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublishJob" } } } },
+          "204": { "description": "尚无发布任务" }
+        }
+      }
+    },
     "/api/v1/publishes/{publishId}": {
       "get": {
         "operationId": "getPublish",
@@ -999,6 +1009,7 @@
           "deploymentId": { "type": "string" },
           "previewUrl": { "type": "string" },
           "error": { "type": "string" },
+          "configurationMismatch": { "type": "boolean", "description": "当前配置与任务冻结目标不同；确认未创建仍可结束任务，绑定部署必须匹配原目标。" },
           "createdAt": { "type": "string", "format": "date-time" },
           "reconciliation": { "type": ["array", "null"], "items": { "type": "object", "required": ["note", "at"], "properties": { "deploymentId": { "type": "string" }, "confirmedAbsent": { "const": true }, "note": { "type": "string" }, "actorSubject": { "type": "string" }, "at": { "type": "string", "format": "date-time" } } } }
         }
@@ -1025,7 +1036,18 @@
           "snapshotKey": { "type": "string" },
           "snapshotChecksum": { "type": "string" },
           "buildId": { "type": "string", "pattern": "^build_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
-          "errorMessage": { "type": "string" }
+          "errorMessage": { "type": "string" },
+          "operation": { "enum": ["publish", "rollback"] },
+          "build": {
+            "type": "object",
+            "required": ["phase", "configurationMismatch"],
+            "properties": {
+              "phase": { "enum": ["queued", "building", "submitting", "deployed", "succeeded", "failed"] },
+              "deploymentId": { "type": "string" },
+              "error": { "type": "string", "description": "服务端生成的安全诊断，不包含云端原始响应。" },
+              "configurationMismatch": { "type": "boolean" }
+            }
+          }
         }
       },
       "Error": {

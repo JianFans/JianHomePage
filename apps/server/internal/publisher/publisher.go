@@ -108,15 +108,16 @@ func (input *RecoveryInput) UnmarshalJSON(raw []byte) error {
 
 // Task is the persisted state of one logical build across process restarts.
 type Task struct {
-	ID             string             `json:"id"`
-	Request        ports.BuildRequest `json:"request"`
-	Target         Target             `json:"target"`
-	Phase          string             `json:"phase"`
-	DeploymentID   string             `json:"deploymentId"`
-	PreviewURL     string             `json:"previewUrl"`
-	Error          string             `json:"error"`
-	Reconciliation []RecoveryRecord   `json:"reconciliation"`
-	CreatedAt      time.Time          `json:"createdAt"`
+	ID                    string             `json:"id"`
+	Request               ports.BuildRequest `json:"request"`
+	Target                Target             `json:"target"`
+	Phase                 string             `json:"phase"`
+	DeploymentID          string             `json:"deploymentId"`
+	PreviewURL            string             `json:"previewUrl"`
+	Error                 string             `json:"error"`
+	Reconciliation        []RecoveryRecord   `json:"reconciliation"`
+	CreatedAt             time.Time          `json:"createdAt"`
+	ConfigurationMismatch bool               `json:"configurationMismatch,omitempty"`
 }
 
 // Repository preserves atomic compare-and-swap transitions and serializes workers.
@@ -201,6 +202,9 @@ func (s *Service) Status(ctx context.Context, id string) (ports.BuildRun, error)
 // Inspect returns diagnostic task information for an authenticated administrator.
 func (s *Service) Inspect(ctx context.Context, id string) (Task, error) {
 	task, err := s.options.Repository.Get(ctx, id)
+	if err == nil {
+		task.ConfigurationMismatch = task.Target != s.options.Target
+	}
 	if err != nil {
 		level := slog.LevelError
 		if errors.Is(err, domain.ErrNotFound) {
@@ -230,7 +234,8 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			return err
 		}
 		current = task
-		if task.Target != s.options.Target {
+		// Known deployments only need status reads; keep their frozen identity after upgrades.
+		if task.Phase != "deployed" && task.Target != s.options.Target {
 			stage = "target.verify"
 			taskLog(ctx, slog.LevelError, "frozen publisher target differs; restore original configuration", stage, task, started, domain.ErrConflict)
 			task.Error = "Frozen publisher configuration differs; restore the original configuration"
@@ -280,6 +285,14 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			taskLog(ctx, slog.LevelInfo, "Pages deployment submission started", stage, task, started, nil)
 			deployment, cloudErr := s.options.Pages.Deploy(ctx, task.Target.ProjectID, files)
 			if cloudErr != nil || !validDeployment(deployment, task.Target, "") {
+				var preparation interface{ DeploymentNotCreated() bool }
+				if errors.As(cloudErr, &preparation) && preparation.DeploymentNotCreated() {
+					taskLog(ctx, slog.LevelError, "deployment preparation failed; no deployment was created", "deployment.prepare", task, started, cloudErr)
+					task.Phase = "failed"
+					task.Error = "Pages deployment preparation failed; no deployment was created"
+					_, err = repository.Update(ctx, task, "submitting")
+					return err
+				}
 				if cloudErr == nil {
 					cloudErr = errors.New("provider returned an invalid deployment identity")
 				}
@@ -365,7 +378,7 @@ func (s *Service) Recover(ctx context.Context, id string, input RecoveryInput) (
 		if err != nil {
 			return err
 		}
-		if task.Phase != "submitting" || task.Target != s.options.Target {
+		if task.Phase != "submitting" || (input.DeploymentID != nil && task.Target != s.options.Target) {
 			return domain.ErrConflict
 		}
 		if input.DeploymentID != nil {

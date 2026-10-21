@@ -114,6 +114,52 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+it('重试失败任务使用新键及原任务版本，不替换当前选择', async () => {
+  const { wrapper, workspace } = await mountWorkspace()
+  const keys: string[] = []
+  let attempt = 0
+  vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+    if (String(input).endsWith('/publishes')) {
+      keys.push(new Headers(init?.headers).get('Idempotency-Key')!)
+      expect(JSON.parse(String(init?.body)).versionId).toBe('ver_2c2fb0af-5f91-4cc4-be43-6e8859b1ed8d')
+      return jsonResponse(publishJob({ id: `job_${++attempt}`, status: attempt === 1 ? 'failed' : 'building', operation: 'publish' }))
+    }
+    return jsonResponse(version({ status: 'in_review', reviewApproved: true }))
+  }))
+  workspace.version = version({ status: 'in_review', reviewApproved: true })
+  await workspace.publish()
+  workspace.version = version({ id: 'ver_other' })
+  await workspace.retryPublish()
+  expect(keys).toHaveLength(2)
+  expect(keys[1]).not.toBe(keys[0])
+  expect(workspace.publishJob?.id).toBe('job_2')
+  expect(workspace.version?.id).toBe('ver_other')
+  wrapper.unmount()
+})
+
+it('重试响应丢失后复用同一键，不能把一次回滚变成两次云端创建', async () => {
+  const { wrapper, workspace } = await mountWorkspace()
+  const old = publishJob({ status: 'failed', operation: 'rollback' })
+  workspace.publishJob = old
+  const keys: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+    if (String(input).endsWith('/rollbacks')) {
+      keys.push(new Headers(init?.headers).get('Idempotency-Key')!)
+      if (keys.length === 1) throw new Error('Response lost')
+      return jsonResponse(publishJob({ id: 'job_retry', operation: 'rollback' }))
+    }
+    if (String(input).endsWith('/latest')) return jsonResponse(old)
+    return jsonResponse(version())
+  }))
+  await workspace.retryPublish()
+  await workspace.retryPublish()
+  expect(keys).toHaveLength(2)
+  expect(keys[0]).toBeTruthy()
+  expect(keys[1]).toBe(keys[0])
+  expect(workspace.publishJob?.id).toBe('job_retry')
+  wrapper.unmount()
+})
+
 describe('管理工作区', () => {
   it('保存后的新修订不会被迟到的旧摘要页覆盖', async () => {
     const { wrapper, workspace } = await mountWorkspace()
@@ -573,6 +619,31 @@ it('keeps a current dirty snapshot while refreshing its version status', async (
   } finally { wrapper.unmount() }
 })
 
+it.each(['lost', 'conflict'] as const)('回滚请求 %s 后恢复服务端任务并继续跟踪', async (failure) => {
+  const { wrapper, workspace } = await mountWorkspace()
+  vi.useFakeTimers()
+  const job = publishJob({ operation: 'rollback' })
+  vi.stubGlobal('fetch', vi.fn(async input => {
+    const url = String(input)
+    if (url.endsWith('/rollbacks')) {
+      if (failure === 'lost') throw new Error('Response lost')
+      return jsonResponse({ code: 'conflict', message: 'Active job exists' }, 409)
+    }
+    if (url.endsWith('/latest')) return jsonResponse(job)
+    if (url.endsWith(`/${job.id}`)) return jsonResponse({ ...job, status: 'succeeded' })
+    return jsonResponse(version({ status: 'published', revision: 6 }))
+  }))
+  try {
+    workspace.version = version({ status: 'archived' })
+    await workspace.rollback()
+    expect(workspace.workflow.status).toBe('error')
+    expect(workspace.publishJob).toMatchObject({ id: job.id, status: 'building', operation: 'rollback' })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(workspace.publishJob?.status).toBe('succeeded')
+    expect(workspace.version).toMatchObject({ status: 'published', revision: 6 })
+  } finally { wrapper.unmount() }
+})
+
 it.each(['succeeded', 'failed'] as const)('synchronizes rollback acceptance and its %s terminal version', async (status) => {
   const finalStatus = status === 'succeeded' ? 'published' : 'archived'
   vi.stubGlobal('fetch', vi.fn()
@@ -611,5 +682,78 @@ it('holds the write lock during version synchronization and ignores responses af
     await operation
     expect(workspace.version?.status).toBe('in_review')
     expect(workspace.workflow.status).toBe('idle')
+  } finally { wrapper.unmount() }
+})
+
+it.each(['deployed', 'failed'] as const)('保留已接受的核实结果 %s，刷新失败只重试读取', async (phase) => {
+  const { wrapper, workspace } = await mountWorkspace()
+  vi.useFakeTimers()
+  let recoveries = 0
+  let reads = 0
+  const recovered = { phase, deploymentId: phase === 'deployed' ? 'dp-verified' : '', error: phase === 'failed' ? 'Confirmed absent' : '' }
+  const job = publishJob({ buildId: 'build_verified', build: { phase: 'submitting', error: 'Unknown outcome', configurationMismatch: phase === 'failed' } })
+  const terminal = phase === 'deployed' ? 'succeeded' : 'failed'
+  vi.stubGlobal('fetch', vi.fn(async (input) => {
+    const url = String(input)
+    if (url.endsWith('/recovery')) { recoveries++; return jsonResponse(recovered) }
+    if (url.endsWith('/refresh')) return jsonResponse({ message: 'Unavailable' }, 503)
+    if (url.endsWith(`/${job.id}`)) return ++reads === 1
+      ? jsonResponse({ message: 'Unavailable' }, 503)
+      : jsonResponse({ ...job, status: terminal, build: { ...job.build, ...recovered, phase: terminal } })
+    return jsonResponse(version({ status: terminal === 'succeeded' ? 'published' : 'in_review' }))
+  }))
+  try {
+    workspace.publishJob = job
+    const accepted = await workspace.recoverPublish(phase === 'deployed' ? { note: 'Checked', deploymentId: 'dp-verified' } : { note: 'Checked', confirmedAbsent: true })
+    expect(workspace.publishJob?.build).toMatchObject(recovered)
+    expect(accepted).toBe(true)
+    expect(workspace.workflow).toMatchObject({ status: 'success', message: '核实结果已记录' })
+    expect(workspace.publishReadError).toBe(true)
+    expect(await workspace.recoverPublish({ note: 'Do not repeat', confirmedAbsent: true })).toBe(false)
+    expect(recoveries).toBe(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(workspace.publishJob?.status).toBe(terminal)
+    expect(workspace.publishReadError).toBe(false)
+    expect(recoveries).toBe(1)
+  } finally { wrapper.unmount() }
+})
+
+it.each(['expired', 'replaced', 'unmounted'] as const)('核实响应在上下文 %s 后到达时不写回', async (context) => {
+  const active = ref(true)
+  const response = deferred<Response>()
+  const fetcher = vi.fn().mockReturnValue(response.promise)
+  const { wrapper, workspace } = await mountWorkspace(ref('en'), { active })
+  vi.stubGlobal('fetch', fetcher)
+  const job = publishJob({ buildId: 'build_old', build: { phase: 'submitting', error: 'Unknown outcome', configurationMismatch: false } })
+  workspace.publishJob = job
+  try {
+    const recovering = workspace.recoverPublish({ note: 'Checked', confirmedAbsent: true })
+    if (context === 'expired') active.value = false
+    else if (context === 'replaced') workspace.publishJob = { ...job, id: 'pub_new' }
+    else wrapper.unmount()
+    response.resolve(jsonResponse({ phase: 'failed', deploymentId: '', error: 'Confirmed absent' }))
+    expect(await recovering).toBe(false)
+    expect(workspace.publishJob?.build?.phase).toBe('submitting')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  } finally { if (context !== 'unmounted') wrapper.unmount() }
+})
+
+it('核实开始前的迟到状态读取不覆盖已经保存的结果', async () => {
+  const { wrapper, workspace } = await mountWorkspace()
+  const old = deferred<Response>()
+  const job = publishJob({ buildId: 'build_verified', build: { phase: 'submitting', error: 'Unknown outcome', configurationMismatch: false } })
+  let reads = 0
+  vi.stubGlobal('fetch', vi.fn(async input => {
+    if (String(input).endsWith('/recovery')) return jsonResponse({ phase: 'failed', deploymentId: '', error: 'Confirmed absent' })
+    if (++reads === 1) return old.promise
+    return jsonResponse({ message: 'Unavailable' }, 503)
+  }))
+  try {
+    workspace.publishJob = job
+    const reading = workspace.restorePublish()
+    await workspace.recoverPublish({ note: 'Checked', confirmedAbsent: true })
+    old.resolve(jsonResponse(job))
+    await reading
+    expect(workspace.publishJob?.build?.phase).toBe('failed')
   } finally { wrapper.unmount() }
 })

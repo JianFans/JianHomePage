@@ -18,6 +18,7 @@ function backend(options: { authenticated?: boolean; status?: string; reviewAppr
     if (path.endsWith('/auth/session')) return json({ authenticated: options.authenticated !== false, loginAvailable: true,
       principal: { subject: 'editor_1', roles: options.roles || ['admin'] }, csrfToken: 'csrf-test', expiresAt: new Date(Date.now() + 3600000).toISOString() })
     if (path.endsWith('/auth/logout')) return options.logout || new Response(null, { status: 204 })
+    if (path.endsWith('/publishes/latest')) return new Response(null, { status: 204 })
     if (path.endsWith('/versions')) {
       if (init?.method === 'POST') {
         const body = JSON.parse(String(init.body))
@@ -371,7 +372,7 @@ describe('CMS 版本工作区', () => {
     await wrapper.get('[data-testid="music-release-release_5081a10a-7f9a-4af5-a7dc-2b522e1d3cff"]').trigger('click')
     expect(wrapper.find('[data-testid="release-title-zh"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="music-fields"]').attributes('disabled')).toBeDefined()
-    expect(fetcher.mock.calls.some(([url]) => String(url).includes('/publish'))).toBe(false)
+    expect(fetcher.mock.calls.some(([url, init]) => String(url).includes('/publish') && init?.method === 'POST')).toBe(false)
     await wrapper.get('[data-testid="version-clone"]').trigger('click')
     await wrapper.get('[data-testid="clone-name"]').setValue('复制版本')
     await wrapper.get('[data-testid="clone-confirm"]').element.closest('form')!.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))
