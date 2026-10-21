@@ -61,7 +61,11 @@
 | `PAGES_REGION` | 空 | 生产环境必填；API／账号所属站点，中国站 `china`、国际站 `global`。不是项目部署区域或 COS 地域。 |
 | `PAGES_PUBLIC_URL` | 空 | 生产环境必填；公开站 HTTPS 基址，不得包含凭据、查询参数或片段。 |
 
-生产环境禁止把开发身份头当作认证信息。OIDC 实现只信任发行方签发的 `sub`、`email`、`name` 和已知角色。
+生产环境禁止把开发身份头当作认证信息。身份与权限仅来自通过签名、issuer 和 audience 校验的 ID token；无关角色被忽略，至少需要一个匹配的本站角色。
+
+登录请求 `openid profile email`。侧栏名称与头像优先使用已验证同一 `sub` 的 UserInfo 资料，兼容标准 `name`／`picture` 和 Casdoor `displayName`／`avatar`。查询使用 discovery 中的 `userinfo_endpoint`，access token 仅在服务端本次请求中使用，不保存、不发送给浏览器，且禁止跟随重定向；生产接口及头像必须为 HTTPS。资料请求最多等待 5 秒并限制响应大小，失败保留 ID token 资料并记录 `callback.profile` 原因，不影响已验证身份和角色。缺少 endpoint 或 access token 时不查询。
+
+历史登录会话保留创建时的资料，升级后需退出并重新登录。身份服务必须向该客户端开放 profile scope 或相应字段；未提供资料时显示头像占位和用户 ID，收起侧栏保留头像。
 
 ### 日志
 

@@ -154,7 +154,8 @@
   .studio-navigation:not(.studio-navigation--drawer) { padding-inline: .65rem; }
   .studio-navigation:not(.studio-navigation--drawer) .studio-brand > div,
   .studio-navigation:not(.studio-navigation--drawer) nav button > span,
-  .studio-navigation:not(.studio-navigation--drawer) .studio-account { display: none; }
+  .studio-navigation:not(.studio-navigation--drawer) .studio-account-info { display: none; }
+  .studio-navigation:not(.studio-navigation--drawer) .studio-account { justify-content: center; }
   .studio-navigation:not(.studio-navigation--drawer) nav button { justify-content: center; padding-inline: .5rem; }
   .studio-navigation:not(.studio-navigation--drawer) footer { justify-content: center; }
   .studio-navigation:not(.studio-navigation--drawer) .studio-brand { padding-inline: .75rem; }

@@ -205,13 +205,20 @@ func (provider *OIDCProvider) Authenticate(ctx context.Context, token string) (d
 	if value, ok := claims["email"].(string); ok {
 		principal.Email = value
 	}
-	if value, ok := claims["name"].(string); ok {
-		principal.Name = value
+	provider.applyProfile(&principal, claims)
+	return principal, nil
+}
+
+// applyProfile accepts only presentation fields, leaving subject and roles intact.
+// Missing or unsafe profile values must not erase an already verified fallback.
+func (provider *OIDCProvider) applyProfile(principal *domain.Principal, claims map[string]any) {
+	if value, ok := claims["name"].(string); ok && strings.TrimSpace(value) != "" {
+		principal.Name = strings.TrimSpace(value)
 	}
 	// Casdoor's name is often a login identifier; its signed displayName
 	// carries the human-readable label requested by the profile scope.
 	if value, ok := claims["displayName"].(string); ok && strings.TrimSpace(value) != "" {
-		principal.Name = value
+		principal.Name = strings.TrimSpace(value)
 	}
 	pictureValue, hasPicture := claims["picture"]
 	picture, pictureIsString := pictureValue.(string)
@@ -221,7 +228,6 @@ func (provider *OIDCProvider) Authenticate(ctx context.Context, token string) (d
 	if parsed, err := httpurl.ParseAbsolute(picture); err == nil && (!provider.requireHTTPS || parsed.Scheme == "https") {
 		principal.Picture = picture
 	}
-	return principal, nil
 }
 
 func (provider *OIDCProvider) validateClaims(claims map[string]any) error {

@@ -235,29 +235,25 @@ func (manager *Sessions) authenticateCookie(r *http.Request) (domain.Principal, 
 var errCSRF = errors.New("invalid cookie request verification")
 
 // discovery resolves endpoints from the configured issuer with transport checks.
-func (manager *Sessions) discovery(ctx context.Context) (string, string, error) {
+func (manager *Sessions) discovery(ctx context.Context) (sessionDiscovery, error) {
 	body, err := manager.verifier.fetch(ctx, manager.verifier.issuer+"/.well-known/openid-configuration")
 	if err != nil {
-		return "", "", err
+		return sessionDiscovery{}, err
 	}
-	var doc struct {
-		Issuer        string `json:"issuer"`
-		Authorization string `json:"authorization_endpoint"`
-		Token         string `json:"token_endpoint"`
-	}
+	var doc sessionDiscovery
 	if json.Unmarshal(body, &doc) != nil || doc.Issuer != manager.verifier.issuer {
-		return "", "", unavailable("discovery_invalid", "invalid OIDC discovery document", nil)
+		return sessionDiscovery{}, unavailable("discovery_invalid", "invalid OIDC discovery document", nil)
 	}
 	for _, endpoint := range []struct{ name, value string }{{"authorization", doc.Authorization}, {"token", doc.Token}} {
 		parsed, err := httpurl.ParseAbsolute(endpoint.value)
 		if err != nil || parsed.Fragment != "" {
-			return "", "", unavailable(endpoint.name+"_endpoint_invalid", "invalid OIDC endpoint", nil)
+			return sessionDiscovery{}, unavailable(endpoint.name+"_endpoint_invalid", "invalid OIDC endpoint", nil)
 		}
 		if manager.options.Secure && parsed.Scheme != "https" {
-			return "", "", unavailable(endpoint.name+"_endpoint_insecure", "OIDC endpoint must use HTTPS", nil)
+			return sessionDiscovery{}, unavailable(endpoint.name+"_endpoint_insecure", "OIDC endpoint must use HTTPS", nil)
 		}
 	}
-	return doc.Authorization, doc.Token, nil
+	return doc, nil
 }
 
 // login protects state, nonce and the PKCE verifier in a short-lived AEAD cookie.
@@ -267,7 +263,7 @@ func (manager *Sessions) login(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, r, 503, "login_unavailable", "Login is not configured.")
 		return
 	}
-	authorization, _, err := manager.discovery(r.Context())
+	discovery, err := manager.discovery(r.Context())
 	if err != nil {
 		reason, level := authReason(err, "provider_unavailable", slog.LevelError)
 		logAuthentication(r, level, "login.discovery", reason, "", err)
@@ -289,7 +285,7 @@ func (manager *Sessions) login(w http.ResponseWriter, r *http.Request) {
 	}
 	encrypted := manager.aead.Seal(nonce, nonce, body, []byte(flowCookieName))
 	manager.cookie(w, flowCookieName, base64.RawURLEncoding.EncodeToString(encrypted), flow.ExpiresAt, 600, "/api/v1/auth/")
-	endpoint, _ := url.Parse(authorization)
+	endpoint, _ := url.Parse(discovery.Authorization)
 	query := endpoint.Query()
 	digest := sha256.Sum256([]byte(flow.Verifier))
 	query.Set("response_type", "code")
@@ -406,14 +402,14 @@ func (manager *Sessions) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stage = "callback.discovery"
-	_, tokenEndpoint, err := manager.discovery(r.Context())
+	discovery, err := manager.discovery(r.Context())
 	if err != nil {
 		fail("provider_unavailable", err)
 		return
 	}
 	stage = "callback.exchange.request"
 	form := url.Values{"grant_type": {"authorization_code"}, "code": {query.Get("code")}, "client_id": {manager.options.ClientID}, "redirect_uri": {manager.options.RedirectURL}, "code_verifier": {flow.Verifier}}
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, tokenEndpoint, strings.NewReader(form.Encode()))
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, discovery.Token, strings.NewReader(form.Encode()))
 	if err != nil {
 		fail("request_invalid", err)
 		return
@@ -451,7 +447,9 @@ func (manager *Sessions) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tokens struct {
-		IDToken string `json:"id_token"`
+		IDToken     string `json:"id_token"`
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
 	}
 	if json.Unmarshal(body, &tokens) != nil {
 		fail("token_response_invalid", nil)
@@ -492,6 +490,8 @@ func (manager *Sessions) callback(w http.ResponseWriter, r *http.Request) {
 		fail("authorized_party_missing", rejected("authorized_party_missing", "authorized party is required"))
 		return
 	}
+	// UserInfo only enriches this nonce-bound identity; it cannot authorize roles.
+	manager.enrichProfile(r, &principal, discovery.UserInfo, tokens.AccessToken, tokens.TokenType)
 	expires := manager.options.Now().Add(8 * time.Hour)
 	if tokenExpiry := time.Unix(claims.Expires, 0); tokenExpiry.Before(expires) {
 		expires = tokenExpiry

@@ -22,3 +22,14 @@ test('桌面及手机侧栏显示OIDC名称和头像，头像失败恢复占位'
   await image.dispatchEvent('error')
   await expect(page.getByTestId('studio-avatar-fallback').filter({ visible: true })).toBeVisible()
 })
+
+test('中等宽度收起导航仍保留账号头像和可访问名称', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 })
+  await backend(page)
+  await page.goto('/')
+  const account = page.locator('.studio-shell > .studio-navigation .studio-account')
+  await expect(account).toBeVisible()
+  await expect(account).toHaveAttribute('title', 'Browser editor')
+  await expect(account.getByTestId('studio-avatar-fallback')).toBeVisible()
+  await expect(account.getByTestId('studio-account-name')).toBeHidden()
+})
