@@ -69,7 +69,7 @@ onMounted(() => {
 .standalone-locale-notice { position: fixed; z-index: 50; right: 1rem; bottom: 1rem; display: flex; align-items: center; gap: .75rem; max-width: calc(100vw - 2rem); padding: .5rem 1rem; border: 1px solid var(--color-border); background: var(--color-surface-raised); font-size: .8rem; }
 .standalone-locale-notice.raised { bottom: 6.5rem; }
 .standalone-locale-notice button { min-width: 2.75rem; min-height: 2.75rem; border: 0; background: transparent; color: inherit; font-size: 1.5rem; }
-.locale-notice-enter-active, .locale-notice-leave-active { transition: opacity 160ms, transform 160ms; }
+.locale-notice-enter-active, .locale-notice-leave-active { transition: opacity var(--motion-normal) var(--motion-ease-out), transform var(--motion-normal) var(--motion-ease-out); }
 .locale-notice-enter-from, .locale-notice-leave-to { opacity: 0; transform: translateY(.5rem); }
 @media (prefers-reduced-motion: reduce) { .locale-notice-enter-active, .locale-notice-leave-active { transition: none; } }
 </style>

@@ -315,7 +315,7 @@ function preview(track: AudioPlayerTrack) {
   place-items: center;
   background: rgba(6, 8, 9, 0.52);
   opacity: 0;
-  transition: opacity 160ms var(--ease-standard);
+  transition: opacity var(--motion-fast) var(--motion-ease-out);
 }
 
 .music-cover-state svg {

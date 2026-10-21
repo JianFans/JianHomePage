@@ -186,6 +186,7 @@ async function togglePlayback() {
     />
     <div
       v-if="activeSlide"
+      :key="activeSlide.id"
       class="hero-media"
       data-testid="hero-media"
       :style="focalStyle"
@@ -230,6 +231,7 @@ async function togglePlayback() {
       </p>
       <p
         v-if="activeSlide"
+        :key="activeSlide.id"
         class="hero-headline"
       >
         {{ resolveLocalized(activeSlide.headline, locale) }}

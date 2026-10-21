@@ -69,7 +69,7 @@ function handleClick(event: MouseEvent) {
   background: color-mix(in srgb, var(--color-bg) 72%, transparent);
   color: var(--color-text);
   cursor: pointer;
-  transition: background-color 160ms var(--ease-standard), border-color 160ms var(--ease-standard), color 160ms var(--ease-standard);
+  transition: background-color var(--motion-fast) var(--motion-ease-out), border-color var(--motion-fast) var(--motion-ease-out), color var(--motion-fast) var(--motion-ease-out), scale var(--motion-fast) var(--motion-ease-out);
 }
 
 .icon-button :deep(svg) {
@@ -108,7 +108,7 @@ function handleClick(event: MouseEvent) {
   line-height: 1.2;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 140ms var(--ease-standard), transform 140ms var(--ease-standard);
+  transition: opacity var(--motion-fast) var(--motion-ease-out), transform var(--motion-fast) var(--motion-ease-out);
 }
 
 .icon-button:hover + .icon-button-tooltip,

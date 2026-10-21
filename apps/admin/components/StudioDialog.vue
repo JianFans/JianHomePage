@@ -157,8 +157,8 @@ onBeforeUnmount(() => {
 .studio-dialog--wide { width: min(82rem, 100%); }
 .studio-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
 .studio-dialog h2 { margin: 0; font-size: 1.05rem; font-weight: 500; }
-.studio-dialog-enter-active, .studio-dialog-leave-active { transition: opacity 180ms ease; }
-.studio-dialog-enter-active .studio-dialog, .studio-dialog-leave-active .studio-dialog { transition: transform 220ms ease; }
+.studio-dialog-enter-active, .studio-dialog-leave-active { transition: opacity var(--motion-normal) var(--motion-ease-out); }
+.studio-dialog-enter-active .studio-dialog, .studio-dialog-leave-active .studio-dialog { transition: transform var(--motion-normal) var(--motion-ease-out); }
 .studio-dialog-enter-from, .studio-dialog-leave-to { opacity: 0; }
 .studio-dialog-enter-from .studio-dialog, .studio-dialog-leave-to .studio-dialog { transform: translateY(.65rem) scale(.99); }
 @media (prefers-reduced-motion: reduce) { .studio-dialog-enter-active, .studio-dialog-leave-active, .studio-dialog-enter-active .studio-dialog, .studio-dialog-leave-active .studio-dialog { transition: none; } }

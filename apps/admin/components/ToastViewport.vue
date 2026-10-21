@@ -101,7 +101,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .toast-message--warning { --toast-accent: var(--warm, #d2b481); }
 .toast-message--error { --toast-accent: var(--danger, #dcaaa2); }
 .toast-message .icon-tool { border: 0; border-radius: .4rem; }
-.toast-enter-active, .toast-leave-active, .toast-move { transition: opacity 180ms ease, transform 220ms ease; }
+.toast-enter-active, .toast-leave-active, .toast-move { transition: opacity var(--motion-normal) var(--motion-ease-out), transform var(--motion-normal) var(--motion-ease-out); }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(.5rem); }
 .toast-leave-active { position: absolute; right: 0; }
 @media (prefers-reduced-motion: reduce) { .toast-enter-active, .toast-leave-active, .toast-move { transition: none; } }

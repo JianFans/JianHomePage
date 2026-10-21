@@ -1,0 +1,43 @@
+@media (prefers-reduced-motion: no-preference) {
+  .studio-navigation:not(.studio-navigation--drawer) { transition: width var(--motion-normal) var(--motion-ease-out); }
+  .studio-main { transition: margin-left var(--motion-normal) var(--motion-ease-out); }
+  .studio-shell { animation: studio-shell-in var(--motion-normal) var(--motion-ease-out) both; }
+  .studio-login-card { animation: studio-item-in var(--motion-slow) var(--motion-ease-out) both; }
+  .studio-login-art > div { animation: studio-shell-in var(--motion-slow) var(--motion-ease-out) both; }
+
+  .studio-quick-links > button,
+  .studio-history-list > button {
+    animation: studio-item-in var(--motion-slow) var(--motion-ease-out) both;
+  }
+  .studio-quick-links > button:nth-child(2) { animation-delay: 35ms; }
+  .studio-quick-links > button:nth-child(3) { animation-delay: 70ms; }
+  .studio-quick-links > button:nth-child(n + 4) { animation-delay: 105ms; }
+
+  .studio-root :is(input, textarea, select) {
+    transition: border-color var(--motion-fast) var(--motion-ease-out),
+      background-color var(--motion-fast) var(--motion-ease-out),
+      box-shadow var(--motion-fast) var(--motion-ease-out);
+  }
+  .studio-root :is(input, textarea, select):focus-visible { border-color: var(--focus); }
+  .studio-root :is(.button, .icon-tool, .studio-navigation nav button) { transition: color var(--motion-fast) var(--motion-ease-out), background-color var(--motion-fast) var(--motion-ease-out), border-color var(--motion-fast) var(--motion-ease-out), scale var(--motion-fast) var(--motion-ease-out); }
+  .studio-root :is(.button, .icon-tool, .studio-navigation nav button):active:not(:disabled) { scale: .97; }
+  .studio-root :is(.button, .icon-tool, button):disabled { scale: none; }
+  .studio-quick-links > button svg { transition: translate var(--motion-normal) var(--motion-ease-out); }
+  .studio-quick-links > button:focus-visible svg { translate: 3px 0; }
+  .studio-account-info { animation: studio-shell-in var(--motion-normal) var(--motion-ease-out) both; }
+  .studio-avatar img { animation: studio-shell-in var(--motion-normal) var(--motion-ease-out) both; }
+
+  @media (hover: hover) {
+    .studio-quick-links > button:hover svg { translate: 3px 0; }
+  }
+}
+
+@keyframes studio-shell-in {
+  from { opacity: .6; }
+  to { opacity: 1; }
+}
+
+@keyframes studio-item-in {
+  from { opacity: .5; translate: 0 8px; }
+  to { opacity: 1; translate: 0 0; }
+}

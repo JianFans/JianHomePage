@@ -225,7 +225,7 @@ function updateProgress(event: Event) {
 
 .audio-dock-enter-active,
 .audio-dock-leave-active {
-  transition: opacity 160ms var(--ease-standard), transform 160ms var(--ease-standard);
+  transition: opacity var(--motion-normal) var(--motion-ease-out), transform var(--motion-normal) var(--motion-ease-out);
 }
 
 .audio-dock-enter-from,

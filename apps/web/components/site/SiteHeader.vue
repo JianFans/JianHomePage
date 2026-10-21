@@ -169,7 +169,7 @@ nav > a svg {
 }
 
 .site-header__top-slot { display: block; width: 2.75rem; height: 2.75rem; flex: 0 0 2.75rem; }
-.top-control-enter-active, .top-control-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
+.top-control-enter-active, .top-control-leave-active { transition: opacity var(--motion-normal) var(--motion-ease-out), transform var(--motion-normal) var(--motion-ease-out); }
 .top-control-enter-from, .top-control-leave-to { opacity: 0; transform: translateY(.25rem); }
 @media (prefers-reduced-motion: reduce) { .top-control-enter-active, .top-control-leave-active { transition: none; } }
 

@@ -123,7 +123,7 @@ const heading = computed(() => props.locale === 'en' ? 'Moments' : '片段')
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 300ms var(--ease-standard);
+  transition: transform var(--motion-slow) var(--motion-ease-out);
 }
 
 .moment-grid figure:hover img {

@@ -1,0 +1,66 @@
+/* 渐进增强：静态内容无需等待脚本或观察器解除隐藏。 */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-copy > h1,
+  .hero-artist {
+    animation: site-copy-in var(--motion-slow) var(--motion-ease-out) both;
+  }
+
+  .hero-artist { animation-delay: 60ms; }
+  .hero-headline { animation: site-slide-in var(--motion-slow) var(--motion-ease-out) both; }
+  .hero-media { animation: site-media-in var(--motion-slow) var(--motion-ease-out) both; }
+
+  :is(.platform-link, .platform-more summary, .hero-link, .section-more, .event-list a) {
+    transition: background-color var(--motion-fast) var(--motion-ease-out),
+      border-color var(--motion-fast) var(--motion-ease-out),
+      color var(--motion-fast) var(--motion-ease-out),
+      scale var(--motion-fast) var(--motion-ease-out);
+  }
+
+  :is(.icon-button, .platform-link, .hero-link, .section-more, .music-cover-action):active { scale: .96; }
+  .icon-button { transition: scale var(--motion-fast) var(--motion-ease-out), background-color var(--motion-fast) var(--motion-ease-out), border-color var(--motion-fast) var(--motion-ease-out), color var(--motion-fast) var(--motion-ease-out); }
+  .music-cover img { transition: transform var(--motion-slow) var(--motion-ease-out); }
+  .music-cover-action:focus-visible img { transform: scale(1.025); }
+  .event-list a > svg { transition: translate var(--motion-normal) var(--motion-ease-out); }
+  .event-list a:focus-visible > svg { translate: 3px 0; }
+  .hero-progress button::before { transition: opacity var(--motion-normal) var(--motion-ease-out), background-color var(--motion-normal) var(--motion-ease-out); }
+  .platform-link-shell > [role="tooltip"] { transition: opacity var(--motion-fast) var(--motion-ease-out); }
+  .platform-more[open] .platform-more__menu { animation: site-slide-in var(--motion-normal) var(--motion-ease-out) both; }
+
+  @media (hover: hover) {
+    .music-cover-action:hover img { transform: scale(1.025); }
+    .event-list a:hover > svg { translate: 3px 0; }
+  }
+
+  /* 文字始终保持对比度；不支持 view timeline 时直接展示。 */
+  @supports (animation-timeline: view()) {
+    [data-home-section] :is(.section-heading, .moment-heading, .artist-inner, .music-card, .video-card, .event-list > li, .moment-grid > figure) {
+      animation: site-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 80%;
+    }
+
+    [data-home-section] :is(.section-heading, .moment-heading, .artist-inner, .music-card, .video-card, .event-list > li, .moment-grid > figure):focus-within {
+      animation: none;
+    }
+  }
+}
+
+@keyframes site-copy-in {
+  from { opacity: .6; translate: 0 8px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes site-slide-in {
+  from { opacity: .4; translate: 0 6px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes site-media-in {
+  from { opacity: .7; }
+  to { opacity: 1; }
+}
+
+@keyframes site-reveal {
+  from { translate: 0 12px; }
+  to { translate: 0 0; }
+}

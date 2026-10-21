@@ -140,7 +140,7 @@ function durationLabel(seconds: number) {
 .video-card img {
   display: block;
   object-fit: cover;
-  transition: transform 280ms var(--ease-standard);
+  transition: transform var(--motion-slow) var(--motion-ease-out);
 }
 
 .video-scrim {

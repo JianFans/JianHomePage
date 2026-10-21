@@ -71,7 +71,7 @@ defineProps<{
 
 .locale-notice-enter-active,
 .locale-notice-leave-active {
-  transition: opacity 160ms var(--ease-standard), transform 160ms var(--ease-standard);
+  transition: opacity var(--motion-normal) var(--motion-ease-out), transform var(--motion-normal) var(--motion-ease-out);
 }
 
 .locale-notice-enter-from,

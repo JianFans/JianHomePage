@@ -1,3 +1,6 @@
+@import '../../../web/assets/css/motion-tokens.css';
+@import './motion.css';
+
 :root {
   --bg: #101317;
   --surface: #20262f;
@@ -139,7 +142,8 @@
 .json-editor { width: 100%; min-height: 22rem; resize: vertical; border: 1px solid var(--border); border-radius: .5rem; background: #121820; color: var(--text); padding: 1rem; font: .75rem/1.7 "Cascadia Code", Consolas, monospace; tab-size: 2; margin-bottom: 1rem; }
 .field-error { color: var(--danger); font-size: .8rem; overflow-wrap: anywhere; }
 .studio-review { display: grid; gap: 1rem; }
-.studio-page-enter-active, .studio-page-leave-active { transition: opacity 180ms ease, transform 220ms ease; }
+.studio-page-enter-active { transition: opacity var(--motion-normal) var(--motion-ease-out), transform var(--motion-normal) var(--motion-ease-out); }
+.studio-page-leave-active { transition: opacity var(--motion-fast) var(--motion-ease-in); }
 .studio-page-enter-from { opacity: 0; transform: translateY(.4rem); }
 .studio-page-leave-to { opacity: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
