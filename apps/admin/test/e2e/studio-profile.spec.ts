@@ -33,3 +33,26 @@ test('中等宽度收起导航仍保留账号头像和可访问名称', async ({
   await expect(account.getByTestId('studio-avatar-fallback')).toBeVisible()
   await expect(account.getByTestId('studio-account-name')).toBeHidden()
 })
+
+for (const viewport of [{ width: 900, height: 570 }, { width: 1440, height: 420 }]) {
+  test(`短视口侧栏可滚动访问账号与退出，宽度=${viewport.width}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await backend(page)
+    await page.goto('/')
+    await expect(page.getByTestId('studio-shell')).toBeVisible()
+    const navigation = page.locator('.studio-shell > .studio-navigation')
+    const logout = navigation.getByTestId('studio-logout')
+    await logout.scrollIntoViewIfNeeded()
+    await expect(logout).toBeInViewport({ ratio: 1 })
+    await logout.focus()
+    await expect(logout).toBeFocused()
+    await expect(navigation.locator('.studio-account')).toBeInViewport({ ratio: 1 })
+    expect(await navigation.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+    await navigation.getByTestId('nav-overview').focus()
+    await expect(navigation.getByTestId('nav-overview')).toBeInViewport({ ratio: 1 })
+    await logout.focus()
+    await expect(logout).toBeInViewport({ ratio: 1 })
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('studio-shell')).toHaveCount(0)
+  })
+}

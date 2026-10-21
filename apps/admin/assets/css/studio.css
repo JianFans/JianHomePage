@@ -52,6 +52,8 @@
 .studio-login-card > svg { color: var(--accent); }
 .studio-locale { display: inline-flex; align-items: center; gap: .5rem; margin-top: 2rem; min-height: 2.75rem; color: var(--muted); background: none; border: 0; }
 .studio-navigation { position: fixed; inset: 0 auto 0 0; z-index: 20; width: var(--rail-width); background: #151a20; border-right: 1px solid #29313c; padding: 1.5rem 1rem 1rem; display: flex; flex-direction: column; }
+.studio-navigation:not(.studio-navigation--drawer) { overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; }
+.studio-navigation:not(.studio-navigation--drawer) > * { flex-shrink: 0; }
 .studio-brand { display: flex; align-items: center; gap: .8rem; min-height: 2.75rem; padding: .15rem .6rem 2.25rem; white-space: nowrap; }
 .studio-brand-mark { flex: 0 0 auto; width: 2rem; height: 2rem; display: grid; place-items: center; border: 1px solid #9ebdb54d; color: var(--accent); border-radius: .55rem; font-size: 1.2rem; }
 .studio-brand strong { font-size: 1.05rem; font-weight: 500; letter-spacing: .12em; }
