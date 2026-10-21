@@ -116,7 +116,7 @@ Casdoor 普通、非共享应用可按以下方式配置，其他 OIDC 服务遵
 
 此映射要求 Casdoor 版本提供 `Existing Field` 类别及 `Roles` 字段；缺少时先升级，不能用静态 `admin` 代替。配置参考：[OIDC 客户端](https://casdoor.org/docs/how-to-connect/oidc-client/)、[自定义令牌属性](https://casdoor.org/docs/token/overview/#custom-token-attributes)、[用户角色](https://casdoor.org/docs/user/roles/)。
 
-侧栏资料来自已验证 ID token：显示名使用非空 `displayName`，否则 `name`；头像使用 `picture`，缺失时使用 `avatar`。身份服务需签发这些字段，生产头像必须是无凭据的 HTTPS 地址。修改资料声明后重新登录；没有资料时显示账号标识及占位头像。
+侧栏资料先从已验证 ID token 提取，再通过 discovery 的 `userinfo_endpoint` 查询同一 `sub` 的资料；登录请求包含 `openid profile email`，身份服务需向该客户端开放相应字段。显示名使用非空 `displayName`，否则 `name`；头像使用 `picture`，缺失时使用 `avatar`，生产头像必须是无凭据的 HTTPS 地址。UserInfo 缺失或查询失败时保留 ID token 资料，仍缺失时显示账号标识及占位头像。修改资料后需退出并重新登录；权限始终来自已验证 ID token 的 `roles`。
 
 ## 接入要求
 
