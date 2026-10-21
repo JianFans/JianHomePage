@@ -57,6 +57,18 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
 
+it('groups navigation by purpose and localizes the visible group names', async () => {
+  const { wrapper } = await mountStudio()
+  try {
+    const groups = () => wrapper.findAll('.studio-nav-group')
+    expect(groups()).toHaveLength(3)
+    expect(groups().map(group => group.get('.studio-nav-label').text())).toEqual(['Workspace', 'Content', 'Library & versions'])
+    expect(groups()[1]!.findAll('button').map(button => button.attributes('data-testid'))).toEqual(['nav-homepage', 'nav-music', 'nav-video', 'nav-event', 'nav-moment'])
+    await wrapper.get('button[aria-label="切换中文"]').trigger('click')
+    expect(groups().map(group => group.get('.studio-nav-label').text())).toEqual(['工作区', '内容', '资源与版本'])
+  } finally { wrapper.unmount() }
+})
+
 it('shows approved review consistently and prevents reopening review decisions', async () => {
   const { wrapper } = await mountStudio({ status: 'in_review', reviewApproved: true })
   try {
@@ -103,7 +115,7 @@ it('disables the global next step for unsaved module input and opens review with
     expect(action.element.matches(':disabled')).toBe(false)
     await wrapper.get('[data-testid="video-title-en"]').setValue('Unsaved form input')
     expect(action.element.matches(':disabled')).toBe(true)
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith('/submit-review'))).toBe(false)
+    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith('/review'))).toBe(false)
   } finally { wrapper.unmount() }
   const review = await mountStudio({ status: 'in_review', roles: ['reviewer'] })
   try {

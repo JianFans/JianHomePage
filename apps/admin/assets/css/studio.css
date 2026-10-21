@@ -2,6 +2,7 @@
 @import './motion.css';
 
 :root {
+  scroll-padding-top: 6rem;
   --bg: #101317;
   --surface: #20262f;
   --surface-raised: #29313c;
@@ -59,6 +60,10 @@
 .studio-brand strong { font-size: 1.05rem; font-weight: 500; letter-spacing: .12em; }
 .studio-brand small { display: block; color: var(--muted); font-size: .6rem; letter-spacing: .2em; margin-top: .15rem; }
 .studio-navigation nav { display: grid; gap: .35rem; }
+.studio-nav-group { display: grid; gap: .35rem; }
+.studio-nav-group + .studio-nav-group { margin-top: 1rem; }
+.studio-nav-label { margin: 0; padding: .25rem .8rem; font-size: .6rem; letter-spacing: .08em; color: var(--muted); }
+.studio-navigation--collapsed .studio-nav-label { display: none; }
 .studio-navigation nav button { --module-color: var(--accent); display: flex; align-items: center; gap: .8rem; text-align: left; min-height: 2.8rem; padding: .7rem .8rem; border: 1px solid transparent; border-radius: .5rem; background: transparent; color: var(--muted); font-size: .85rem; transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
 .studio-navigation nav button[data-tone="blue"] { --module-color: var(--info); }
 .studio-navigation nav button[data-tone="amber"] { --module-color: var(--warm); }
@@ -66,7 +71,6 @@
 .studio-navigation nav button.is-active { color: var(--module-color); background: color-mix(in srgb, var(--module-color) 11%, transparent); border-color: color-mix(in srgb, var(--module-color) 20%, transparent); }
 .studio-navigation nav button:hover:not(:disabled) { background: #ffffff07; color: var(--text); }
 .studio-navigation nav button:disabled { cursor: not-allowed; opacity: .5; }
-.studio-navigation nav button:nth-child(2), .studio-navigation nav button:nth-child(7) { margin-top: 1.25rem; }
 .studio-navigation footer { margin-top: auto; padding-top: 1.5rem; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; border-top: 1px solid #29313c; }
 .studio-navigation footer .icon-tool { background: transparent; border-color: transparent; }
 .studio-account { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: .65rem; margin-bottom: .35rem; }
@@ -85,7 +89,7 @@
 .studio-navigation--drawer { position: static; width: 100%; min-height: min(32rem, 65dvh); padding: 0; background: transparent; border: 0; }
 .studio-navigation--drawer .studio-brand { display: none; }
 .studio-main { margin-left: var(--rail-width); min-width: 0; }
-.studio-topbar { display: flex; align-items: center; gap: 1rem; padding: 1rem 2rem; border-bottom: 1px solid #29313c; min-height: 5rem; background: #151a2080; }
+.studio-topbar { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; gap: 1rem; padding: 1rem 2rem; border-bottom: 1px solid #29313c; min-height: 5rem; background: #151a20; }
 .studio-breadcrumb { display: flex; align-items: center; gap: .85rem; color: var(--muted); font-size: .8rem; min-width: 0; }
 .studio-breadcrumb strong { color: var(--text); font-weight: 400; white-space: nowrap; }
 .studio-topbar-actions { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
@@ -162,6 +166,7 @@
   .studio-root { --rail-width: 5rem; }
   .studio-navigation:not(.studio-navigation--drawer) { padding-inline: .65rem; }
   .studio-navigation:not(.studio-navigation--drawer) .studio-brand > div,
+  .studio-navigation:not(.studio-navigation--drawer) .studio-nav-label,
   .studio-navigation:not(.studio-navigation--drawer) nav button > span,
   .studio-navigation:not(.studio-navigation--drawer) .studio-account-info { display: none; }
   .studio-navigation:not(.studio-navigation--drawer) .studio-account { justify-content: center; }

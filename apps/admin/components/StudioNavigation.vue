@@ -15,11 +15,14 @@ const pictureURL = computed(() => {
   } catch { return '' }
 })
 watch(() => props.picture, () => { failedPicture.value = '' })
-const modules = [
-  { id: 'overview', icon: LayoutDashboard, tone: 'sage' }, { id: 'homepage', icon: LayoutList, tone: 'sage' },
-  { id: 'music', icon: Music2, tone: 'sage' }, { id: 'video', icon: Film, tone: 'blue' },
-  { id: 'event', icon: CalendarDays, tone: 'amber' }, { id: 'moment', icon: Images, tone: 'purple' },
-  { id: 'assets', icon: FolderOpen, tone: 'blue' }, { id: 'history', icon: History, tone: 'purple' },
+const groups = [
+  { id: 'workspace', modules: [{ id: 'overview', icon: LayoutDashboard, tone: 'sage' }] },
+  { id: 'content', modules: [
+    { id: 'homepage', icon: LayoutList, tone: 'sage' },
+    { id: 'music', icon: Music2, tone: 'sage' }, { id: 'video', icon: Film, tone: 'blue' },
+    { id: 'event', icon: CalendarDays, tone: 'amber' }, { id: 'moment', icon: Images, tone: 'purple' },
+  ] },
+  { id: 'library', modules: [{ id: 'assets', icon: FolderOpen, tone: 'blue' }, { id: 'history', icon: History, tone: 'purple' }] },
 ] as const
 </script>
 
@@ -37,25 +40,39 @@ const modules = [
       </div>
     </div>
     <nav :aria-label="copy.studio">
-      <button
-        v-for="item in modules"
-        :key="item.id"
-        type="button"
-        :data-testid="`nav-${item.id}`"
-        :data-tone="item.tone"
-        :class="{ 'is-active': active === item.id }"
-        :aria-current="active === item.id ? 'page' : undefined"
-        :aria-label="copy.modules[item.id]"
-        :title="copy.modules[item.id]"
-        :disabled="busy"
-        @click="emit('navigate', item.id)"
+      <div
+        v-for="group in groups"
+        :key="group.id"
+        class="studio-nav-group"
+        role="group"
+        :aria-label="copy.groups[group.id]"
       >
-        <component
-          :is="item.icon"
-          :size="19"
+        <p
+          class="studio-nav-label"
           aria-hidden="true"
-        /><span v-if="!collapsed || drawer">{{ copy.modules[item.id] }}</span>
-      </button>
+        >
+          {{ copy.groups[group.id] }}
+        </p>
+        <button
+          v-for="item in group.modules"
+          :key="item.id"
+          type="button"
+          :data-testid="`nav-${item.id}`"
+          :data-tone="item.tone"
+          :class="{ 'is-active': active === item.id }"
+          :aria-current="active === item.id ? 'page' : undefined"
+          :aria-label="copy.modules[item.id]"
+          :title="copy.modules[item.id]"
+          :disabled="busy"
+          @click="emit('navigate', item.id)"
+        >
+          <component
+            :is="item.icon"
+            :size="19"
+            aria-hidden="true"
+          /><span v-if="!collapsed || drawer">{{ copy.modules[item.id] }}</span>
+        </button>
+      </div>
     </nav>
     <footer>
       <div
