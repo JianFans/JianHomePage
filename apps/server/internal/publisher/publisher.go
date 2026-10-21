@@ -234,7 +234,8 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			return err
 		}
 		current = task
-		if task.Target != s.options.Target {
+		// Known deployments only need status reads; keep their frozen identity after upgrades.
+		if task.Phase != "deployed" && task.Target != s.options.Target {
 			stage = "target.verify"
 			taskLog(ctx, slog.LevelError, "frozen publisher target differs; restore original configuration", stage, task, started, domain.ErrConflict)
 			task.Error = "Frozen publisher configuration differs; restore the original configuration"

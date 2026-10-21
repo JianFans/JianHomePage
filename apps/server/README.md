@@ -232,7 +232,7 @@ Authorization: Bearer <session-token>
 
 `internal/publisher` 与 API 在同一个 Go 进程运行。任务沿用 `0008_publisher_builds` 创建的 `publisher_builds` 表，阶段为 `queued`、`building`、`submitting`、`deployed`、`succeeded` 或 `failed`。固定 PostgreSQL 连接持有全局 worker 锁，网络请求期间不持有数据库事务；服务重启后继续读取持久化任务。
 
-每个任务冻结项目 ID、API 站点、公开 URL 和完整 Go 二进制的 SHA-256。身份包含 Go 逻辑与内嵌资源，无需额外代码版本环境变量。worker 从 PostgreSQL 读取快照，并校验 checksum、release ID、canonical 契约及生产素材地址，使用 Goja 渲染页面，再通过 [Makers Direct Upload](https://pages.edgeone.ai/zh/document/direct-upload) 创建 Production 部署。构建包交给 Makers 的临时上传目标由 Makers API 提供；`S3_*` 配置只供媒体管理使用。目标漂移时不会用新配置继续旧任务。
+每个任务冻结项目 ID、API 站点、公开 URL 和完整 Go 二进制的 SHA-256。身份包含 Go 逻辑与内嵌资源，无需额外代码版本环境变量。worker 从 PostgreSQL 读取快照，并校验 checksum、release ID、canonical 契约及生产素材地址，使用 Goja 渲染页面，再通过 [Makers Direct Upload](https://pages.edgeone.ai/zh/document/direct-upload) 创建 Production 部署。构建包交给 Makers 的临时上传目标由 Makers API 提供；`S3_*` 配置只供媒体管理使用。目标漂移时阻止旧任务继续构建或创建部署；已进入 `deployed` 的任务继续按冻结项目和部署 ID 只读查询，成功后保留冻结的公开 URL，并由发布对账切换版本指针。查询仍需当前 Pages API 站点及凭据能够访问原部署。
 
 调用云端创建前持久化 `submitting`。项目查询、临时上传凭据或构建包上传等准备工作失败，且确定尚未调用创建 API 时，任务直接失败，允许正常重试；已尝试创建后的超时、断连或响应无法确认保留该阶段，不自动重试创建。先在云端核实部署，再由 `admin` 角色恢复：
 

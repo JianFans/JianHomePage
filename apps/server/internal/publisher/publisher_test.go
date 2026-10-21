@@ -81,6 +81,8 @@ func (m *taskMemory) WithLock(_ context.Context, run func(Repository) error) err
 type testPages struct {
 	memory                *taskMemory
 	deployCount, getCount int
+	lastGetProject        string
+	lastGetID             string
 	deployment            pages.Deployment
 	err                   error
 }
@@ -95,8 +97,9 @@ func (p *testPages) Deploy(_ context.Context, project string, files map[string][
 }
 
 // Get represents a side-effect-free provider status check.
-func (p *testPages) Get(context.Context, string, string) (pages.Deployment, error) {
+func (p *testPages) Get(_ context.Context, project, id string) (pages.Deployment, error) {
 	p.getCount++
+	p.lastGetProject, p.lastGetID = project, id
 	return p.deployment, p.err
 }
 
@@ -177,18 +180,75 @@ func TestSubmissionCommitFailureNeverCallsCloud(t *testing.T) {
 	}
 }
 
-// TestFrozenTargetBlocksAllCloudOperations prevents a changed binary identity from rebuilding.
-func TestFrozenTargetBlocksAllCloudOperations(t *testing.T) {
-	s, m, p, r := publisherFixture(t)
-	if _, err := s.Trigger(t.Context(), r); err != nil {
-		t.Fatal(err)
+// TestFrozenTargetBlocksCreation prevents target drift from rebuilding or replaying an uncertain write.
+func TestFrozenTargetBlocksCreation(t *testing.T) {
+	for _, phase := range []string{"queued", "building", "submitting"} {
+		t.Run(phase, func(t *testing.T) {
+			s, m, p, r := publisherFixture(t)
+			if _, err := s.Trigger(t.Context(), r); err != nil {
+				t.Fatal(err)
+			}
+			m.task.Phase = phase
+			s.options.Target.CodeRevision = strings.Repeat("b", 40)
+			if err := s.Reconcile(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if m.task.Phase != phase || m.task.Error == "" || p.deployCount != 0 || p.getCount != 0 {
+				t.Fatalf("target drift %#v", m.task)
+			}
+		})
 	}
-	s.options.Target.CodeRevision = strings.Repeat("b", 40)
-	if err := s.Reconcile(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if m.task.Phase != "queued" || m.task.Error == "" || p.deployCount != 0 || p.getCount != 0 {
-		t.Fatalf("target drift %#v", m.task)
+}
+
+// TestDeployedTaskReconcilesFrozenTargetAfterConfigurationChange keeps known deployments readable after upgrades.
+func TestDeployedTaskReconcilesFrozenTargetAfterConfigurationChange(t *testing.T) {
+	for _, changed := range []string{"revision", "project", "public-url"} {
+		for _, terminal := range []string{"succeeded", "failed"} {
+			t.Run(changed+"/"+terminal, func(t *testing.T) {
+				s, m, p, r := publisherFixture(t)
+				run, err := s.Trigger(t.Context(), r)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := s.Reconcile(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				frozen := m.task.Target
+				options := s.options
+				switch changed {
+				case "revision":
+					options.Target.CodeRevision = strings.Repeat("b", 40)
+				case "project":
+					options.Target.ProjectID = "other-project"
+				case "public-url":
+					options.Target.PublicURL = "https://new.example/"
+				}
+				restarted, err := NewService(options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				// A previous worker may have persisted the obsolete drift rejection.
+				m.task.Error = "Frozen publisher configuration differs; restore the original configuration"
+				p.deployment.Status = "building"
+				if err := restarted.Reconcile(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				if m.task.Phase != "deployed" || m.task.Error != "" || p.getCount != 1 {
+					t.Fatalf("known deployment was blocked: %#v reads=%d", m.task, p.getCount)
+				}
+				p.deployment.Status = terminal
+				if err := restarted.Reconcile(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				status, err := restarted.Status(t.Context(), run.ID)
+				if err != nil || status.Status != domain.PublishStatus(terminal) || m.task.Target != frozen || p.lastGetProject != "project" || p.lastGetID != "deploy-1" || p.deployCount != 1 || p.getCount != 2 {
+					t.Fatalf("frozen deployment did not reconcile: %#v %v task=%#v cloud=%#v", status, err, m.task, p)
+				}
+				if terminal == "succeeded" && status.PreviewURL != "https://site.example/" {
+					t.Fatalf("published URL drifted: %#v", status)
+				}
+			})
+		}
 	}
 }
 
