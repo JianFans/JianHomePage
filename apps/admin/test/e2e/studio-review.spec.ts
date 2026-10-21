@@ -32,7 +32,7 @@ for (const locale of ['zh-CN', 'en'] as const) test(`审核通过后显示完成
   await expect(page.locator('.studio-meta')).toContainText(labels.approved)
   await expect(page.locator('.studio-meta')).toContainText('5')
   await expect(page.locator('.studio-history-list')).toContainText(labels.approved)
-  await expect(review).toBeDisabled()
+  await expect(review).toHaveCount(0)
   await expect(page.getByRole('button', { name: labels.publish, exact: true })).toBeEnabled()
   await page.reload()
   await expect(page.locator('.studio-meta')).toContainText(labels.approved)
