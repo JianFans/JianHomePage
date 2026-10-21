@@ -38,8 +38,9 @@ export function usePublishMonitor(options: MonitorOptions) {
     if (disposed || options.active?.value === false || refreshing.value || !job) return
     const active = ['pending', 'building'].includes(job.status)
     if (!active && !syncPending) return
-    const buildEnded = job.build?.phase === 'succeeded' || job.build?.phase === 'failed'
-    if (active && !buildEnded && (job.build?.configurationMismatch || (job.build?.phase === 'submitting' && job.build.error))) return
+    const phase = job.build?.phase
+    const readable = phase === 'deployed' || phase === 'succeeded' || phase === 'failed'
+    if (active && !readable && (job.build?.configurationMismatch || (phase === 'submitting' && job.build?.error))) return
     timer = setTimeout(() => { void refresh() }, 5000)
   }
 

@@ -74,9 +74,10 @@ function task(): AdminPublishJob {
   return { id: 'pub_d12f724e-a67b-4212-ae95-44b9aa602de8', versionId: 'ver_14cea400-a42f-4560-9770-3de88cae9d5a', operation: 'publish', status: 'building', buildId: 'build_981ab54b-e9e9-4230-8803-a6af5c970ad3', snapshotKey: 'snapshots/test', snapshotChecksum: 'sha256:browser', build: { phase: 'deployed', deploymentId: 'dp-test', configurationMismatch: false } }
 }
 
-test('重新进入恢复持久任务并自动显示部署终态，不创建新任务', async ({ page }) => {
+for (const mismatch of [false, true]) test(`重新进入恢复持久任务并自动显示部署终态，不创建新任务，配置变化=${mismatch}`, async ({ page }) => {
   const api = await backend(page)
   const job = task()
+  job.build!.configurationMismatch = mismatch
   const record = api.records.get(job.versionId)!
   record.status = 'publishing'
   await page.addInitScript(() => localStorage.setItem('yujian:admin-locale', 'en'))
@@ -91,6 +92,7 @@ test('重新进入恢复持久任务并自动显示部署终态，不创建新�
   await page.goto('/')
   await expect(page.getByTestId('publish-status')).toContainText('Deployment accepted')
   await expect(page.getByTestId('publish-status')).toContainText('dp-test')
+  await expect(page.getByTestId('publish-status')).not.toContainText('Restore its original configuration')
   await expect(page.getByTestId('publish-status').getByRole('status')).toHaveText('Published', { timeout: 12000 })
   await expect(page.locator('.studio-meta')).toContainText('Published')
   expect(api.writes).toHaveLength(0)

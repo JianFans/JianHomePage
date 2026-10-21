@@ -9,6 +9,16 @@ function uncertainJob(): AdminPublishJob {
 }
 
 describe('发布状态操作', () => {
+  it.each(['zh-CN', 'en'] as const)('已部署任务配置变化仍显示等待结果，不要求恢复配置（%s）', (locale) => {
+    const wrapper = mount(PublishStatusPanel, { props: { job: { ...uncertainJob(), build: { phase: 'deployed', deploymentId: 'dp-original', configurationMismatch: true } }, locale, busy: false, unsaved: false, canRecover: true, readError: false, refreshing: false } })
+    try {
+      expect(wrapper.get('[role="status"]').text()).toBe(locale === 'en' ? 'Deployment accepted · checking result' : '部署已接受，等待结果')
+      expect(wrapper.text()).toContain('dp-original')
+      expect(wrapper.text()).not.toContain(locale === 'en' ? 'Restore its original configuration' : '恢复原配置')
+      expect(wrapper.find('[data-testid="publish-recover"]').exists()).toBe(false)
+    } finally { wrapper.unmount() }
+  })
+
   it.each(['succeeded', 'failed'] as const)('已结束构建 %s 优先显示结果同步，不要求恢复旧配置', async (phase) => {
     const wrapper = mount(PublishStatusPanel, { props: { job: { ...uncertainJob(), build: { phase, configurationMismatch: true } }, locale: 'zh-CN', busy: false, unsaved: false, canRecover: true, readError: false, refreshing: false } })
     try {

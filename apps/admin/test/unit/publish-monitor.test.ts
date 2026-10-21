@@ -54,7 +54,28 @@ it.each(['succeeded', 'failed'] as const)('配置变化不阻止已结束构建 
   } finally { scope.stop() }
 })
 
-it.each(['queued', 'building', 'submitting', 'deployed'] as const)('活动构建 %s 的配置变化仍暂停自动读取', async (phase) => {
+it.each(['succeeded', 'failed'] as const)('配置变化后已部署任务持续轮询直到 %s', async (phase) => {
+  vi.useFakeTimers()
+  const scope = effectScope()
+  const deployed: AdminPublishJob = { ...task(), build: { phase: 'deployed', deploymentId: 'dp-original', configurationMismatch: true } }
+  const job = ref<AdminPublishJob | null>(deployed)
+  let reads = 0
+  const read = vi.fn(async () => ++reads === 1 ? deployed : { ...task(phase), build: { phase, configurationMismatch: true } })
+  let synchronized: AdminPublishJob['status'] | undefined
+  scope.run(() => usePublishMonitor({ job, read, latest: async () => null, updated: result => { synchronized = result.status } }))
+  try {
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(synchronized).toBe('building')
+    expect(job.value?.build?.deploymentId).toBe('dp-original')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(job.value?.status).toBe(phase)
+    expect(synchronized).toBe(phase)
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(read).toHaveBeenCalledTimes(2)
+  } finally { scope.stop() }
+})
+
+it.each(['queued', 'building', 'submitting'] as const)('活动构建 %s 的配置变化仍暂停自动读取', async (phase) => {
   vi.useFakeTimers()
   const scope = effectScope()
   const job = ref<AdminPublishJob | null>({ ...task(), build: { phase, configurationMismatch: true } })
