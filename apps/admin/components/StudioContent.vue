@@ -14,10 +14,9 @@ import type { AdminLocale } from '../utils/admin-locale'
 import { studioVersionStatus, type StudioModule } from '../utils/studio-copy'
 
 const props = defineProps<{ studio: StudioWorkspace; locale: AdminLocale }>()
-const emit = defineEmits<{ navigate: [module: StudioModule]; workflow: [mode: 'review' | 'publish' | 'rollback']; assetBusy: [value: boolean]; assetDirty: [value: boolean] }>()
+const emit = defineEmits<{ navigate: [module: StudioModule]; assetBusy: [value: boolean]; assetDirty: [value: boolean] }>()
 const { workspace, session, toasts, music, homepage, video, event, moment } = props.studio
 const copy = computed(() => props.studio.copy)
-const versionName = computed(() => workspace.version?.name || workspace.version?.id || (workspace.editorAnalysis.snapshot ? copy.value.initialDraft : copy.value.noVersion))
 const assetOpened = ref(false)
 watch(() => props.studio.module, (module) => { if (module === 'assets') assetOpened.value = true }, { immediate: true })
 /** 模块导航复用全局未保存保护，不在展示组件中自行重建编辑上下文。 */
@@ -38,18 +37,9 @@ function navigate(module: StudioModule) { emit('navigate', module) }
         v-if="studio.module === 'overview'"
         class="studio-overview"
       >
-        <div class="studio-overview-banner">
-          <div>
-            <p class="studio-kicker">
-              {{ copy.current }}
-            </p><h2>{{ versionName }}</h2><p class="studio-muted">
-              {{ workspace.version ? copy.overviewHint : copy.firstVersion }}
-            </p>
-          </div><span
-            class="studio-banner-mark"
-            aria-hidden="true"
-          >遇</span>
-        </div>
+        <p class="studio-muted studio-overview-hint">
+          {{ workspace.version ? copy.overviewHint : copy.firstVersion }}
+        </p>
         <SnapshotInsights
           v-if="workspace.editorAnalysis.snapshot"
           :analysis="workspace.editorAnalysis"
@@ -269,47 +259,6 @@ function navigate(module: StudioModule) { emit('navigate', module) }
         >
           {{ copy.more }}
         </button>
-        <div
-          v-if="workspace.version"
-          class="studio-workflow-actions"
-        >
-          <button
-            v-if="studio.canEdit"
-            class="button"
-            type="button"
-            :disabled="!workspace.canSubmitReview || studio.unsaved"
-            @click="workspace.submitReview"
-          >
-            {{ copy.submit }}
-          </button>
-          <button
-            v-if="studio.canReview"
-            class="button"
-            type="button"
-            :disabled="!workspace.canApprove || studio.unsaved"
-            @click="emit('workflow', 'review')"
-          >
-            {{ copy.approve }} / {{ copy.reject }}
-          </button>
-          <button
-            v-if="studio.canPublish && workspace.version.status === 'in_review'"
-            class="button button--primary"
-            type="button"
-            :disabled="!workspace.canPublish || studio.unsaved"
-            @click="emit('workflow', 'publish')"
-          >
-            {{ copy.publish }}
-          </button>
-          <button
-            v-if="studio.canPublish && workspace.canRollback"
-            class="button"
-            type="button"
-            :disabled="studio.unsaved || workspace.busy"
-            @click="emit('workflow', 'rollback')"
-          >
-            {{ copy.rollback }}
-          </button>
-        </div>
       </section>
     </div>
   </Transition>

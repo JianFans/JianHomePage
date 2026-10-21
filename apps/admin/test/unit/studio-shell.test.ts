@@ -66,12 +66,52 @@ it('shows approved review consistently and prevents reopening review decisions',
     expect(wrapper.get('.studio-history-list').text()).toContain('Approved')
     await wrapper.get('[data-testid="nav-history"]').trigger('click')
     expect(wrapper.get('.studio-history-list').text()).toContain('Approved')
-    const reviewButton = wrapper.findAll('.studio-workflow-actions button').find(button => button.text().includes('Approve'))!
-    expect(reviewButton.attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('.studio-workflow-actions button').some(button => button.text().includes('Approve'))).toBe(false)
     expect(wrapper.findAll('.studio-workflow-actions button').find(button => button.text() === 'Publish')!.attributes('disabled')).toBeUndefined()
     await wrapper.get('button[aria-label="切换中文"]').trigger('click')
     expect(wrapper.get('.studio-meta').text()).toContain('审核通过')
   } finally { wrapper.unmount() }
+})
+
+it.each([
+  { status: 'draft', roles: ['editor'], action: 'Submit review' },
+  { status: 'in_review', roles: ['reviewer'], action: 'Approve / Return to draft' },
+  { status: 'in_review', reviewApproved: true, roles: ['publisher'], action: 'Publish' },
+  { status: 'archived', roles: ['publisher'], action: 'Rollback' },
+  { status: 'draft', roles: ['reviewer'], action: '' },
+  { status: 'in_review', reviewApproved: true, roles: ['editor'], action: '' },
+])('offers only the current version next step across modules: $status $roles', async (options) => {
+  const { wrapper } = await mountStudio(options)
+  try {
+    for (const module of ['music', 'video', 'history'] as const) {
+      await wrapper.get(`[data-testid="nav-${module}"]`).trigger('click')
+      const context = wrapper.get('[data-testid="studio-version-context"]')
+      const actions = context.findAll('.studio-workflow-actions button')
+      expect(actions.map(button => button.text())).toEqual(options.action ? [options.action] : [])
+      if (options.action) expect(actions[0]!.element.matches(':disabled')).toBe(false)
+      expect(wrapper.get('h1').text()).toBe({ music: 'Music', video: 'Videos', history: 'Versions' }[module])
+      expect(context.text()).toContain('工作草稿')
+    }
+  } finally { wrapper.unmount() }
+})
+
+it('disables the global next step for unsaved module input and opens review without navigating to history', async () => {
+  const { wrapper, fetcher } = await mountStudio()
+  try {
+    await wrapper.get('[data-testid="nav-video"]').trigger('click')
+    const action = wrapper.get('[data-testid="studio-version-context"] .studio-workflow-actions button')
+    expect(action.element.matches(':disabled')).toBe(false)
+    await wrapper.get('[data-testid="video-title-en"]').setValue('Unsaved form input')
+    expect(action.element.matches(':disabled')).toBe(true)
+    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith('/submit-review'))).toBe(false)
+  } finally { wrapper.unmount() }
+  const review = await mountStudio({ status: 'in_review', roles: ['reviewer'] })
+  try {
+    await review.wrapper.get('[data-testid="nav-music"]').trigger('click')
+    await review.wrapper.get('[data-testid="studio-version-context"] .studio-workflow-actions button').trigger('click')
+    expect(review.wrapper.get('[role="dialog"]').text()).toContain('Return reason')
+    expect(review.wrapper.get('[data-module]').attributes('data-module')).toBe('music')
+  } finally { review.wrapper.unmount() }
 })
 
 it('opens a usable first draft without importing test content or writing to the server', async () => {

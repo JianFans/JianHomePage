@@ -9,6 +9,7 @@ import HomepagePreview from '../components/HomepagePreview.vue'
 import SnapshotInsights from '../components/SnapshotInsights.vue'
 import StudioNavigation from '../components/StudioNavigation.vue'
 import StudioVersionBar from '../components/StudioVersionBar.vue'
+import StudioVersionWorkflow from '../components/StudioVersionWorkflow.vue'
 import StudioDialog from '../components/StudioDialog.vue'
 import ToastViewport from '../components/ToastViewport.vue'
 import { useStudioWorkspace } from '../composables/useStudioWorkspace'
@@ -273,24 +274,40 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
             @clone="studio.request({ kind: 'clone' })"
             @history="navigate('history')"
           />
+          <section
+            class="studio-version-context"
+            data-testid="studio-version-context"
+            :aria-label="copy.current"
+          >
+            <div class="studio-version-info">
+              <p class="studio-kicker">
+                {{ copy.current }}
+              </p>
+              <strong data-testid="studio-version-name">{{ versionName }}</strong>
+              <div class="studio-meta">
+                <span
+                  v-if="workspace.version"
+                  class="studio-status"
+                  :data-status="studioVersionStatus(workspace.version)"
+                >{{ copy.statuses[studioVersionStatus(workspace.version)] }}</span>
+                <span>{{ studio.locked && !workspace.busy ? copy.readonly : studio.unsaved ? copy.unsaved : copy.saved }}</span>
+                <span v-if="workspace.version">{{ copy.revision }} {{ workspace.version.revision }}</span>
+              </div>
+            </div>
+            <StudioVersionWorkflow
+              :studio="studio"
+              @workflow="mode => uiMode = mode"
+            />
+          </section>
           <main
             class="studio-content"
             data-studio-content
           >
             <div class="studio-page-heading">
               <div>
-                <p class="studio-kicker">
+                <h1>
                   {{ copy.modules[studio.module] }}
-                </p><h1 data-testid="studio-version-name">
-                  {{ versionName }}
                 </h1>
-                <div class="studio-meta">
-                  <span
-                    v-if="workspace.version"
-                    class="studio-status"
-                    :data-status="studioVersionStatus(workspace.version)"
-                  >{{ copy.statuses[studioVersionStatus(workspace.version)] }}</span><span>{{ studio.locked && !workspace.busy ? copy.readonly : studio.unsaved ? copy.unsaved : copy.saved }}</span><span v-if="workspace.version">{{ copy.revision }} {{ workspace.version.revision }}</span>
-                </div>
               </div>
               <button
                 type="button"
@@ -311,7 +328,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
               :studio="studio"
               :locale="locale"
               @navigate="navigate"
-              @workflow="mode => uiMode = mode"
               @asset-busy="value => studio.assetBusy = value"
               @asset-dirty="value => studio.assetDirty = value"
             />
