@@ -70,9 +70,16 @@ export async function focusSnapshotIssue(root: ParentNode, issues: readonly Snap
   const field = [...root.querySelectorAll<HTMLElement>('[data-snapshot-path]')]
     .find(element => element.dataset.snapshotPath === path)
   if (!field) return false
+  let expanded = false
   for (let ancestor = field.parentElement; ancestor; ancestor = ancestor.parentElement) {
-    if (ancestor.tagName === 'DETAILS') (ancestor as HTMLDetailsElement).open = true
+    if (ancestor.tagName === 'DETAILS' && !(ancestor as HTMLDetailsElement).open) {
+      (ancestor as HTMLDetailsElement).open = true
+      expanded = true
+    }
   }
+  // details 的可聚焦子树在下一帧才更新；等可见布局，不等待任何入场动画。
+  if (expanded) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  if (!field.isConnected || field.dataset.snapshotPath !== path) return false
   field.focus()
   const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   field.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'instant' : 'auto' })
