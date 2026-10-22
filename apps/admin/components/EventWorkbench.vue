@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vContentMotion } from '../utils/content-motion'
 import { CalendarDays, Plus, X } from '@lucide/vue'
 import { computed, ref, shallowRef, useId, watch } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
@@ -217,6 +218,7 @@ function setPosterAsset(event: Event) {
             <code data-testid="event-id">{{ selected.id }}</code>
           </div>
           <fieldset
+            v-content-motion="selected.id"
             class="music-fields"
             data-testid="event-fields"
             :disabled="busy || readOnly"

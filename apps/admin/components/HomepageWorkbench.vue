@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vContentMotion } from '../utils/content-motion'
 import { ArrowDown, ArrowUp, LayoutList, Plus, X } from '@lucide/vue'
 import { computed, ref, shallowRef, watch } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
@@ -231,6 +232,7 @@ function moveSection(index: number, direction: -1 | 1) {
               </button>
             </div>
             <fieldset
+              v-content-motion="selectedId"
               class="music-fields"
               :disabled="busy || readOnly"
               :aria-label="copy.headline"

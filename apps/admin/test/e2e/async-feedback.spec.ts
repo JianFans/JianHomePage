@@ -1,6 +1,27 @@
 import { expect, test } from '@playwright/test'
 import { backend, navigate, startStudio } from './studio'
 
+test('切换记录只过渡当前编辑区，保留输入节点并即时取消减少动态效果下的动画', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await startStudio(page)
+  await navigate(page, 'video')
+  const input = page.getByTestId('video-title-zh')
+  await input.evaluate(element => element.setAttribute('data-motion-retained', 'true'))
+  const fields = page.getByTestId('video-fields')
+  // 停在真实 WAAPI 动画中检查生命周期，避免 220 ms 结束早于测试进程读取。
+  await fields.evaluate((element) => {
+    const animate = element.animate.bind(element)
+    element.animate = (...args: Parameters<HTMLElement['animate']>) => { const animation = animate(...args); animation.pause(); return animation }
+  })
+  await page.locator('[data-testid^="video-record-"]').nth(1).click()
+  await expect.poll(() => fields.evaluate(element => element.getAnimations().some(animation => animation.id === 'studio-record-change'))).toBe(true)
+  await expect(input).toHaveAttribute('data-motion-retained', 'true')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect.poll(() => fields.evaluate(element => element.getAnimations().length)).toBe(0)
+  await page.locator('[data-testid^="video-record-"]').nth(2).click()
+  expect(await fields.evaluate(element => element.getAnimations().length)).toBe(0)
+})
+
 test('慢保存尺寸稳定，只显示实际操作的加载态，并实时响应减少动态效果', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   const api = await startStudio(page)
