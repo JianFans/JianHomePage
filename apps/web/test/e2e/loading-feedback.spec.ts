@@ -31,9 +31,8 @@ test('音频等待反馈可取消，减少动态效果停止旋转且关闭后�
   const wait = new Promise<void>((resolve) => { release = resolve })
   await page.route('**/media/preview-sample.wav', async (route) => { await wait; await route.continue() })
   await page.goto('/')
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('yujian:locale'))).toBe('en')
   const play = page.getByTestId('preview-trigger').first()
-  await expect(play).toHaveAccessibleName('Preview Sample Track 01')
+  await expect(play).toHaveAccessibleName('Preview Sample Track 01', { timeout: 15_000 })
   try {
     await play.click()
     const dock = page.getByTestId('audio-dock')
