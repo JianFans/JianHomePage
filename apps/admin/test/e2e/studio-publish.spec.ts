@@ -152,6 +152,44 @@ test('失败任务确认后以新幂等键重试，保留旧版本选择', async
   await expect(page.getByTestId('studio-version-name')).toHaveText('Previous version')
 })
 
+test('失败任务重试期间保留对话框，失败可再次确认，接受后关闭', async ({ page }) => {
+  const api = await backend(page)
+  const job = task()
+  job.status = 'failed'
+  job.build = { phase: 'failed', configurationMismatch: false }
+  Object.assign(api.records.get(job.versionId)!, { status: 'in_review', reviewApproved: true })
+  await page.addInitScript(() => localStorage.setItem('yujian:admin-locale', 'en'))
+  await page.route('**/api/v1/publishes/latest', route => route.fulfill({ json: job }))
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  let attempts = 0
+  await page.route('**/api/v1/publishes', async (route) => {
+    attempts++
+    if (attempts === 1) { await pending; return route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Unavailable' } }) }
+    return route.fulfill({ status: 202, json: { ...job, id: 'pub_retry_accepted', status: 'pending', build: undefined } })
+  })
+  await page.goto('/')
+  await expect(page.getByTestId('studio-version-name')).toHaveText('Working draft')
+  await page.getByTestId('publish-retry').click()
+  const confirm = page.getByTestId('publish-confirm')
+  const dialog = page.getByRole('dialog', { name: 'Retry failed task' })
+  const dialogHeading = dialog.getByRole('heading', { name: 'Retry failed task' })
+  try {
+    await confirm.click()
+    await expect(confirm).toHaveAttribute('aria-busy', 'true')
+    await expect(confirm).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(dialogHeading).toBeVisible()
+  } finally { release() }
+  await expect(confirm).toBeEnabled()
+  await expect(dialogHeading).toBeVisible()
+  expect(attempts).toBe(1)
+  await confirm.click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('publish-status')).toContainText('pub_retry_accepted')
+  expect(attempts).toBe(2)
+})
+
 test('核实失败保留输入，成功后刷新失败不重新核实并自动同步', async ({ page }) => {
   const api = await backend(page)
   const job = task()

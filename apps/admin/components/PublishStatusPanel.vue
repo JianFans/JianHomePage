@@ -47,7 +47,7 @@ watch(() => props.job?.id, () => { mode.value = null; note.value = ''; deploymen
 /** 只发送经过用户确认的领域操作；不自动重新创建结果不明的部署。 */
 function confirm() {
   if (!canConfirm.value) return
-  if (mode.value === 'retry') { mode.value = null; emit('retry') }
+  if (mode.value === 'retry') emit('retry')
   else emit('recover', outcome.value === 'absent' ? { note: note.value.trim(), confirmedAbsent: true } : { note: note.value.trim(), deploymentId: deploymentId.value })
 }
 </script>

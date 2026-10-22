@@ -9,6 +9,25 @@ function uncertainJob(): AdminPublishJob {
 }
 
 describe('发布状态操作', () => {
+  it('失败任务重试保持确认框和加载反馈，拒绝后可再次确认，接受后关闭', async () => {
+    const job: AdminPublishJob = { ...uncertainJob(), status: 'failed', build: { phase: 'failed', configurationMismatch: false } }
+    const wrapper = mount(PublishStatusPanel, { props: { job, locale: 'en', busy: false, unsaved: false, canRecover: true, refreshing: false, readError: false } })
+    try {
+      await wrapper.get('[data-testid="publish-retry"]').trigger('click')
+      await wrapper.get('[data-testid="publish-confirm"]').trigger('click')
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+      await wrapper.setProps({ busy: true })
+      expect(wrapper.get('[data-testid="publish-confirm"]').attributes('aria-busy')).toBe('true')
+      await wrapper.get('[data-testid="publish-confirm"]').trigger('click')
+      expect(wrapper.emitted('retry')).toHaveLength(1)
+      await wrapper.setProps({ busy: false })
+      expect(wrapper.get('[data-testid="publish-confirm"]').element.matches(':disabled')).toBe(false)
+      await wrapper.get('[data-testid="publish-confirm"]').trigger('click')
+      expect(wrapper.emitted('retry')).toHaveLength(2)
+      await wrapper.setProps({ job: { ...job, id: 'pub_retry', status: 'pending' } })
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    } finally { wrapper.unmount() }
+  })
   it('刷新指示与轮询状态分离，结束后恢复刷新按钮', async () => {
     const wrapper = mount(PublishStatusPanel, { props: { job: uncertainJob(), locale: 'en', busy: false, unsaved: false, canRecover: true, readError: false, refreshing: true } })
     try {
