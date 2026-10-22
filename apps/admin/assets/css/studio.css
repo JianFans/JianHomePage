@@ -185,7 +185,7 @@
   .studio-breadcrumb { font-size: .75rem; }
   .studio-topbar-actions { gap: .2rem; }
   .studio-topbar-actions .studio-public-link { display: none; }
-  .studio-preview span, .studio-save span { display: none; }
+  .studio-preview > span, .studio-save .async-button__content > span { display: none; }
   .studio-preview, .studio-save { width: 2.75rem; padding-inline: .5rem; }
   .studio-version-bar { padding: .6rem 1rem; gap: .5rem; }
   .studio-version-context { padding: 1rem; }

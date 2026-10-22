@@ -10,6 +10,7 @@ import SnapshotInsights from '../components/SnapshotInsights.vue'
 import StudioNavigation from '../components/StudioNavigation.vue'
 import StudioVersionBar from '../components/StudioVersionBar.vue'
 import StudioVersionWorkflow from '../components/StudioVersionWorkflow.vue'
+import AsyncButton from '../components/AsyncButton.vue'
 import StudioDialog from '../components/StudioDialog.vue'
 import ToastViewport from '../components/ToastViewport.vue'
 import { useStudioWorkspace } from '../composables/useStudioWorkspace'
@@ -21,6 +22,14 @@ const studio = reactive(useStudioWorkspace(locale))
 const { workspace, session, toasts } = studio
 const copy = computed(() => studio.copy)
 const collapsed = ref(false)
+const activeAction = ref('')
+
+/** 只标记实际激活的控件；请求成功、失败或被拒绝均立即恢复。 */
+async function perform(name: string, action: () => Promise<unknown>) {
+  if (activeAction.value) return
+  activeAction.value = name
+  try { await action() } finally { activeAction.value = '' }
+}
 const uiMode = ref<'' | 'tools' | 'preview' | 'review' | 'publish' | 'rollback' | 'navigation'>('')
 const cloneName = ref('')
 const snapshotFileInput = ref<HTMLInputElement | null>(null)
@@ -187,6 +196,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
           :collapsed="collapsed"
           :busy="workspace.busy"
           :logout-busy="studio.assetBusy || session.busy"
+          :logging-out="session.busy"
           @navigate="navigate"
           @logout="studio.request({ kind: 'logout' })"
           @collapse="collapsed = !collapsed"
@@ -243,25 +253,20 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
                   aria-hidden="true"
                 /><span>{{ copy.preview }}</span>
               </button>
-              <button
+              <AsyncButton
                 type="button"
                 class="button button--primary studio-save"
                 data-testid="snapshot-save"
                 :disabled="studio.locked"
+                :loading="activeAction === 'save'"
                 :aria-label="copy.save"
-                @click="studio.save"
+                @click="perform('save', studio.save)"
               >
-                <LoaderCircle
-                  v-if="workspace.busy"
-                  :size="16"
-                  class="studio-spinner"
-                  aria-hidden="true"
-                /><Save
-                  v-else
+                <Save
                   :size="16"
                   aria-hidden="true"
                 /><span>{{ copy.save }}</span>
-              </button>
+              </AsyncButton>
             </div>
           </header>
           <StudioVersionBar
@@ -367,20 +372,21 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
             @click="studio.discardPending"
           >
             {{ copy.discard }}
-          </button><button
+          </button><AsyncButton
             class="button button--primary"
             type="button"
             data-testid="leave-save"
             :disabled="studio.locked || (studio.pending?.kind === 'logout' && studio.assetDirty)"
-            @click="studio.savePending"
+            :loading="activeAction === 'save-leave'"
+            @click="perform('save-leave', studio.savePending)"
           >
             {{ copy.saveContinue }}
-          </button>
+          </AsyncButton>
         </div>
       </div>
       <form
         v-else-if="modal === 'clone'"
-        @submit.prevent="studio.clone(cloneName)"
+        @submit.prevent="perform('clone', () => studio.clone(cloneName))"
       >
         <label class="studio-field"><span>{{ copy.cloneName }}</span><input
           v-model="cloneName"
@@ -392,14 +398,15 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
         ></label><p class="studio-muted">
           {{ copy.source }} · {{ versionName }}
         </p><div class="studio-dialog-actions">
-          <button
+          <AsyncButton
             class="button button--primary"
             type="submit"
             data-testid="clone-confirm"
             :disabled="workspace.busy || !cloneName.trim()"
+            :loading="activeAction === 'clone'"
           >
             {{ copy.create }}
-          </button>
+          </AsyncButton>
         </div>
       </form>
       <div
@@ -477,40 +484,43 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
         v-else-if="modal === 'review'"
         class="studio-review"
       >
-        <button
+        <AsyncButton
           class="button button--primary"
           type="button"
           :disabled="!workspace.canApprove || !studio.canReview"
-          @click="workspace.approveReview"
+          :loading="activeAction === 'approve'"
+          @click="perform('approve', workspace.approveReview)"
         >
           <Check
             :size="16"
             aria-hidden="true"
           />{{ copy.approve }}
-        </button><label class="studio-field"><span>{{ copy.reason }}</span><input
+        </AsyncButton><label class="studio-field"><span>{{ copy.reason }}</span><input
           v-model="workspace.rejectReason"
           :disabled="!workspace.canApprove || !studio.canReview"
-        ></label><button
+        ></label><AsyncButton
           class="button button--danger"
           type="button"
           :disabled="!workspace.canReject || !studio.canReview"
-          @click="workspace.rejectReview"
+          :loading="activeAction === 'reject'"
+          @click="perform('reject', workspace.rejectReview)"
         >
           {{ copy.reject }}
-        </button>
+        </AsyncButton>
       </div>
       <div v-else-if="modal === 'publish' || modal === 'rollback'">
         <p class="studio-muted">
           {{ copy.publishingHint }}
         </p><div class="studio-dialog-actions">
-          <button
+          <AsyncButton
             class="button button--primary"
             type="button"
             :disabled="workspace.busy || !studio.canPublish"
-            @click="confirmRelease"
+            :loading="activeAction === 'release'"
+            @click="perform('release', confirmRelease)"
           >
             {{ copy.confirm }}
-          </button>
+          </AsyncButton>
         </div>
       </div>
       <StudioNavigation
@@ -522,6 +532,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
         drawer
         :busy="workspace.busy"
         :logout-busy="studio.assetBusy || session.busy"
+        :logging-out="session.busy"
         @navigate="navigate"
         @logout="uiMode = ''; studio.request({ kind: 'logout' })"
       />

@@ -3,8 +3,9 @@ import { CalendarDays, ChevronLeft, ChevronRight, Film, History, Images, LayoutD
 import { computed, ref, watch } from 'vue'
 import type { AdminLocale } from '../utils/admin-locale'
 import { studioCopy, type StudioModule } from '../utils/studio-copy'
+import AsyncButton from './AsyncButton.vue'
 
-const props = defineProps<{ active: StudioModule; locale: AdminLocale; name: string; picture?: string; collapsed?: boolean; drawer?: boolean; busy?: boolean; logoutBusy?: boolean }>()
+const props = defineProps<{ active: StudioModule; locale: AdminLocale; name: string; picture?: string; collapsed?: boolean; drawer?: boolean; busy?: boolean; logoutBusy?: boolean; loggingOut?: boolean }>()
 const emit = defineEmits<{ navigate: [module: StudioModule]; logout: []; collapse: [] }>()
 const copy = computed(() => studioCopy(props.locale))
 const failedPicture = ref('')
@@ -107,12 +108,13 @@ const groups = [
           <span data-testid="studio-account-name">{{ name }}</span><small>{{ copy.studio }}</small>
         </div>
       </div>
-      <button
+      <AsyncButton
         type="button"
         class="icon-tool"
         :aria-label="copy.logout"
         :title="copy.logout"
         :disabled="busy || logoutBusy"
+        :loading="loggingOut"
         data-testid="studio-logout"
         @click="emit('logout')"
       >
@@ -120,7 +122,7 @@ const groups = [
           :size="18"
           aria-hidden="true"
         />
-      </button>
+      </AsyncButton>
       <button
         v-if="!drawer"
         type="button"

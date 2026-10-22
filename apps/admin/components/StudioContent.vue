@@ -9,6 +9,7 @@ import EventWorkbench from './EventWorkbench.vue'
 import MomentWorkbench from './MomentWorkbench.vue'
 import SnapshotInsights from './SnapshotInsights.vue'
 import PublishStatusPanel from './PublishStatusPanel.vue'
+import AsyncButton from './AsyncButton.vue'
 import type { StudioWorkspace } from '../composables/useStudioWorkspace'
 import type { AdminLocale } from '../utils/admin-locale'
 import { studioVersionStatus, type StudioModule } from '../utils/studio-copy'
@@ -18,9 +19,16 @@ const emit = defineEmits<{ navigate: [module: StudioModule]; assetBusy: [value: 
 const { workspace, session, toasts, music, homepage, video, event, moment } = props.studio
 const copy = computed(() => props.studio.copy)
 const assetOpened = ref(false)
+const historyAction = ref('')
 watch(() => props.studio.module, (module) => { if (module === 'assets') assetOpened.value = true }, { immediate: true })
 /** 模块导航复用全局未保存保护，不在展示组件中自行重建编辑上下文。 */
 function navigate(module: StudioModule) { emit('navigate', module) }
+/** 区分刷新与追加的发起按钮，不把整个列表显示成新的空状态。 */
+async function listHistory(append = false) {
+  if (workspace.listing) return
+  historyAction.value = append ? 'more' : 'refresh'
+  try { await workspace.listVersions(append) } finally { historyAction.value = '' }
+}
 </script>
 
 <template>
@@ -203,14 +211,15 @@ function navigate(module: StudioModule) { emit('navigate', module) }
         class="studio-history"
       >
         <div class="studio-section-heading">
-          <h2>{{ copy.versions }}</h2><button
+          <h2>{{ copy.versions }}</h2><AsyncButton
             type="button"
             class="button"
             :disabled="workspace.listing"
-            @click="workspace.listVersions()"
+            :loading="workspace.listing && historyAction === 'refresh'"
+            @click="listHistory()"
           >
             {{ copy.refresh }}
-          </button>
+          </AsyncButton>
         </div>
         <PublishStatusPanel
           v-if="studio.canPublish"
@@ -250,15 +259,16 @@ function navigate(module: StudioModule) { emit('navigate', module) }
         >
           {{ copy.noVersions }}
         </p>
-        <button
+        <AsyncButton
           v-if="workspace.nextCursor"
           type="button"
           class="button"
           :disabled="workspace.listing"
-          @click="workspace.listVersions(true)"
+          :loading="workspace.listing && historyAction === 'more'"
+          @click="listHistory(true)"
         >
           {{ copy.more }}
-        </button>
+        </AsyncButton>
       </section>
     </div>
   </Transition>

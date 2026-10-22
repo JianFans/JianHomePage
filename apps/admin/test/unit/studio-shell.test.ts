@@ -57,6 +57,26 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
 
+it.each([200, 409])('keeps loading feedback on the saving button until HTTP %s settles', async (status) => {
+  const { wrapper, fetcher } = await mountStudio()
+  try {
+    let finish!: (response: Response) => void
+    fetcher.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve }))
+    await wrapper.get('[data-testid="snapshot-save"]').trigger('click')
+    await flushPromises()
+    const button = wrapper.get('[data-testid="snapshot-save"]')
+    expect(button.attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('[data-testid="version-clone"]').attributes('aria-busy')).toBeUndefined()
+    expect(button.text()).toBe('Save draft')
+    finish(new Response(JSON.stringify(status === 200
+      ? { id: 'ver_14cea400-a42f-4560-9770-3de88cae9d5a', name: '工作草稿', status: 'draft', revision: 5, snapshot: fixture, checksum: 'sha256:test' }
+      : { code: 'revision_conflict', message: 'Conflict' }), { status }))
+    await flushPromises()
+    expect(button.attributes('aria-busy')).toBeUndefined()
+    expect(button.element.matches(':disabled')).toBe(false)
+  } finally { wrapper.unmount() }
+})
+
 it('groups navigation by purpose and localizes the visible group names', async () => {
   const { wrapper } = await mountStudio()
   try {
