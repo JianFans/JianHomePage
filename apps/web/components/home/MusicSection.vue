@@ -5,7 +5,7 @@ import type {
   Release,
   Track,
 } from '@yujian/schema'
-import { ArrowUpRight, Headphones, LoaderCircle, Pause, Play } from '@lucide/vue'
+import { ArrowUpRight, Headphones, Pause, Play } from '@lucide/vue'
 import { computed } from 'vue'
 import type {
   AudioPlayerStatus,
@@ -15,6 +15,7 @@ import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
 import FallbackImage from '../ui/FallbackImage.vue'
 import PlatformLinks from '../ui/PlatformLinks.vue'
+import ActivityIndicator from '../ui/ActivityIndicator.vue'
 
 const props = defineProps<{
   section: MusicSection
@@ -141,6 +142,7 @@ function preview(track: AudioPlayerTrack) {
             data-testid="preview-trigger"
             :aria-label="previewLabel(card.playable)"
             :aria-pressed="isActive(card.playable) && playerStatus === 'playing'"
+            :aria-busy="isActive(card.playable) && playerStatus === 'loading' || undefined"
             @click="preview(card.playable)"
           >
             <FallbackImage
@@ -152,7 +154,7 @@ function preview(track: AudioPlayerTrack) {
               loading="lazy"
             />
             <span class="music-cover-state">
-              <LoaderCircle
+              <ActivityIndicator
                 v-if="isActive(card.playable) && playerStatus === 'loading'"
                 aria-hidden="true"
               />

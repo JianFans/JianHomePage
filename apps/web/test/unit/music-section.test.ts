@@ -24,6 +24,18 @@ function mountMusicSection(locale: 'zh-CN' | 'en' = 'zh-CN') {
 }
 
 describe('MusicSection', () => {
+  it('仅当前试听封面显示等待状态且保留取消操作', async () => {
+    const wrapper = mountMusicSection()
+    await wrapper.setProps({ activeTrackId: 'track_e60c46c7-28d6-418e-8905-167307dc8354', playerStatus: 'loading' })
+    const button = wrapper.get('[data-testid="preview-trigger"]')
+    expect(button.attributes('aria-busy')).toBe('true')
+    expect(wrapper.findAll('.activity-indicator')).toHaveLength(1)
+    await button.trigger('click')
+    expect(wrapper.emitted('preview')).toHaveLength(1)
+    await wrapper.setProps({ playerStatus: 'playing' })
+    expect(button.attributes('aria-busy')).toBeUndefined()
+    wrapper.unmount()
+  })
   it('按配置顺序显示稳定方形封面的作品卡', () => {
     const wrapper = mountMusicSection()
     const cards = wrapper.findAll('[data-testid="music-card"]')

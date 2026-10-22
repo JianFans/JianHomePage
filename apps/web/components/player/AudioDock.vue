@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   AlertCircle,
-  LoaderCircle,
   Pause,
   Play,
   SkipBack,
@@ -15,6 +14,7 @@ import { resolveLocalized } from '../../utils/localized'
 import FallbackImage from '../ui/FallbackImage.vue'
 import IconButton from '../ui/IconButton.vue'
 import PlatformLinks from '../ui/PlatformLinks.vue'
+import ActivityIndicator from '../ui/ActivityIndicator.vue'
 
 const props = defineProps<{
   player: AudioPlayerController
@@ -60,6 +60,7 @@ function updateProgress(event: Event) {
       class="audio-dock"
       data-testid="audio-dock"
       :aria-label="currentTitle"
+      :aria-busy="status === 'loading' || undefined"
     >
       <FallbackImage
         v-if="current.coverSrc"
@@ -113,11 +114,11 @@ function updateProgress(event: Event) {
           v-if="status !== 'error'"
           :label="status === 'playing' ? labels.pause : labels.resume"
           :pressed="status === 'playing'"
+          :aria-busy="status === 'loading' || undefined"
           @click="player.toggle(current)"
         >
-          <LoaderCircle
+          <ActivityIndicator
             v-if="status === 'loading'"
-            class="audio-dock__loading"
             aria-hidden="true"
           />
           <Pause
@@ -219,9 +220,6 @@ function updateProgress(event: Event) {
   height: 1.1rem;
 }
 
-.audio-dock__loading {
-  animation: audio-loading 900ms linear infinite;
-}
 
 .audio-dock-enter-active,
 .audio-dock-leave-active {
@@ -234,11 +232,6 @@ function updateProgress(event: Event) {
   opacity: 0;
 }
 
-@keyframes audio-loading {
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 @media (max-width: 42rem) {
   .audio-dock {
