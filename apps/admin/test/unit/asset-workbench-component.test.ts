@@ -13,6 +13,27 @@ afterEach(/** 还原全局 fetch 和 spy，防止跨测试共享网络响应或�
 })
 
 describe('素材工作台组件', () => {
+  it('自动加载素材时显示列表骨架，不将刷新按钮标记为加载', async () => {
+    const gate = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn(() => gate.promise))
+    const wrapper = mount(AssetWorkbench, {
+      props: { locale: 'zh-CN', editorText: JSON.stringify(fixtureData), apiBaseUrl: 'https://api.yujian.me', token: 'session-token', studio: true },
+    })
+    try {
+      await flushPromises()
+      expect(wrapper.get('.asset-library').attributes('aria-busy')).toBe('true')
+      expect(wrapper.find('[data-testid="asset-skeleton"]').exists()).toBe(true)
+      const refresh = wrapper.get('[data-testid="asset-refresh"]')
+      expect(refresh.attributes('disabled')).toBeDefined()
+      expect(refresh.attributes('aria-busy')).toBeUndefined()
+      expect(refresh.find('.activity-indicator').exists()).toBe(false)
+      gate.resolve(jsonResponse({ items: [] }))
+      await flushPromises()
+      expect(refresh.attributes('disabled')).toBeUndefined()
+      expect(wrapper.find('[data-testid="asset-skeleton"]').exists()).toBe(false)
+    } finally { gate.resolve(jsonResponse({ items: [] })); wrapper.unmount() }
+  })
+
   it('首次读取显示骨架，刷新保留卡片与替代文本输入', async () => {
     let finish!: (response: Response) => void
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { finish = resolve })))

@@ -116,7 +116,9 @@ test('素材首次读取失败退出骨架并恢复刷新入口', async ({ page 
   await navigate(page, 'assets')
   try {
     await expect(page.getByTestId('asset-skeleton')).toBeVisible()
-    await expect(page.getByTestId('asset-refresh')).toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByTestId('asset-refresh')).toBeDisabled()
+    await expect(page.getByTestId('asset-refresh')).not.toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByTestId('asset-refresh').locator('.activity-indicator')).toHaveCount(0)
   } finally { release() }
   await expect(page.getByTestId('asset-skeleton')).toHaveCount(0)
   await expect(page.getByTestId('asset-refresh')).toBeEnabled()

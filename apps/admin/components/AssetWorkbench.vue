@@ -493,7 +493,7 @@ function formatBytes(value: unknown): string {
             :aria-label="copy.refresh"
             :title="copy.refresh"
             :disabled="workspace.loading || !connected"
-            :loading="workspace.loading && listingAction !== 'more'"
+            :loading="workspace.loading && listingAction === 'refresh'"
             data-testid="asset-refresh"
             @click="listAssets()"
           >
