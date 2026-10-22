@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vContentMotion } from '../utils/content-motion'
 import { ArrowDown, ArrowUp, Music2, Plus, X } from '@lucide/vue'
 import { computed, ref, useId, watch } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
@@ -262,6 +263,7 @@ function visible(section: MusicDraft['sections'][number]): boolean {
           </button>
         </div>
         <fieldset
+          v-content-motion="draft.release.id"
           :disabled="busy || readOnly"
           class="music-fields"
           data-testid="music-fields"

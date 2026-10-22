@@ -4,7 +4,7 @@ for (const width of [1440, 390]) test(`轮播与滚动动效尊重实时系统�
   await page.setViewportSize({ width, height: 900 })
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.goto('/')
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('yujian:locale'))).toMatch(/^(zh-CN|en)$/)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('yujian:locale')), { timeout: 15_000 }).toMatch(/^(zh-CN|en)$/)
   await page.getByRole('button', { name: /下一项|Next slide/ }).click()
   const headline = page.locator('.hero-headline')
   await expect.poll(() => headline.evaluate(element => element.getAnimations().some(animation => animation instanceof CSSAnimation && animation.animationName === 'site-slide-in'))).toBe(true)

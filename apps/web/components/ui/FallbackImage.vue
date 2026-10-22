@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -21,16 +21,43 @@ const fallbackSvg = encodeURIComponent(`
 const fallbackSrc = `data:image/svg+xml;charset=UTF-8,${fallbackSvg}`
 const activeSrc = ref(props.src)
 const failed = ref(false)
+const loaded = ref(false)
+const image = ref<HTMLImageElement | null>(null)
 
-watch(() => props.src, (src) => {
+watch(() => props.src, async (src) => {
   activeSrc.value = src
   failed.value = false
+  loaded.value = false
+  // 换源后的缓存命中也可能早于事件绑定；只检查本次更新后的图片。
+  await nextTick()
+  if (props.src !== src || activeSrc.value !== src || image.value?.getAttribute('src') !== src || !image.value.complete) return
+  if (image.value.naturalWidth > 0) loaded.value = true
+  else showFallback()
+}, { flush: 'sync' })
+
+/** key 换源与节点身份共同隔离旧图片迟到的 load/error 事件。 */
+function current(event: Event) {
+  return event.target === image.value && image.value?.getAttribute('src') === activeSrc.value
+}
+
+/** 缓存命中可能早于组件挂载；保留浏览器的 picture 候选源选择。 */
+onMounted(() => {
+  if (!image.value?.complete) return
+  if (image.value.naturalWidth > 0) loaded.value = true
+  else showFallback()
 })
 
-function useFallback() {
-  if (failed.value) {
+function loadedImage(event: Event) { if (current(event)) loaded.value = true }
+
+function useFallback(event: Event) {
+  if (failed.value || !current(event)) {
     return
   }
+  showFallback()
+}
+
+/** SSR 完成前错过的 error 与已挂载图片共享失败终态。 */
+function showFallback() {
   failed.value = true
   activeSrc.value = fallbackSrc
 }
@@ -38,12 +65,27 @@ function useFallback() {
 
 <template>
   <img
+    :key="src"
+    ref="image"
     v-bind="$attrs"
+    class="media-image"
     :src="activeSrc"
     :alt="alt"
     :width="width"
     :height="height"
     :data-fallback="failed ? 'true' : undefined"
+    :data-media-state="failed ? 'error' : loaded ? 'ready' : 'loading'"
+    @load="loadedImage"
     @error="useFallback"
   >
 </template>
+
+<style scoped>
+.media-image { background-color: #20262f; }
+@media (prefers-reduced-motion: no-preference) {
+  .media-image[data-media-state="loading"] { animation: image-wait var(--motion-breathe, 1600ms) ease-in-out infinite alternate; }
+  .media-image[data-media-state="ready"] { animation: image-ready var(--motion-normal, 220ms) ease-out; }
+}
+@keyframes image-wait { from { background-color: #151a20; } to { background-color: #29313c; } }
+@keyframes image-ready { from { opacity: .7; } to { opacity: 1; } }
+</style>

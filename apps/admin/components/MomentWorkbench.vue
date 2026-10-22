@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vContentMotion } from '../utils/content-motion'
 import { Images, Plus, X } from '@lucide/vue'
 import { computed, ref, shallowRef, watch } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
@@ -199,6 +200,7 @@ function addMoment() {
             <code data-testid="moment-id">{{ selected.id }}</code>
           </div>
           <fieldset
+            v-content-motion="selected.id"
             class="music-fields"
             data-testid="moment-fields"
             :disabled="busy || readOnly"

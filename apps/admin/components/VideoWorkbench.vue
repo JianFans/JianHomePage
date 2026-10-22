@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vContentMotion } from '../utils/content-motion'
 import { Film, Plus, X } from '@lucide/vue'
 import { computed, ref, shallowRef, useId, watch } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
@@ -213,6 +214,7 @@ function setVideoAsset(event: Event) {
             <code data-testid="video-id">{{ selected.id }}</code>
           </div>
           <fieldset
+            v-content-motion="selected.id"
             class="music-fields"
             data-testid="video-fields"
             :disabled="busy || readOnly"

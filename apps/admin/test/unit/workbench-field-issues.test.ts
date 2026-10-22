@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { computed, defineComponent, reactive, ref } from 'vue'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import fixture from '../../../../content/fixtures/homepage.json'
 import EventWorkbench from '../../components/EventWorkbench.vue'
 import MusicWorkbench from '../../components/MusicWorkbench.vue'
@@ -47,6 +47,25 @@ function description(element: Element) {
 }
 
 describe('canonical field issue navigation', () => {
+  it('等待折叠区可见期间若原字段已移除，不把焦点写回旧记录', async () => {
+    const root = document.createElement('div')
+    const details = document.createElement('details')
+    const input = document.createElement('input')
+    input.dataset.snapshotPath = '/videos/0/title/en'
+    details.append(input)
+    root.append(details)
+    document.body.append(root)
+    let frame!: FrameRequestCallback
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frame = callback; return 1 })
+    try {
+      const result = focusSnapshotIssue(root, [{ path: input.dataset.snapshotPath, source: 'schema', code: 'minLength' }])
+      expect(details.open).toBe(true)
+      input.remove()
+      frame(0)
+      await expect(result).resolves.toBe(false)
+      expect(document.activeElement).not.toBe(input)
+    } finally { root.remove(); vi.unstubAllGlobals() }
+  })
   it.each([
     { kind: 'music', selector: '[data-testid="music-fields"] > details [data-testid="link-url"]', path: '/releases/0/platformLinks/0/url', invalid: 'http://example.com', valid: 'https://example.com' },
     { kind: 'music', selector: '[data-testid="track-editor"] [data-testid="link-url"]', path: '/tracks/0/platformLinks/0/url', invalid: 'http://example.com', valid: 'https://example.com' },

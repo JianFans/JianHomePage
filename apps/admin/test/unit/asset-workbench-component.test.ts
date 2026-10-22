@@ -13,6 +13,49 @@ afterEach(/** 还原全局 fetch 和 spy，防止跨测试共享网络响应或�
 })
 
 describe('素材工作台组件', () => {
+  it('自动加载素材时显示列表骨架，不将刷新按钮标记为加载', async () => {
+    const gate = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn(() => gate.promise))
+    const wrapper = mount(AssetWorkbench, {
+      props: { locale: 'zh-CN', editorText: JSON.stringify(fixtureData), apiBaseUrl: 'https://api.yujian.me', token: 'session-token', studio: true },
+    })
+    try {
+      await flushPromises()
+      expect(wrapper.get('.asset-library').attributes('aria-busy')).toBe('true')
+      expect(wrapper.find('[data-testid="asset-skeleton"]').exists()).toBe(true)
+      const refresh = wrapper.get('[data-testid="asset-refresh"]')
+      expect(refresh.attributes('disabled')).toBeDefined()
+      expect(refresh.attributes('aria-busy')).toBeUndefined()
+      expect(refresh.find('.activity-indicator').exists()).toBe(false)
+      gate.resolve(jsonResponse({ items: [] }))
+      await flushPromises()
+      expect(refresh.attributes('disabled')).toBeUndefined()
+      expect(wrapper.find('[data-testid="asset-skeleton"]').exists()).toBe(false)
+    } finally { gate.resolve(jsonResponse({ items: [] })); wrapper.unmount() }
+  })
+
+  it('首次读取显示骨架，刷新保留卡片与替代文本输入', async () => {
+    let finish!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { finish = resolve })))
+    const wrapper = mountWorkbench()
+    try {
+      await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+      expect(wrapper.get('.asset-library').attributes('aria-busy')).toBe('true')
+      expect(wrapper.find('[data-testid="asset-skeleton"]').exists()).toBe(true)
+      finish(jsonResponse({ items: [asset('asset_e00f16b8-04fb-4f57-876e-04c32db91a17')] }))
+      await flushPromises()
+      const input = wrapper.get('[data-testid="asset-alt-zh"]')
+      await input.setValue('保留当前输入')
+      await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+      expect(wrapper.find('[data-testid="asset-skeleton"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="asset-alt-zh"]').element).toBe(input.element)
+      expect(wrapper.get('[data-testid="asset-refresh"]').attributes('aria-busy')).toBe('true')
+      finish(jsonResponse({ items: [asset('asset_e00f16b8-04fb-4f57-876e-04c32db91a17')] }))
+      await flushPromises()
+      expect(wrapper.get<HTMLInputElement>('[data-testid="asset-alt-zh"]').element.value).toBe('保留当前输入')
+      expect(wrapper.get('.asset-library').attributes('aria-busy')).toBe('false')
+    } finally { wrapper.unmount() }
+  })
   it('保存快照期间阻止素材插入', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_e00f16b8-04fb-4f57-876e-04c32db91a17')] })))
     const wrapper = mountWorkbench()
@@ -216,6 +259,7 @@ describe('素材工作台组件', () => {
 
   it.each(['', 'pending'])('完成确认重试保留修改后的替代文本，状态筛选为 %s', /** 确认失败后编辑双语替代文本，重试成功并切回默认筛选仍须保留最新输入。 */ async (status) => {
     let completeAttempts = 0
+    const confirmation = deferred<Response>()
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.endsWith('/api/v1/assets/uploads')) {
@@ -231,7 +275,7 @@ describe('素材工作台组件', () => {
         completeAttempts++
         return completeAttempts === 1
           ? jsonResponse({ code: 'metadata_pending' }, 503)
-          : jsonResponse(asset('asset_28704982-30ec-412b-a928-249ffbb47349'))
+          : confirmation.promise
       }
       return jsonResponse({ items: completeAttempts >= 2 ? [asset('asset_28704982-30ec-412b-a928-249ffbb47349')] : [] })
     })
@@ -259,6 +303,13 @@ describe('素材工作台组件', () => {
     await wrapper.get('form input[aria-label="替代文本 · 英文"]').setValue('Updated cover')
 
     await retry!.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('button').some(button => button.element === retry!.element)).toBe(true)
+    expect(retry!.attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('[data-testid="asset-upload"]').attributes('aria-busy')).not.toBe('true')
+    await retry!.trigger('click')
+    expect(completeAttempts).toBe(2)
+    confirmation.resolve(jsonResponse(asset('asset_28704982-30ec-412b-a928-249ffbb47349')))
     await flushPromises()
 
     if (status) {
