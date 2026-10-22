@@ -63,7 +63,8 @@ it('shows an accessible workspace skeleton during session restoration and clears
   const wrapper = await mountSuspended(AdminPage, { attachTo: document.body })
   try {
     await flushPromises()
-    expect(wrapper.get('[data-testid="studio-loading"]').attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('[data-testid="studio-loading"] .studio-loading-layout__body').attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('[data-testid="studio-loading"] [role="status"]').element.closest('[aria-busy="true"]')).toBeNull()
     expect(wrapper.get('[data-testid="studio-loading"] .loading-skeleton').attributes('aria-hidden')).toBe('true')
     finish(new Response(JSON.stringify({ authenticated: false, loginAvailable: true })))
     await flushPromises()

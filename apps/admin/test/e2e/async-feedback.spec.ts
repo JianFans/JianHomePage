@@ -59,7 +59,9 @@ test('初始化骨架及预览等待只存在于真实加载期间，握手前�
   await page.route('**/api/v1/auth/session', async (route) => { await sessionWait; await route.fallback() })
   await page.goto('/')
   try {
-    await expect(page.getByTestId('studio-loading')).toHaveAttribute('aria-busy', 'true')
+    await expect(page.locator('.studio-loading-layout__body')).toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByTestId('studio-loading').getByRole('status')).toHaveText('Opening your workspace…')
+    expect(await page.getByTestId('studio-loading').getByRole('status').evaluate(element => element.closest('[aria-busy="true"]') !== null)).toBe(false)
     await expect(page.locator('.loading-skeleton').filter({ visible: true }).first()).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('workspace-loading.png') })
   } finally { releaseSession() }

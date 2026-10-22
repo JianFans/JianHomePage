@@ -8,7 +8,6 @@ defineProps<{ label: string }>()
   <div
     class="studio-loading-layout"
     data-testid="studio-loading"
-    aria-busy="true"
   >
     <aside
       class="studio-loading-layout__rail"
@@ -20,7 +19,10 @@ defineProps<{ label: string }>()
       <div class="studio-loading-layout__toolbar">
         <ActivityIndicator /><span role="status">{{ label }}</span>
       </div>
-      <div class="studio-loading-layout__body">
+      <div
+        class="studio-loading-layout__body"
+        aria-busy="true"
+      >
         <LoadingSkeleton :count="2" /><LoadingSkeleton
           kind="cards"
           :count="3"
