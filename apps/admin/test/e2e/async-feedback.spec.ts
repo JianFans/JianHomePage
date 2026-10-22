@@ -1,6 +1,30 @@
 import { expect, test } from '@playwright/test'
 import { backend, navigate, startStudio } from './studio'
 
+for (const module of ['event', 'moment'] as const) test(`${module} keyed 字段集挂载和切换均有动效，减少动态效果即时取消`, async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.addInitScript(() => {
+    const animate = Element.prototype.animate
+    Element.prototype.animate = function(...args: Parameters<Element['animate']>) {
+      const animation = animate.apply(this, args)
+      if (this.matches('[data-testid="event-fields"], [data-testid="moment-fields"]')) animation.pause()
+      return animation
+    }
+  })
+  await startStudio(page)
+  await navigate(page, module)
+  const fields = page.getByTestId(`${module}-fields`)
+  await expect.poll(() => fields.evaluate(element => element.getAnimations().some(animation => animation.id === 'studio-record-change'))).toBe(true)
+  await fields.evaluate(element => element.setAttribute('data-old-fields', 'true'))
+  await page.locator(`[data-testid^="${module}-record-"]`).nth(1).click()
+  await expect(fields).not.toHaveAttribute('data-old-fields', 'true')
+  await expect.poll(() => fields.evaluate(element => element.getAnimations().some(animation => animation.id === 'studio-record-change'))).toBe(true)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect.poll(() => fields.evaluate(element => element.getAnimations().length)).toBe(0)
+  await page.locator(`[data-testid^="${module}-record-"]`).nth(0).click()
+  expect(await fields.evaluate(element => element.getAnimations().length)).toBe(0)
+})
+
 test('切换记录只过渡当前编辑区，保留输入节点并即时取消减少动态效果下的动画', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await startStudio(page)

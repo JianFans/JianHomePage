@@ -12,16 +12,30 @@ it('记录切换保留 DOM 和输入，替换旧动画并清理偏好监听', as
   const animate = vi.spyOn(HTMLElement.prototype, 'animate').mockReturnValue({ cancel, finished: new Promise<void>(() => {}) } as unknown as Animation)
   const wrapper = mount({ directives: { contentMotion: vContentMotion }, data: () => ({ record: 'a', text: 'input retained' }), template: '<fieldset v-content-motion="record"><input v-model="text"></fieldset>' })
   const input = wrapper.get('input').element
-  await wrapper.setData({ record: 'b' })
   expect(animate).toHaveBeenCalledTimes(1)
+  await wrapper.setData({ record: 'b' })
+  expect(animate).toHaveBeenCalledTimes(2)
   expect(wrapper.get('input').element).toBe(input)
   expect(input.value).toBe('input retained')
   await wrapper.setData({ record: 'c' })
-  expect(cancel).toHaveBeenCalledTimes(1)
-  reduced({ matches: true } as MediaQueryListEvent)
   expect(cancel).toHaveBeenCalledTimes(2)
+  reduced({ matches: true } as MediaQueryListEvent)
+  expect(cancel).toHaveBeenCalledTimes(3)
   wrapper.unmount()
   expect(remove).toHaveBeenCalledWith('change', reduced)
+})
+
+it('keyed 记录重建字段集时，新节点仍启动真实动效', async () => {
+  const wrapper = mount({ directives: { contentMotion: vContentMotion }, data: () => ({ record: 'a' }), template: '<fieldset :key="record" v-content-motion="record"><input :value="record"></fieldset>' })
+  try {
+    const previous = wrapper.get('fieldset').element
+    expect(previous.getAnimations().some(animation => animation.id === 'studio-record-change')).toBe(true)
+    await wrapper.setData({ record: 'b' })
+    const current = wrapper.get('fieldset').element
+    expect(current).not.toBe(previous)
+    expect(current.getAnimations().some(animation => animation.id === 'studio-record-change')).toBe(true)
+    expect(wrapper.get('input').element.value).toBe('b')
+  } finally { wrapper.unmount() }
 })
 
 it('减少动态效果时直接呈现新内容', async () => {
