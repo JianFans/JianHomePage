@@ -36,7 +36,11 @@ function current(event: Event) {
 }
 
 /** 缓存命中可能早于组件挂载；保留浏览器的 picture 候选源选择。 */
-onMounted(() => { if (image.value?.complete && image.value.naturalWidth > 0) loaded.value = true })
+onMounted(() => {
+  if (!image.value?.complete) return
+  if (image.value.naturalWidth > 0) loaded.value = true
+  else showFallback()
+})
 
 function loadedImage(event: Event) { if (current(event)) loaded.value = true }
 
@@ -44,6 +48,11 @@ function useFallback(event: Event) {
   if (failed.value || !current(event)) {
     return
   }
+  showFallback()
+}
+
+/** SSR 完成前错过的 error 与已挂载图片共享失败终态。 */
+function showFallback() {
   failed.value = true
   activeSrc.value = fallbackSrc
 }

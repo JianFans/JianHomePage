@@ -30,6 +30,18 @@ describe('FallbackImage', () => {
       wrapper.unmount()
     } finally { complete.mockRestore(); width.mockRestore() }
   })
+
+  it('挂载前图片已失败时不依赖错过的 error 事件，结束等待并显示占位', async () => {
+    const complete = vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true)
+    const width = vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(0)
+    try {
+      const wrapper = mount(FallbackImage, { props: { src: '/media/failed-before-hydration.webp', alt: '缺失封面' } })
+      await nextTick()
+      expect(wrapper.get('img').attributes('data-media-state')).toBe('error')
+      expect(wrapper.get('img').attributes('src')).toMatch(/^data:image\/svg\+xml/)
+      wrapper.unmount()
+    } finally { complete.mockRestore(); width.mockRestore() }
+  })
   it('图片失败时保留原尺寸和替代文本并切换到内嵌占位图', async () => {
     const wrapper = mount(FallbackImage, {
       props: {
