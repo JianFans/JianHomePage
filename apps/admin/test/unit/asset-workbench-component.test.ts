@@ -13,6 +13,28 @@ afterEach(/** 还原全局 fetch 和 spy，防止跨测试共享网络响应或�
 })
 
 describe('素材工作台组件', () => {
+  it('首次读取显示骨架，刷新保留卡片与替代文本输入', async () => {
+    let finish!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { finish = resolve })))
+    const wrapper = mountWorkbench()
+    try {
+      await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+      expect(wrapper.get('.asset-library').attributes('aria-busy')).toBe('true')
+      expect(wrapper.find('[data-testid="asset-skeleton"]').exists()).toBe(true)
+      finish(jsonResponse({ items: [asset('asset_e00f16b8-04fb-4f57-876e-04c32db91a17')] }))
+      await flushPromises()
+      const input = wrapper.get('[data-testid="asset-alt-zh"]')
+      await input.setValue('保留当前输入')
+      await wrapper.get('[data-testid="asset-refresh"]').trigger('click')
+      expect(wrapper.find('[data-testid="asset-skeleton"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="asset-alt-zh"]').element).toBe(input.element)
+      expect(wrapper.get('[data-testid="asset-refresh"]').attributes('aria-busy')).toBe('true')
+      finish(jsonResponse({ items: [asset('asset_e00f16b8-04fb-4f57-876e-04c32db91a17')] }))
+      await flushPromises()
+      expect(wrapper.get<HTMLInputElement>('[data-testid="asset-alt-zh"]').element.value).toBe('保留当前输入')
+      expect(wrapper.get('.asset-library').attributes('aria-busy')).toBe('false')
+    } finally { wrapper.unmount() }
+  })
   it('保存快照期间阻止素材插入', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items: [asset('asset_e00f16b8-04fb-4f57-876e-04c32db91a17')] })))
     const wrapper = mountWorkbench()

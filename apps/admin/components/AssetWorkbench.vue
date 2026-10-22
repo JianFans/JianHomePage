@@ -6,7 +6,6 @@ import {
   FileAudio,
   FileImage,
   Film,
-  LoaderCircle,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -18,6 +17,9 @@ import { computed, onMounted, reactive, ref, toRef, watch } from 'vue'
 import { useAssetWorkspace } from '../composables/useAssetWorkspace'
 import type { AdminAsset } from '../utils/admin-api'
 import { insertSnapshotAsset, toSnapshotAsset, type LocalizedDraft } from '../utils/asset-workbench'
+import AsyncButton from './AsyncButton.vue'
+import LoadingSkeleton from './LoadingSkeleton.vue'
+import ActivityIndicator from '../../web/components/ui/ActivityIndicator.vue'
 
 const props = withDefaults(defineProps<{
   locale: 'zh-CN' | 'en'
@@ -49,6 +51,14 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const assetAlts = reactive<Record<string, LocalizedDraft>>({})
 const insertError = ref('')
 const pendingAlt = ref<LocalizedDraft | null>(null)
+const listingAction = ref('')
+
+/** 列表刷新不撤掉旧卡片；仅发起刷新或追加的按钮进入加载态。 */
+async function listAssets(append = false) {
+  if (workspace.loading) return
+  listingAction.value = append ? 'more' : 'refresh'
+  try { if (append) await workspace.loadMore(); else await workspace.loadAssets() } finally { listingAction.value = '' }
+}
 
 /** 随界面语言切换表单、阶段和错误提示，不把提示文本存入素材记录。 */
 const copy = computed(() => props.locale === 'en'
@@ -309,11 +319,8 @@ function formatBytes(value: unknown): string {
         aria-live="polite"
         data-testid="asset-stage"
       >
-        <LoaderCircle
+        <ActivityIndicator
           v-if="uploadBusy"
-          class="asset-spinner"
-          :size="15"
-          aria-hidden="true"
         />
         <Check
           v-else-if="workspace.stage === 'succeeded'"
@@ -428,10 +435,11 @@ function formatBytes(value: unknown): string {
         </div>
 
         <div class="asset-actions">
-          <button
+          <AsyncButton
             class="button button--primary"
             type="submit"
             :disabled="activeUpload || !workspace.file"
+            :loading="uploadBusy"
             data-testid="asset-upload"
           >
             <Upload
@@ -439,12 +447,13 @@ function formatBytes(value: unknown): string {
               aria-hidden="true"
             />
             <span>{{ copy.uploadAction }}</span>
-          </button>
-          <button
+          </AsyncButton>
+          <AsyncButton
             v-if="workspace.canRetryComplete"
             class="button"
             type="button"
             :disabled="activeUpload"
+            :loading="workspace.stage === 'completing'"
             @click="retryComplete"
           >
             <RotateCcw
@@ -452,7 +461,7 @@ function formatBytes(value: unknown): string {
               aria-hidden="true"
             />
             <span>{{ copy.retryComplete }}</span>
-          </button>
+          </AsyncButton>
         </div>
         <p
           v-if="workspace.errorCode && !studio"
@@ -463,7 +472,10 @@ function formatBytes(value: unknown): string {
         </p>
       </form>
 
-      <div class="asset-library">
+      <div
+        class="asset-library"
+        :aria-busy="workspace.loading"
+      >
         <div class="asset-library-bar">
           <div class="asset-subheading">
             <FileImage
@@ -472,20 +484,21 @@ function formatBytes(value: unknown): string {
             />
             <span>{{ copy.library }}</span>
           </div>
-          <button
+          <AsyncButton
             class="icon-tool"
             type="button"
             :aria-label="copy.refresh"
             :title="copy.refresh"
             :disabled="workspace.loading || !connected"
+            :loading="workspace.loading && listingAction !== 'more'"
             data-testid="asset-refresh"
-            @click="workspace.loadAssets()"
+            @click="listAssets()"
           >
             <RefreshCw
               :size="16"
               aria-hidden="true"
             />
-          </button>
+          </AsyncButton>
         </div>
 
         <div class="asset-filters">
@@ -554,6 +567,17 @@ function formatBytes(value: unknown): string {
         >
           {{ copy.errors['list-failed'] }}
         </p>
+        <div
+          v-else-if="workspace.loading && !workspace.assets.length"
+          data-testid="asset-skeleton"
+          role="status"
+          :aria-label="copy.refresh"
+        >
+          <LoadingSkeleton
+            kind="cards"
+            :count="4"
+          />
+        </div>
         <p
           v-else-if="!workspace.loading && workspace.filteredAssets.length === 0"
           class="asset-empty"
@@ -625,16 +649,17 @@ function formatBytes(value: unknown): string {
           </article>
         </div>
 
-        <button
+        <AsyncButton
           v-if="workspace.nextCursor"
           class="button asset-load-more"
           type="button"
           :disabled="workspace.loading"
+          :loading="workspace.loading && listingAction === 'more'"
           data-testid="asset-load-more"
-          @click="workspace.loadMore"
+          @click="listAssets(true)"
         >
           {{ copy.loadMore }}
-        </button>
+        </AsyncButton>
         <p
           v-if="insertError && !studio"
           class="asset-error"

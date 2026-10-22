@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useHead } from '#imports'
-import { ArrowRight, Check, Download, ExternalLink, Eye, FileUp, Languages, LoaderCircle, LockKeyhole, Menu, MoreHorizontal, Save } from '@lucide/vue'
+import { ArrowRight, Check, Download, ExternalLink, Eye, FileUp, Languages, LockKeyhole, Menu, MoreHorizontal, Save } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import '../assets/css/main.css'
 import '../assets/css/studio.css'
@@ -11,6 +11,8 @@ import StudioNavigation from '../components/StudioNavigation.vue'
 import StudioVersionBar from '../components/StudioVersionBar.vue'
 import StudioVersionWorkflow from '../components/StudioVersionWorkflow.vue'
 import AsyncButton from '../components/AsyncButton.vue'
+import StudioLoading from '../components/StudioLoading.vue'
+import ActivityIndicator from '../../web/components/ui/ActivityIndicator.vue'
 import StudioDialog from '../components/StudioDialog.vue'
 import ToastViewport from '../components/ToastViewport.vue'
 import { useStudioWorkspace } from '../composables/useStudioWorkspace'
@@ -104,17 +106,10 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
     :class="{ 'studio-root--collapsed': collapsed }"
   >
     <div :inert="Boolean(modal)">
-      <div
+      <StudioLoading
         v-if="studio.initializing"
-        class="studio-loading"
-        data-testid="studio-loading"
-        role="status"
-      >
-        <LoaderCircle
-          :size="24"
-          aria-hidden="true"
-        /><span>{{ copy.loading }}</span>
-      </div>
+        :label="copy.loading"
+      />
       <main
         v-else-if="!session.authenticated"
         class="studio-login-page"
@@ -283,6 +278,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
             class="studio-version-context"
             data-testid="studio-version-context"
             :aria-label="copy.current"
+            :aria-busy="workspace.workflow.status === 'loading'"
           >
             <div class="studio-version-info">
               <p class="studio-kicker">
@@ -299,6 +295,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
                 <span v-if="workspace.version">{{ copy.revision }} {{ workspace.version.revision }}</span>
               </div>
             </div>
+            <span
+              v-if="workspace.workflow.status === 'loading'"
+              class="studio-read-indicator"
+              role="status"
+            ><ActivityIndicator />{{ copy.loadingVersion }}</span>
             <StudioVersionWorkflow
               :studio="studio"
               @workflow="mode => uiMode = mode"

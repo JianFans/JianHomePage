@@ -57,6 +57,21 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
 
+it('shows an accessible workspace skeleton during session restoration and clears it on completion', async () => {
+  let finish!: (response: Response) => void
+  backend().mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve }))
+  const wrapper = await mountSuspended(AdminPage, { attachTo: document.body })
+  try {
+    await flushPromises()
+    expect(wrapper.get('[data-testid="studio-loading"]').attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('[data-testid="studio-loading"] .loading-skeleton').attributes('aria-hidden')).toBe('true')
+    finish(new Response(JSON.stringify({ authenticated: false, loginAvailable: true })))
+    await flushPromises()
+    expect(wrapper.find('[data-testid="studio-loading"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="studio-login"]').isVisible()).toBe(true)
+  } finally { wrapper.unmount() }
+})
+
 it.each([200, 409])('keeps loading feedback on the saving button until HTTP %s settles', async (status) => {
   const { wrapper, fetcher } = await mountStudio()
   try {

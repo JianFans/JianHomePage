@@ -9,6 +9,15 @@ function uncertainJob(): AdminPublishJob {
 }
 
 describe('发布状态操作', () => {
+  it('刷新指示与轮询状态分离，结束后恢复刷新按钮', async () => {
+    const wrapper = mount(PublishStatusPanel, { props: { job: uncertainJob(), locale: 'en', busy: false, unsaved: false, canRecover: true, readError: false, refreshing: true } })
+    try {
+      expect(wrapper.get('[data-testid="publish-refresh"]').attributes('aria-busy')).toBe('true')
+      expect(wrapper.get('[role="status"]').text()).toBe('Verification required')
+      await wrapper.setProps({ refreshing: false })
+      expect(wrapper.get('[data-testid="publish-refresh"]').attributes('aria-busy')).toBeUndefined()
+    } finally { wrapper.unmount() }
+  })
   it.each(['zh-CN', 'en'] as const)('已部署任务配置变化仍显示等待结果，不要求恢复配置（%s）', (locale) => {
     const wrapper = mount(PublishStatusPanel, { props: { job: { ...uncertainJob(), build: { phase: 'deployed', deploymentId: 'dp-original', configurationMismatch: true } }, locale, busy: false, unsaved: false, canRecover: true, readError: false, refreshing: false } })
     try {

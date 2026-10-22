@@ -26,11 +26,17 @@
   .studio-quick-links > button:focus-visible svg { translate: 3px 0; }
   .studio-account-info { animation: studio-shell-in var(--motion-normal) var(--motion-ease-out) both; }
   .studio-avatar img { animation: studio-shell-in var(--motion-normal) var(--motion-ease-out) both; }
+  .studio-root details[open] > :not(summary) { animation: studio-detail-in var(--motion-normal) var(--motion-ease-out); }
+  .studio-root .music-release[aria-pressed="true"] { animation: studio-record-in var(--motion-normal) var(--motion-ease-out); }
+  .studio-read-indicator { animation: studio-shell-in var(--motion-normal) var(--motion-ease-out); }
 
   @media (hover: hover) {
     .studio-quick-links > button:hover svg { translate: 3px 0; }
   }
 }
+
+@keyframes studio-detail-in { from { opacity: .5; translate: 0 4px; } to { opacity: 1; translate: 0 0; } }
+@keyframes studio-record-in { from { border-color: var(--accent); } to { border-color: var(--border); } }
 
 @keyframes studio-shell-in {
   from { opacity: .6; }

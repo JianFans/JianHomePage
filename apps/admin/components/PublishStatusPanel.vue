@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RefreshCw } from '@lucide/vue'
+import { RefreshCw, Check, AlertCircle } from '@lucide/vue'
 import type { AdminPublishJob } from '../utils/admin-api'
 import type { AdminLocale } from '../utils/admin-locale'
 import StudioDialog from './StudioDialog.vue'
+import AsyncButton from './AsyncButton.vue'
+import ActivityIndicator from '../../web/components/ui/ActivityIndicator.vue'
 
 const props = defineProps<{ job: AdminPublishJob | null; locale: AdminLocale; busy: boolean; unsaved: boolean; canRecover: boolean; refreshing: boolean; readError: boolean }>()
 const emit = defineEmits<{ refresh: []; retry: []; recover: [input: { note: string; deploymentId?: string; confirmedAbsent?: true }] }>()
@@ -57,11 +59,32 @@ function confirm() {
     :aria-label="en ? 'Publish task' : '发布任务'"
   >
     <header>
-      <strong role="status">{{ status || (en ? 'No publish task' : '暂无发布任务') }}</strong>
-      <button
+      <strong
+        role="status"
+        class="publish-phase"
+        :data-phase="phase"
+      >
+        <ActivityIndicator v-if="['pending', 'queued', 'processing', 'building', 'submitting', 'deployed', 'syncing'].includes(phase)" />
+        <Check
+          v-else-if="phase === 'succeeded'"
+          :size="17"
+          aria-hidden="true"
+        />
+        <AlertCircle
+          v-else-if="['failed', 'uncertain', 'mismatch'].includes(phase)"
+          :size="17"
+          aria-hidden="true"
+        />
+        <span
+          :key="phase"
+          class="publish-phase__label"
+        >{{ status || (en ? 'No publish task' : '暂无发布任务') }}</span>
+      </strong>
+      <AsyncButton
         type="button"
         class="button"
         :disabled="busy || refreshing"
+        :loading="refreshing"
         data-testid="publish-refresh"
         @click="emit('refresh')"
       >
@@ -69,7 +92,7 @@ function confirm() {
           :size="15"
           aria-hidden="true"
         />{{ en ? 'Refresh status' : '刷新状态' }}
-      </button>
+      </AsyncButton>
     </header>
     <template v-if="job">
       <dl>
@@ -174,15 +197,16 @@ function confirm() {
           :disabled="busy"
         >{{ en ? 'I checked the deployment records in the original project.' : '我已检查原项目中的部署记录。' }}</label>
       </div>
-      <button
+      <AsyncButton
         type="button"
         class="button button--primary"
         :disabled="!canConfirm"
         data-testid="publish-confirm"
+        :loading="busy"
         @click="confirm"
       >
         {{ en ? 'Confirm' : '确认' }}
-      </button>
+      </AsyncButton>
     </StudioDialog>
   </section>
 </template>
@@ -190,6 +214,10 @@ function confirm() {
 <style scoped>
 .publish-status { margin-block: 1.5rem; padding: 1.25rem; border: 1px solid var(--border); background: var(--surface); border-radius: .8rem; }
 .publish-status header, .publish-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.publish-phase { display: inline-flex; align-items: center; gap: .6rem; }
+.publish-phase > svg { flex: 0 0 auto; }
+@media (prefers-reduced-motion: no-preference) { .publish-phase__label { animation: publish-phase-in var(--motion-normal, 220ms) ease-out; } }
+@keyframes publish-phase-in { from { opacity: .5; } to { opacity: 1; } }
 .publish-status dl { display: grid; gap: .5rem; font-size: .8rem; }
 .publish-status dl > div { display: flex; gap: 1rem; }
 .publish-status dt { flex: 0 0 4.5rem; color: var(--muted); }

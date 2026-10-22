@@ -10,6 +10,7 @@ import MomentWorkbench from './MomentWorkbench.vue'
 import SnapshotInsights from './SnapshotInsights.vue'
 import PublishStatusPanel from './PublishStatusPanel.vue'
 import AsyncButton from './AsyncButton.vue'
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import type { StudioWorkspace } from '../composables/useStudioWorkspace'
 import type { AdminLocale } from '../utils/admin-locale'
 import { studioVersionStatus, type StudioModule } from '../utils/studio-copy'
@@ -209,6 +210,7 @@ async function listHistory(append = false) {
       <section
         v-else-if="studio.module === 'history'"
         class="studio-history"
+        :aria-busy="workspace.listing"
       >
         <div class="studio-section-heading">
           <h2>{{ copy.versions }}</h2><AsyncButton
@@ -253,8 +255,15 @@ async function listHistory(append = false) {
             />
           </button>
         </div>
+        <div
+          v-if="workspace.listing && !workspace.versions.length"
+          role="status"
+          :aria-label="copy.loadingList"
+        >
+          <LoadingSkeleton />
+        </div>
         <p
-          v-if="!workspace.versions.length"
+          v-else-if="!workspace.versions.length"
           class="studio-muted"
         >
           {{ copy.noVersions }}

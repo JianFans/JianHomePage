@@ -115,6 +115,7 @@
 .studio-version-context .studio-kicker { font-size: .6rem; margin-bottom: .4rem; }
 .studio-version-context .studio-workflow-actions { padding-top: 0; }
 .studio-version-context .studio-workflow-actions:empty { display: none; }
+.studio-read-indicator { display: inline-flex; align-items: center; gap: .6rem; color: var(--muted); font-size: .8rem; }
 .studio-content { padding: 2.5rem clamp(1.5rem, 4vw, 4rem) 4rem; max-width: 100rem; margin: 0 auto; }
 .studio-page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 2.25rem; }
 .studio-page-heading h1 { margin: 0 0 .75rem; font-size: clamp(1.35rem, 2vw, 1.75rem); font-weight: 500; letter-spacing: .015em; overflow-wrap: anywhere; }

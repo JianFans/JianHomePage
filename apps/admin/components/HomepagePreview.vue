@@ -5,6 +5,8 @@ import type { YujianContentSnapshot } from '@yujian/schema'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AdminLocale } from '../utils/admin-locale'
 import { createLocaleMessage, createSnapshotMessage, readPreviewMessage } from '../utils/homepage-preview'
+import LoadingSkeleton from './LoadingSkeleton.vue'
+import ActivityIndicator from '../../web/components/ui/ActivityIndicator.vue'
 
 const props = defineProps<{
   snapshot: YujianContentSnapshot | null
@@ -235,22 +237,29 @@ onMounted(() => { if (props.autoOpen) open() })
           <RotateCcw aria-hidden="true" />
         </button>
       </div>
-      <p
-        v-else-if="!ready"
-        role="status"
-        data-testid="preview-waiting"
-      >
-        {{ labels.waiting }}
-      </p>
       <div
         v-if="canRender"
         ref="stage"
         class="homepage-preview__stage"
+        :aria-busy="!ready"
       >
         <div
           class="homepage-preview__viewport"
           :style="{ width: `${viewport.width * scale}px`, height: `${viewport.height * scale}px` }"
         >
+          <div
+            v-if="!ready"
+            class="homepage-preview__waiting"
+            data-testid="preview-waiting"
+          >
+            <LoadingSkeleton
+              kind="preview"
+              :count="1"
+            />
+            <p role="status">
+              <ActivityIndicator />{{ labels.waiting }}
+            </p>
+          </div>
           <iframe
             :key="generation"
             ref="frame"
@@ -262,6 +271,9 @@ onMounted(() => { if (props.autoOpen) open() })
             sandbox="allow-scripts allow-same-origin"
             referrerpolicy="no-referrer"
             data-testid="preview-frame"
+            :inert="!ready"
+            :aria-hidden="!ready"
+            :class="{ 'is-ready': ready }"
           />
         </div>
       </div>
@@ -282,5 +294,11 @@ onMounted(() => { if (props.autoOpen) open() })
 .homepage-preview__stage { width: 100%; min-width: 0; overflow: hidden; margin-top: .75rem; background: #0d0f11; }
 .homepage-preview__viewport { position: relative; max-width: 100%; margin-inline: auto; overflow: hidden; }
 .homepage-preview iframe { position: absolute; top: 0; left: 0; display: block; max-width: none; border: 0; transform-origin: top left; }
+.homepage-preview iframe:not(.is-ready) { opacity: 0; }
+.homepage-preview__waiting { position: absolute; inset: 0; }
+.homepage-preview__waiting p { position: absolute; inset: auto 1rem 1rem; display: flex; align-items: center; gap: .6rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .homepage-preview iframe { transition: opacity var(--motion-normal, 220ms) ease-out; }
+}
 .homepage-preview__error { display: flex; align-items: center; gap: 1rem; }
 </style>
