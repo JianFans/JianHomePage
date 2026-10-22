@@ -1,8 +1,22 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import FallbackImage from '../../components/ui/FallbackImage.vue'
 
 describe('FallbackImage', () => {
+  it.each([720, 0])('换源后已完成的缓存图片无需事件即可结束等待，naturalWidth=%s', async (naturalWidth) => {
+    const complete = vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(false)
+    const width = vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(naturalWidth)
+    const wrapper = mount(FallbackImage, { props: { src: '/media/first.webp', alt: '封面' } })
+    try {
+      complete.mockReturnValue(true)
+      await wrapper.setProps({ src: '/media/cached-next.webp' })
+      await flushPromises()
+      expect(wrapper.get('img').attributes('data-media-state')).toBe(naturalWidth > 0 ? 'ready' : 'error')
+      if (naturalWidth > 0) expect(wrapper.get('img').attributes('src')).toBe('/media/cached-next.webp')
+      else expect(wrapper.get('img').attributes('src')).toMatch(/^data:image\/svg\+xml/)
+    } finally { wrapper.unmount(); complete.mockRestore(); width.mockRestore() }
+  })
+
   it('暴露真实加载状态，换源后拒绝旧图片的迟到事件', async () => {
     const wrapper = mount(FallbackImage, { props: { src: '/media/first.webp', alt: '封面', width: 720, height: 720 } })
     const old = wrapper.get('img').element

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -24,10 +24,15 @@ const failed = ref(false)
 const loaded = ref(false)
 const image = ref<HTMLImageElement | null>(null)
 
-watch(() => props.src, (src) => {
+watch(() => props.src, async (src) => {
   activeSrc.value = src
   failed.value = false
   loaded.value = false
+  // 换源后的缓存命中也可能早于事件绑定；只检查本次更新后的图片。
+  await nextTick()
+  if (props.src !== src || activeSrc.value !== src || image.value?.getAttribute('src') !== src || !image.value.complete) return
+  if (image.value.naturalWidth > 0) loaded.value = true
+  else showFallback()
 }, { flush: 'sync' })
 
 /** key 换源与节点身份共同隔离旧图片迟到的 load/error 事件。 */
