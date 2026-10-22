@@ -52,6 +52,7 @@ const assetAlts = reactive<Record<string, LocalizedDraft>>({})
 const insertError = ref('')
 const pendingAlt = ref<LocalizedDraft | null>(null)
 const listingAction = ref('')
+const uploadAction = ref<'upload' | 'retry' | ''>('')
 
 /** 列表刷新不撤掉旧卡片；仅发起刷新或追加的按钮进入加载态。 */
 async function listAssets(append = false) {
@@ -222,16 +223,18 @@ function handleFile(event: Event) {
 
 /** 执行上传，并把上传表单中的替代文本带到新素材卡片。 */
 async function uploadAsset() {
+  if (uploadBusy.value) return
   pendingAlt.value = { zhCN: workspace.altZhCN, en: workspace.altEn }
-  await workspace.upload()
-  restoreCompletedAlt()
+  uploadAction.value = 'upload'
+  try { await workspace.upload(); restoreCompletedAlt() } finally { uploadAction.value = '' }
 }
 
 /** 重试开始时保存当前替代文本，完成确认后绑定到对应素材。 */
 async function retryComplete() {
+  if (uploadBusy.value) return
   pendingAlt.value = { zhCN: workspace.altZhCN, en: workspace.altEn }
-  await workspace.retryComplete()
-  restoreCompletedAlt()
+  uploadAction.value = 'retry'
+  try { await workspace.retryComplete(); restoreCompletedAlt() } finally { uploadAction.value = '' }
 }
 
 /** 将待确认上传的替代文本绑定到新完成的素材卡片。 */
@@ -439,7 +442,7 @@ function formatBytes(value: unknown): string {
             class="button button--primary"
             type="submit"
             :disabled="activeUpload || !workspace.file"
-            :loading="uploadBusy"
+            :loading="uploadBusy && uploadAction === 'upload'"
             data-testid="asset-upload"
           >
             <Upload
@@ -449,11 +452,11 @@ function formatBytes(value: unknown): string {
             <span>{{ copy.uploadAction }}</span>
           </AsyncButton>
           <AsyncButton
-            v-if="workspace.canRetryComplete"
+            v-if="workspace.canRetryComplete || uploadAction === 'retry'"
             class="button"
             type="button"
             :disabled="activeUpload"
-            :loading="workspace.stage === 'completing'"
+            :loading="uploadBusy && uploadAction === 'retry'"
             @click="retryComplete"
           >
             <RotateCcw
@@ -682,7 +685,6 @@ function formatBytes(value: unknown): string {
 .asset-stage { display: inline-flex; align-items: center; gap: .4rem; min-height: 2rem; color: var(--muted); font-size: .72rem; }
 .asset-stage--succeeded { color: #aec3b5; }
 .asset-stage--failed { color: var(--danger); }
-.asset-spinner { animation: asset-spin .9s linear infinite; }
 .file-picker { width: 100%; min-height: 4.5rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .75rem; border: 1px dashed var(--border); background: var(--surface-raised); color: var(--text); padding: .9rem; text-align: left; }
 .file-picker:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-soft); }
 .file-picker span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -714,7 +716,6 @@ function formatBytes(value: unknown): string {
 .asset-load-more { width: 100%; margin-top: .75rem; }
 .asset-empty { min-height: 6rem; display: grid; place-items: center; margin: 0; color: var(--muted); font-size: .76rem; text-align: center; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@keyframes asset-spin { to { transform: rotate(360deg); } }
 @media (max-width: 860px) {
   .asset-layout { grid-template-columns: 1fr; }
   .asset-upload { padding-right: 0; padding-bottom: 1.25rem; border-right: 0; border-bottom: 1px solid var(--border); }
@@ -722,8 +723,5 @@ function formatBytes(value: unknown): string {
 @media (max-width: 560px) {
   .asset-form-grid, .asset-grid, .asset-filters { grid-template-columns: 1fr; }
   .asset-filters .select-control { width: 100%; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .asset-spinner { animation: none; }
 }
 </style>

@@ -238,6 +238,7 @@ describe('素材工作台组件', () => {
 
   it.each(['', 'pending'])('完成确认重试保留修改后的替代文本，状态筛选为 %s', /** 确认失败后编辑双语替代文本，重试成功并切回默认筛选仍须保留最新输入。 */ async (status) => {
     let completeAttempts = 0
+    const confirmation = deferred<Response>()
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.endsWith('/api/v1/assets/uploads')) {
@@ -253,7 +254,7 @@ describe('素材工作台组件', () => {
         completeAttempts++
         return completeAttempts === 1
           ? jsonResponse({ code: 'metadata_pending' }, 503)
-          : jsonResponse(asset('asset_28704982-30ec-412b-a928-249ffbb47349'))
+          : confirmation.promise
       }
       return jsonResponse({ items: completeAttempts >= 2 ? [asset('asset_28704982-30ec-412b-a928-249ffbb47349')] : [] })
     })
@@ -281,6 +282,13 @@ describe('素材工作台组件', () => {
     await wrapper.get('form input[aria-label="替代文本 · 英文"]').setValue('Updated cover')
 
     await retry!.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('button').some(button => button.element === retry!.element)).toBe(true)
+    expect(retry!.attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('[data-testid="asset-upload"]').attributes('aria-busy')).not.toBe('true')
+    await retry!.trigger('click')
+    expect(completeAttempts).toBe(2)
+    confirmation.resolve(jsonResponse(asset('asset_28704982-30ec-412b-a928-249ffbb47349')))
     await flushPromises()
 
     if (status) {
