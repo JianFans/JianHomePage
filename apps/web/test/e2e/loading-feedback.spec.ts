@@ -38,6 +38,9 @@ test('音频等待反馈可取消，减少动态效果停止旋转且关闭后�
     const dock = page.getByTestId('audio-dock')
     await expect(play).toHaveAttribute('aria-busy', 'true')
     await expect(dock).toHaveAttribute('aria-busy', 'true')
+    await page.mouse.move(0, 0)
+    await page.getByRole('button', { name: 'Close player', exact: true }).focus()
+    await expect(play.locator('.music-cover-state')).toHaveCSS('opacity', '1')
     const indicator = dock.locator('.activity-indicator')
     await expect.poll(() => indicator.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0)
     await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -46,5 +49,6 @@ test('音频等待反馈可取消，减少动态效果停止旋转且关闭后�
     release()
     await expect(dock).toHaveCount(0)
     await expect(play).not.toHaveAttribute('aria-busy', 'true')
+    await expect(play.locator('.music-cover-state')).toHaveCSS('opacity', '0')
   } finally { release() }
 })

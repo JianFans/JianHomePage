@@ -328,6 +328,7 @@ function preview(track: AudioPlayerTrack) {
 
 .music-cover-action:hover .music-cover-state,
 .music-cover-action:focus-visible .music-cover-state,
+.music-cover-action[aria-busy="true"] .music-cover-state,
 .music-cover-action[aria-pressed="true"] .music-cover-state {
   opacity: 1;
 }
