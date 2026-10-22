@@ -278,9 +278,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
             class="studio-version-context"
             data-testid="studio-version-context"
             :aria-label="copy.current"
-            :aria-busy="workspace.workflow.status === 'loading'"
           >
-            <div class="studio-version-info">
+            <div
+              class="studio-version-info"
+              :aria-busy="workspace.workflow.status === 'loading'"
+            >
               <p class="studio-kicker">
                 {{ copy.current }}
               </p>

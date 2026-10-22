@@ -73,6 +73,27 @@ it('shows an accessible workspace skeleton during session restoration and clears
   } finally { wrapper.unmount() }
 })
 
+it.each([200, 500])('announces version loading outside busy content until HTTP %s settles', async (status) => {
+  const { wrapper, fetcher } = await mountStudio()
+  try {
+    let finish!: (response: Response) => void
+    fetcher.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve }))
+    await wrapper.get('.studio-version-select').setValue('ver_8bb3a437-061d-4dcd-805e-7d5e6f716921')
+    await flushPromises()
+    const context = wrapper.get('[data-testid="studio-version-context"]')
+    expect(context.get('[role="status"]').element.closest('[aria-busy="true"]')).toBeNull()
+    expect(context.get('.studio-version-info').attributes('aria-busy')).toBe('true')
+    expect(context.get('[data-testid="studio-version-name"]').text()).toBe('工作草稿')
+    finish(new Response(JSON.stringify(status === 200
+      ? { id: 'ver_8bb3a437-061d-4dcd-805e-7d5e6f716921', name: '之前版本', status: 'archived', revision: 2, snapshot: fixture, checksum: 'sha256:history' }
+      : { code: 'unavailable', message: 'Version unavailable' }), { status }))
+    await flushPromises()
+    expect(context.find('[role="status"]').exists()).toBe(false)
+    expect(context.get('.studio-version-info').attributes('aria-busy')).toBe('false')
+    expect(context.get('[data-testid="studio-version-name"]').text()).toBe(status === 200 ? '之前版本' : '工作草稿')
+  } finally { wrapper.unmount() }
+})
+
 it.each([200, 409])('keeps loading feedback on the saving button until HTTP %s settles', async (status) => {
   const { wrapper, fetcher } = await mountStudio()
   try {
