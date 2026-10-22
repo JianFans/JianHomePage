@@ -6,7 +6,7 @@ RUN npm install --global --prefix /opt/pnpm "$(node -p "require('./package.json'
     && /opt/pnpm/bin/pnpm install --frozen-lockfile \
     && /opt/pnpm/bin/pnpm build:server:assets
 
-FROM golang:1.27.2-alpine AS build
+FROM golang:1.27.3-alpine AS build
 
 WORKDIR /src
 COPY apps/server/go.mod apps/server/go.sum ./
