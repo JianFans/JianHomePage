@@ -241,7 +241,6 @@ onMounted(() => { if (props.autoOpen) open() })
         v-if="canRender"
         ref="stage"
         class="homepage-preview__stage"
-        :aria-busy="!ready"
       >
         <div
           class="homepage-preview__viewport"
@@ -271,6 +270,7 @@ onMounted(() => { if (props.autoOpen) open() })
             sandbox="allow-scripts allow-same-origin"
             referrerpolicy="no-referrer"
             data-testid="preview-frame"
+            :aria-busy="!ready"
             :inert="!ready"
             :aria-hidden="!ready"
             :class="{ 'is-ready': ready }"
