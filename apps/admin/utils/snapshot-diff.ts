@@ -16,12 +16,12 @@ const escapePath = (key: string) => key.replace(/~/g, '~0').replace(/\//g, '~1')
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 
 /** Compare values without treating JSON object property order as a content change. */
-function equal(before: unknown, after: unknown): boolean {
+export function equalSnapshotValue(before: unknown, after: unknown): boolean {
   if (before === after) return true
-  if (Array.isArray(before) && Array.isArray(after)) return before.length === after.length && before.every((value, index) => equal(value, after[index]))
+  if (Array.isArray(before) && Array.isArray(after)) return before.length === after.length && before.every((value, index) => equalSnapshotValue(value, after[index]))
   if (!isObject(before) || !isObject(after)) return false
   const keys = Object.keys(before)
-  return keys.length === Object.keys(after).length && keys.every(key => Object.hasOwn(after, key) && equal(before[key], after[key]))
+  return keys.length === Object.keys(after).length && keys.every(key => Object.hasOwn(after, key) && equalSnapshotValue(before[key], after[key]))
 }
 
 /** Only unique string IDs can safely align records across differently ordered arrays. */
@@ -38,7 +38,7 @@ export function diffSnapshots(before: Record<string, unknown>, after: Record<str
     const changes: SnapshotChange[] = []
     /** Keep stable display identities separate from the exact pointers in each snapshot. */
     function walk(left: unknown, right: unknown, path: string, beforePath?: string, afterPath?: string) {
-      if (beforePath !== undefined && afterPath !== undefined && equal(left, right)) return
+      if (beforePath !== undefined && afterPath !== undefined && equalSnapshotValue(left, right)) return
       /** Omit missing-side values instead of confusing absent fields with null. */
       const emit = (kind: SnapshotChangeKind, oldValue = left, newValue = right) => changes.push({
         kind, path, ...(beforePath !== undefined ? { beforePath, before: oldValue } : {}), ...(afterPath !== undefined ? { afterPath, after: newValue } : {}),
@@ -51,7 +51,7 @@ export function diffSnapshots(before: Record<string, unknown>, after: Record<str
           const newRecords = new Map(right.map((item, index) => [item.id, { item, index }]))
           const oldOrder = left.filter(item => newRecords.has(item.id)).map(item => item.id)
           const newOrder = right.filter(item => oldRecords.has(item.id)).map(item => item.id)
-          if (!equal(oldOrder, newOrder)) emit('reordered', left.map(item => item.id), right.map(item => item.id))
+          if (!equalSnapshotValue(oldOrder, newOrder)) emit('reordered', left.map(item => item.id), right.map(item => item.id))
           for (const id of new Set([...oldRecords.keys(), ...newRecords.keys()])) {
             const oldRecord = oldRecords.get(id)
             const newRecord = newRecords.get(id)

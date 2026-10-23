@@ -8,6 +8,17 @@ import type { Asset } from '@yujian/schema'
 const extra = { ...fixture.assets[0], id: 'asset_132b59fd-f9b4-47b4-acd1-bbfae60d66b1' } as Asset
 
 describe('字段素材选择事务', () => {
+  it('重复绑定忽略素材及嵌套对象的键顺序，但仍拒绝嵌套值变化', () => {
+    const asset = fixture.assets[0] as Asset
+    const reordered = Object.fromEntries(Object.entries(asset).reverse()) as Asset
+    reordered.alt = Object.fromEntries(Object.entries(asset.alt).reverse()) as Asset['alt']
+    reordered.rights = Object.fromEntries(Object.entries(asset.rights).reverse()) as Asset['rights']
+    reordered.rights.source = Object.fromEntries(Object.entries(asset.rights.source).reverse()) as Asset['rights']['source']
+    const text = JSON.stringify(fixture)
+    expect(appendPickedAsset(text, reordered, [asset.kind])).toEqual({ text, error: null })
+    expect(appendPickedAsset(text, { ...reordered, rights: { ...reordered.rights, source: { 'zh-CN': '不同来源' } } }, [asset.kind]).error).toBe('conflict')
+  })
+
   it('追加完整素材并拒绝同 ID 元数据冲突及用途不符', () => {
     const text = JSON.stringify(fixture)
     const result = appendPickedAsset(text, extra, ['image', 'gif'])

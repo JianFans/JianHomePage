@@ -1,5 +1,6 @@
 import type { Asset } from '@yujian/schema'
 import { analyzeSnapshotText } from './snapshot-workbench'
+import { equalSnapshotValue } from './snapshot-diff'
 import type { InjectionKey } from 'vue'
 
 export type AssetPickerRequest = { kinds: readonly Asset['kind'][]; label: string }
@@ -12,7 +13,7 @@ export function appendPickedAsset(text: string, asset: Asset, kinds: readonly As
   if (!snapshot) return { text, error: 'invalid-snapshot' }
   if (!kinds.includes(asset.kind)) return { text, error: 'invalid-asset' }
   const existing = snapshot.assets.find(item => item.id === asset.id)
-  if (existing) return { text, error: JSON.stringify(existing) === JSON.stringify(asset) ? null : 'conflict' }
+  if (existing) return { text, error: equalSnapshotValue(existing, asset) ? null : 'conflict' }
   const next = JSON.stringify({ ...snapshot, assets: [...snapshot.assets, asset] }, null, 2)
   return analyzeSnapshotText(next).snapshot ? { text: next, error: null } : { text, error: 'invalid-asset' }
 }
