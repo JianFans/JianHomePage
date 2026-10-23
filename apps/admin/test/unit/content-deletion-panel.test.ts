@@ -85,10 +85,11 @@ describe('删除确认面板', () => {
     const wrapper = mount(ContentDeletionPanel, { props: { ...props, locked: true } })
     try {
       expect(wrapper.get('[data-testid="content-delete-open"]').attributes('disabled')).toBeDefined()
-      await wrapper.setProps({ locked: false, text: '{' })
+      await wrapper.setProps({ locked: false, text: '{', analyzedText: '{', snapshot: null })
       expect(wrapper.get('[data-testid="content-delete-open"]').attributes('disabled')).toBeDefined()
       expect(wrapper.emitted('update:text')).toBeUndefined()
-      await wrapper.setProps({ text, kind: 'track' })
+      expect(wrapper.get('[role="status"]').text()).toContain('请先修正快照校验问题')
+      await wrapper.setProps({ text, analyzedText: text, snapshot: props.snapshot, kind: 'track' })
       await wrapper.get('[data-testid="content-delete-open"]').trigger('click')
       expect(wrapper.get('[data-testid="content-delete-confirm"]').attributes('disabled')).toBeDefined()
       expect(wrapper.get('[role="dialog"]').text()).toContain('最后一首')
