@@ -6,6 +6,7 @@ import { useHomepageWorkspace } from './useHomepageWorkspace'
 import { useVideoWorkspace } from './useVideoWorkspace'
 import { useEventWorkspace } from './useEventWorkspace'
 import { useMomentWorkspace } from './useMomentWorkspace'
+import { useSiteWorkspace } from './useSiteWorkspace'
 import { useToasts } from './useToasts'
 import { analyzeSnapshotText, type SnapshotImportFile } from '../utils/snapshot-workbench'
 import { studioCopy, type StudioModule } from '../utils/studio-copy'
@@ -38,7 +39,8 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
   const video = reactive(useVideoWorkspace(options))
   const event = reactive(useEventWorkspace(options))
   const moment = reactive(useMomentWorkspace(options))
-  const forms = { music, homepage, video, event, moment }
+  const site = reactive(useSiteWorkspace(options))
+  const forms = { music, homepage, video, event, moment, site }
   const formDirty = computed(() => Object.values(forms).some(form => form.dirty))
   const unsaved = computed(() => workspace.dirty || formDirty.value)
   const pending = shallowRef<StudioAction | null>(null)
@@ -67,7 +69,7 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
   function reportFormFailure() {
     const active = module.value as keyof typeof forms
     const form = forms[active]
-    const copies = { music: musicCopy(locale.value), homepage: homepageCopy(locale.value), video: videoCopy(locale.value), event: eventCopy(locale.value), moment: momentCopy(locale.value) }
+    const copies = { music: musicCopy(locale.value), homepage: homepageCopy(locale.value), video: videoCopy(locale.value), event: eventCopy(locale.value), moment: momentCopy(locale.value), site: { errors: { 'stale-snapshot': locale.value === 'en' ? 'Snapshot changed. Reopen this module.' : '快照已变化，请重新进入此模块。' } } }
     const errors = copies[active]?.errors as Record<string, string> | undefined
     const message = (form?.error && errors?.[form.error]) || copy.value.formInvalid
     const path = form?.issues[0]?.path
@@ -77,7 +79,7 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
   /** 历史表单允许读取，但所有修改控件通过 locked 禁用。 */
   function openModule() {
     const active = module.value
-    const readableForms = { homepage, video, event, moment }
+    const readableForms = { homepage, video, event, moment, site }
     if (!(active in readableForms)) return
     const form = readableForms[active as keyof typeof readableForms]
     if (!workspace.busy) form.open()
@@ -205,5 +207,5 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
     return false
   }
 
-  return { session, workspace, toasts, module, copy, canEdit, canReview, canPublish, locked, forms, music, homepage, video, event, moment, formDirty, unsaved, assetBusy, assetDirty, pending, initializing, cloneRequested, textRevision, request, save, discardPending, savePending, clone, initialize, applyForPreview }
+  return { session, workspace, toasts, module, copy, canEdit, canReview, canPublish, locked, forms, music, homepage, video, event, moment, site, formDirty, unsaved, assetBusy, assetDirty, pending, initializing, cloneRequested, textRevision, request, save, discardPending, savePending, clone, initialize, applyForPreview }
 }

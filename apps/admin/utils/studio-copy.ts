@@ -1,7 +1,7 @@
 import type { AdminLocale } from './admin-locale'
 import type { AdminVersionSummary } from './admin-api'
 
-export type StudioModule = 'overview' | 'homepage' | 'music' | 'video' | 'event' | 'moment' | 'assets' | 'history'
+export type StudioModule = 'overview' | 'site' | 'homepage' | 'music' | 'video' | 'event' | 'moment' | 'assets' | 'history'
 
 /** 将已完成审核的待发布版本与仍在审核的版本区分，不改变 API 状态契约。 */
 export function studioVersionStatus(version: Pick<AdminVersionSummary, 'status' | 'reviewApproved'>) {
@@ -11,7 +11,7 @@ export function studioVersionStatus(version: Pick<AdminVersionSummary, 'status' 
 /** CMS 壳层共享双语文案，不把界面标签或语言写入内容快照。 */
 export function studioCopy(locale: AdminLocale) {
   return locale === 'en' ? {
-    brand: 'Meet Jian', studio: 'Content studio', modules: { overview: 'Overview', homepage: 'Homepage', music: 'Music', video: 'Videos', event: 'Live', moment: 'Moments', assets: 'Assets', history: 'Versions' },
+    brand: 'Meet Jian', studio: 'Content studio', modules: { overview: 'Overview', site: 'Site profile', homepage: 'Homepage', music: 'Music', video: 'Videos', event: 'Live', moment: 'Moments', assets: 'Assets', history: 'Versions' },
     groups: { workspace: 'Workspace', content: 'Content', library: 'Library & versions' },
     review: 'Review version',
     loadingVersion: 'Loading version…', loadingList: 'Loading versions…',
@@ -27,7 +27,7 @@ export function studioCopy(locale: AdminLocale) {
     noVersions: 'No versions yet', current: 'Current version', overviewHint: 'Choose a content module to start editing.', snapshot: 'Snapshot', versions: 'Version history', newName: 'New draft',
     listError: 'Could not load versions. Try refreshing.', uploadHint: 'Finish the asset upload before signing out.', assetLeaveHint: 'The selected asset and its upload details have not been uploaded. Return to Assets to upload, or discard them and sign out.',
   } : {
-    brand: '遇健我', studio: '内容工作室', modules: { overview: '概览', homepage: '首页编排', music: '音乐', video: '影像', event: '现场', moment: '片段', assets: '素材库', history: '版本历史' },
+    brand: '遇健我', studio: '内容工作室', modules: { overview: '概览', site: '站点资料', homepage: '首页编排', music: '音乐', video: '影像', event: '现场', moment: '片段', assets: '素材库', history: '版本历史' },
     groups: { workspace: '工作区', content: '内容', library: '资源与版本' },
     review: '审核版本',
     loadingVersion: '正在读取版本…', loadingList: '正在读取版本列表…',

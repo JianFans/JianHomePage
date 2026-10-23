@@ -7,6 +7,7 @@ import HomepageWorkbench from './HomepageWorkbench.vue'
 import VideoWorkbench from './VideoWorkbench.vue'
 import EventWorkbench from './EventWorkbench.vue'
 import MomentWorkbench from './MomentWorkbench.vue'
+import SiteWorkbench from './SiteWorkbench.vue'
 import SnapshotInsights from './SnapshotInsights.vue'
 import PublishStatusPanel from './PublishStatusPanel.vue'
 import AsyncButton from './AsyncButton.vue'
@@ -17,7 +18,7 @@ import { studioVersionStatus, type StudioModule } from '../utils/studio-copy'
 
 const props = defineProps<{ studio: StudioWorkspace; locale: AdminLocale }>()
 const emit = defineEmits<{ navigate: [module: StudioModule]; assetBusy: [value: boolean]; assetDirty: [value: boolean] }>()
-const { workspace, session, toasts, music, homepage, video, event, moment } = props.studio
+const { workspace, session, toasts, music, homepage, video, event, moment, site } = props.studio
 const copy = computed(() => props.studio.copy)
 const assetOpened = ref(false)
 const historyAction = ref('')
@@ -111,6 +112,15 @@ async function listHistory(append = false) {
           </button>
         </div>
       </section>
+      <SiteWorkbench
+        v-else-if="studio.module === 'site'"
+        v-model:draft="site.draft"
+        :snapshot="workspace.editorAnalysis.snapshot"
+        :locale="locale"
+        :locked="studio.locked"
+        :stale="site.stale"
+        :issues="site.issues"
+      />
       <HomepageWorkbench
         v-else-if="studio.module === 'homepage'"
         v-model:draft="homepage.draft"
