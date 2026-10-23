@@ -41,7 +41,10 @@ function discard() {
   else if (!asset) emit('close')
 }
 /** 两种来源都由父级再次校验并以同一事务绑定，不在弹窗内修改编辑器。 */
-function select(asset: Asset) { if (!props.locked && props.kinds.includes(asset.kind)) leave(asset) }
+function select(asset: Asset) {
+  const selected = props.snapshot.assets.find(existing => existing.id === asset.id) || asset
+  if (!props.locked && props.kinds.includes(selected.kind)) leave(selected)
+}
 </script>
 
 <template>

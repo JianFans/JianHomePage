@@ -7,6 +7,30 @@ import type { YujianContentSnapshot } from '@yujian/schema'
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('统一素材选择器', () => {
+  it.each([
+    { locked: false, kind: 'image' as const, accepted: true },
+    { locked: true, kind: 'image' as const, accepted: false },
+    { locked: false, kind: 'audio' as const, accepted: false },
+  ])('重复选择复用快照记录并保留锁定和类型校验：%j', async ({ locked, kind, accepted }) => {
+    const snapshot = structuredClone(fixture) as unknown as YujianContentSnapshot
+    const existing = snapshot.assets.find(asset => asset.kind === kind)!
+    const libraryAsset = {
+      id: existing.id, status: 'ready', src: existing.src,
+      metadata: { fileName: 'cover.webp', contentType: 'image/webp', declaredSize: existing.byteSize, checksum: existing.checksum, width: existing.width, height: existing.height },
+      rights: existing.rights,
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ items: [libraryAsset] }))))
+    const wrapper = mount(AssetPicker, { props: { open: true, snapshot, kinds: ['image'], locale: 'en', label: 'Cover', apiBaseUrl: '', csrfToken: 'test', locked } })
+    try {
+      await wrapper.get('[data-testid="picker-library"]').trigger('click')
+      await flushPromises()
+      await wrapper.get('[data-testid="asset-alt-zh"]').setValue('素材库中新填的替代文本')
+      await wrapper.get('[data-testid="asset-insert"]').trigger('click')
+      if (accepted) expect(wrapper.emitted('select')?.[0]?.[0]).toEqual(existing)
+      else expect(wrapper.emitted('select')).toBeUndefined()
+    } finally { wrapper.unmount() }
+  })
+
   it('切换素材来源保留文件和上传输入，关闭前可取消丢弃', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ items: [] }))))
     const wrapper = mount(AssetPicker, { props: { open: true, snapshot: fixture as unknown as YujianContentSnapshot, kinds: ['image'], locale: 'en', label: 'Cover', apiBaseUrl: '', csrfToken: 'test', locked: false } })
