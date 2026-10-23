@@ -26,12 +26,19 @@ const emit = defineEmits<{ navigate: [module: StudioModule]; assetBusy: [value: 
 const { workspace, session, toasts, music, homepage, video, event, moment, site } = props.studio
 const copy = computed(() => props.studio.copy)
 const assetOpened = ref(false)
+const libraryBusy = ref(false)
+const libraryDirty = ref(false)
+const pickerBusy = ref(false)
+const pickerDirty = ref(false)
+// 两个上传工作区各自保留状态，关闭选择器不能清掉主素材库的保护。
+watch(() => libraryBusy.value || pickerBusy.value, value => emit('assetBusy', value), { immediate: true, flush: 'sync' })
+watch(() => libraryDirty.value || pickerDirty.value, value => emit('assetDirty', value), { immediate: true, flush: 'sync' })
 const historyAction = ref('')
 const pickerRequest = shallowRef<(AssetPickerRequest & { before: string; module: StudioModule; finish: (asset: Asset | null) => void }) | null>(null)
 const deleteMusicKind = ref<'release' | 'track'>('release')
 const deletionKind = computed(() => ({ homepage: 'hero', music: deleteMusicKind.value, video: 'video', event: 'event', moment: 'moment' } as const)[props.studio.module as 'homepage' | 'music' | 'video' | 'event' | 'moment'])
 /** 所有字段共享一个选择器，关闭和上下文变化立即取消待选择。 */
-function closePicker() { const current = pickerRequest.value; pickerRequest.value = null; current?.finish(null) }
+function closePicker() { const current = pickerRequest.value; pickerRequest.value = null; pickerBusy.value = false; pickerDirty.value = false; current?.finish(null) }
 provide(assetPickerKey, request => {
   closePicker()
   if (props.studio.locked) return Promise.resolve(null)
@@ -42,10 +49,12 @@ function chooseAsset(asset: Asset) {
   const request = pickerRequest.value
   if (!request || props.studio.locked || request.before !== workspace.editorText || request.module !== props.studio.module) { closePicker(); return }
   pickerRequest.value = null
+  pickerBusy.value = false
+  pickerDirty.value = false
   if (props.studio.acceptPickedAsset(asset, request.kinds)) request.finish(asset)
   else request.finish(null)
 }
-watch(() => [props.studio.module, workspace.editorText, session.authenticated], () => { if (pickerRequest.value) closePicker() }, { flush: 'sync' })
+watch(() => [props.studio.module, workspace.editorText], () => { if (pickerRequest.value) closePicker() }, { flush: 'sync' })
 onBeforeUnmount(closePicker)
 watch(() => props.studio.module, (module) => { if (module === 'assets') assetOpened.value = true }, { immediate: true })
 /** 模块导航复用全局未保存保护，不在展示组件中自行重建编辑上下文。 */
@@ -361,14 +370,14 @@ async function listHistory(append = false) {
     :can-upload="studio.canEdit && !session.busy"
     studio
     :snapshot-locked="studio.locked"
-    @busy="value => emit('assetBusy', value)"
-    @dirty="value => emit('assetDirty', value)"
+    @busy="value => libraryBusy = value"
+    @dirty="value => libraryDirty = value"
     @unauthorized="session.expire"
     @notify="(message, tone) => toasts.notify(message, tone)"
   />
   <AssetPicker
     v-if="pickerRequest && workspace.editorAnalysis.snapshot"
-    :open="true"
+    :open="session.authenticated && !studio.initializing && !session.busy"
     :snapshot="workspace.editorAnalysis.snapshot"
     :kinds="pickerRequest.kinds"
     :label="pickerRequest.label"
@@ -378,6 +387,8 @@ async function listHistory(append = false) {
     :locked="studio.locked"
     @select="chooseAsset"
     @close="closePicker"
+    @busy="value => pickerBusy = value"
+    @dirty="value => pickerDirty = value"
     @unauthorized="session.expire"
     @notify="(message, tone) => toasts.notify(message, tone)"
   />

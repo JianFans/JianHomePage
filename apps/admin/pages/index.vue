@@ -144,7 +144,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
             aria-hidden="true"
           /></a>
           <button
-            v-if="session.error || !session.loginAvailable"
+            v-if="session.expired || session.error || !session.loginAvailable"
             type="button"
             class="button"
             :disabled="session.busy"

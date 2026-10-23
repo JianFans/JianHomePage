@@ -297,6 +297,60 @@ it('retains the asset form when switching modules', async () => {
   wrapper.unmount()
 })
 
+it.each([false, true])('protects picker inputs and preserves independent library dirty state: %s', async (libraryDirty) => {
+  const { wrapper } = await mountStudio()
+  try {
+    if (libraryDirty) {
+      await wrapper.get('[data-testid="nav-assets"]').trigger('click')
+      await wrapper.get('[data-testid="asset-source-zh"]').setValue('Main library input')
+    }
+    await wrapper.get('[data-testid="nav-site"]').trigger('click')
+    await wrapper.get('[data-testid="site-og-image"]').element.parentElement!.querySelector<HTMLButtonElement>('[data-testid="asset-picker-open"]')!.click()
+    await flushPromises()
+    await wrapper.get('[data-testid="picker-library"]').trigger('click')
+    const dialog = wrapper.get('[role="dialog"]')
+    await dialog.get('[data-testid="asset-source-zh"]').setValue('Picker input')
+    const event = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    await dialog.get('[data-testid="dialog-close"]').trigger('click')
+    await dialog.get('[data-testid="picker-discard"]').trigger('click')
+    await flushPromises()
+    const after = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(after)
+    expect(after.defaultPrevented).toBe(libraryDirty)
+  } finally { wrapper.unmount() }
+})
+
+it('marks picker uploads busy globally and releases the flag after failure', async () => {
+  const { wrapper, fetcher } = await mountStudio()
+  let finish!: (response: Response) => void
+  const fallback = fetcher.getMockImplementation()!
+  fetcher.mockImplementation((input, init) => String(input).endsWith('/assets/uploads')
+    ? new Promise<Response>(resolve => { finish = resolve })
+    : fallback(input, init))
+  try {
+    await wrapper.get('[data-testid="nav-site"]').trigger('click')
+    wrapper.get('[data-testid="site-og-image"]').element.parentElement!.querySelector<HTMLButtonElement>('[data-testid="asset-picker-open"]')!.click()
+    await flushPromises()
+    await wrapper.get('[data-testid="picker-library"]').trigger('click')
+    const input = wrapper.get('[data-testid="asset-file-input"]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['asset'], 'cover.webp', { type: 'image/webp' })], configurable: true })
+    await input.trigger('change')
+    await wrapper.get('[data-testid="asset-source-zh"]').setValue('授权')
+    await wrapper.get('[data-testid="asset-alt-upload-zh"]').setValue('封面')
+    await wrapper.get('form.asset-upload').trigger('submit')
+    await flushPromises()
+    const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+    expect(studio.assetBusy).toBe(true)
+    expect(wrapper.get('[data-testid="studio-logout"]').attributes('disabled')).toBeDefined()
+    finish(new Response(JSON.stringify({ code: 'unavailable' }), { status: 503 }))
+    await flushPromises()
+    expect(studio.assetBusy).toBe(false)
+    expect(studio.assetDirty).toBe(true)
+  } finally { finish?.(new Response(null, { status: 503 })); wrapper.unmount() }
+})
+
 it('selects the newest draft beyond the first summary page', async () => {
   const { wrapper, fetcher } = await mountStudio({ paginated: true })
   expect(wrapper.get('[data-testid="studio-version-name"]').text()).toBe('工作草稿')
@@ -326,6 +380,96 @@ it('retains selected asset files and inputs across anonymous and authenticated s
   expect(wrapper.get('[data-testid="asset-source-zh"]').element).toHaveProperty('value', 'Retained source')
   expect((wrapper.get('[data-testid="asset-file-input"]').element as HTMLInputElement).files?.[0]).toBe(file)
   wrapper.unmount()
+})
+
+it('retains picker files and leave protection while an expired session is hidden and restored', async () => {
+  const { wrapper, fetcher } = await mountStudio()
+  const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+  try {
+    await wrapper.get('[data-testid="nav-site"]').trigger('click')
+    wrapper.get('[data-testid="site-og-image"]').element.parentElement!.querySelector<HTMLButtonElement>('[data-testid="asset-picker-open"]')!.click()
+    await flushPromises()
+    await wrapper.get('[data-testid="picker-library"]').trigger('click')
+    const input = wrapper.get('[data-testid="asset-file-input"]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['asset'], 'retained.webp', { type: 'image/webp' })], configurable: true })
+    await input.trigger('change')
+    await wrapper.get('[data-testid="asset-source-zh"]').setValue('Retained picker source')
+    await wrapper.get('[data-testid="asset-alt-upload-zh"]').setValue('Retained picker alt')
+    studio.session.expire()
+    await flushPromises()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(document.body.style.overflow).not.toBe('hidden')
+    expect(wrapper.findAll('.studio-login-card button').some(button => button.text() === 'Try again')).toBe(true)
+    expect(studio.assetDirty).toBe(true)
+    const event = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ authenticated: false, loginAvailable: true })))
+    await studio.session.restore()
+    await flushPromises()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    await studio.initialize()
+    await flushPromises()
+    expect(wrapper.get('[role="dialog"]').isVisible()).toBe(true)
+    expect(wrapper.get('[data-testid="asset-file-input"]').element).toBe(input.element)
+    expect(wrapper.get('.file-picker').text()).toContain('retained.webp')
+    expect(wrapper.get('[data-testid="asset-source-zh"]').element).toHaveProperty('value', 'Retained picker source')
+    expect(wrapper.get('[data-testid="asset-alt-upload-zh"]').element).toHaveProperty('value', 'Retained picker alt')
+    await wrapper.get('[data-testid="dialog-close"]').trigger('click')
+    await wrapper.get('[data-testid="picker-discard"]').trigger('click')
+    expect(studio.assetDirty).toBe(false)
+  } finally { wrapper.unmount() }
+})
+
+it.each([false, true])('retains picker confirmation after expiry without repeating the blob upload, expiry during PUT=%s', async (duringPut) => {
+  const { wrapper, fetcher } = await mountStudio()
+  const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+  const fallback = fetcher.getMockImplementation()!
+  let finishBlob: ((response: Response) => void) | undefined
+  let uploads = 0
+  let blobs = 0
+  let confirmations = 0
+  const asset = { id: 'asset_132b59fd-f9b4-47b4-acd1-bbfae60d66b1', status: 'ready', src: 'https://media.example/new.webp', metadata: { fileName: 'new.webp', contentType: 'image/webp', declaredSize: 5, checksum: 'sha256:' + 'a'.repeat(64), width: 64, height: 64 }, rights: { source: { 'zh-CN': '授权' } } }
+  fetcher.mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/assets/uploads')) { uploads++; return new Response(JSON.stringify({ asset: { ...asset, status: 'pending' }, uploadUrl: 'https://upload.example/signed', expiresAt: '2026-10-24T00:00:00Z' })) }
+    if (url === 'https://upload.example/signed') { blobs++; return duringPut ? new Promise<Response>(resolve => { finishBlob = resolve }) : new Response(null, { status: 200 }) }
+    if (url.endsWith('/complete')) { confirmations++; return new Response(JSON.stringify(confirmations === 1 ? { code: 'unauthorized' } : asset), { status: confirmations === 1 ? 401 : 200 }) }
+    if (url.endsWith('/assets')) return new Response(JSON.stringify({ items: [] }))
+    return fallback(input, init)
+  })
+  try {
+    await wrapper.get('[data-testid="nav-site"]').trigger('click')
+    wrapper.get('[data-testid="site-og-image"]').element.parentElement!.querySelector<HTMLButtonElement>('[data-testid="asset-picker-open"]')!.click()
+    await flushPromises()
+    await wrapper.get('[data-testid="picker-library"]').trigger('click')
+    const input = wrapper.get('[data-testid="asset-file-input"]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['asset'], 'cover.webp', { type: 'image/webp' })], configurable: true })
+    await input.trigger('change')
+    await wrapper.get('[data-testid="asset-source-zh"]').setValue('授权来源')
+    await wrapper.get('[data-testid="asset-alt-upload-zh"]').setValue('恢复后的封面')
+    await wrapper.get('form.asset-upload').trigger('submit')
+    await flushPromises()
+    if (duringPut) {
+      expect(finishBlob).toBeDefined()
+      studio.session.expire()
+      await flushPromises()
+      expect(studio.assetBusy).toBe(true)
+      finishBlob!(new Response(null, { status: 200 }))
+      await flushPromises()
+    }
+    expect(studio.session.authenticated).toBe(false)
+    expect(studio.assetDirty).toBe(true)
+    await studio.session.restore()
+    await flushPromises()
+    const retry = wrapper.findAll('button').find(button => button.text() === 'Retry confirmation')
+    expect(retry).toBeDefined()
+    await retry!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="asset-stage"]').text()).toContain('Upload complete')
+    expect(wrapper.get('[data-testid="asset-alt-zh"]').element).toHaveProperty('value', '恢复后的封面')
+    expect({ uploads, blobs, confirmations }).toEqual({ uploads: 1, blobs: 1, confirmations: 2 })
+  } finally { finishBlob?.(new Response(null, { status: 200 })); wrapper.unmount() }
 })
 
 it('clears the saved baseline after logout', async () => {

@@ -53,6 +53,37 @@ it('moves focus into replacement dialog content and restores the original trigge
   } finally { wrapper.unmount() }
 })
 
+it('retains the original trigger across temporary hiding of a mounted upload dialog', async () => {
+  const trigger = document.createElement('button')
+  const restore = document.createElement('button')
+  document.body.append(trigger, restore)
+  trigger.focus()
+  const originalOverflow = document.body.style.overflow
+  const wrapper = mount(StudioDialog, {
+    attachTo: document.body,
+    props: { open: true, keepMounted: true, title: 'Upload', closeLabel: 'Close' },
+    slots: { default: '<input autofocus />' },
+  })
+  try {
+    await flushPromises()
+    const input = wrapper.get('input').element
+    await wrapper.setProps({ open: false })
+    expect(wrapper.get('input').isVisible()).toBe(false)
+    expect(document.body.style.overflow).toBe(originalOverflow)
+    restore.focus()
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+    expect(wrapper.get('input').element).toBe(input)
+    expect(document.activeElement).toBe(input)
+    wrapper.unmount()
+    expect(document.activeElement).toBe(trigger)
+  } finally {
+    if (wrapper.exists()) wrapper.unmount()
+    trigger.remove(); restore.remove()
+    document.body.style.overflow = originalOverflow
+  }
+})
+
 it('guards iframe Escape while busy and removes listeners on close and unmount', async () => {
   const close = vi.fn()
   const wrapper = mount(StudioDialog, {

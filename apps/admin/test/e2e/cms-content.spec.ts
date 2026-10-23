@@ -102,6 +102,115 @@ test('各模块素材字段保持可访问名称，键盘关闭选择器后恢�
   await expect(trigger).toBeFocused()
 })
 
+test('字段上传保留跨来源输入与确认重试，并保护页面离开', async ({ page }) => {
+  await startStudio(page)
+  let releaseUpload: (() => void) | undefined
+  let uploads = 0
+  let blobs = 0
+  let confirmations = 0
+  const asset = {
+    id: 'asset_609bc694-1202-4501-9e77-a5c35fb663eb', status: 'ready', src: 'https://media.example/new.webp',
+    metadata: { fileName: 'cover.webp', contentType: 'image/webp', declaredSize: 5, checksum: 'sha256:' + 'a'.repeat(64), width: 64, height: 64 },
+    rights: { source: { 'zh-CN': '授权来源' } },
+  }
+  await page.route('**/api/v1/assets/uploads', async (route) => {
+    uploads++
+    await new Promise<void>(resolve => { releaseUpload = resolve })
+    await route.fulfill({ json: { asset: { ...asset, status: 'pending' }, uploadUrl: 'https://upload.example/signed', expiresAt: '2026-10-24T00:00:00Z' } })
+  })
+  await page.route('https://upload.example/signed', async (route) => {
+    if (route.request().method() === 'PUT') blobs++
+    await route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'PUT', 'access-control-allow-headers': '*' } })
+  })
+  await page.route(`**/api/v1/assets/${asset.id}/complete`, async (route) => {
+    confirmations++
+    await route.fulfill({ status: confirmations === 1 ? 503 : 200, json: confirmations === 1 ? { code: 'unavailable', message: 'Try again' } : asset })
+  })
+  /** 用可取消事件检查页面的离开保护，不触发真实导航或浏览器确认。 */
+  const protectedFromLeaving = () => page.evaluate(() => !window.dispatchEvent(new Event('beforeunload', { cancelable: true })))
+  await navigate(page, 'site')
+  expect(await protectedFromLeaving()).toBe(false)
+  await page.getByTestId('site-og-image').locator('..').getByTestId('asset-picker-open').click()
+  await page.getByTestId('picker-library').click()
+  await page.getByTestId('asset-file-input').setInputFiles({ name: 'cover.webp', mimeType: 'image/webp', buffer: Buffer.from('asset') })
+  await page.getByTestId('asset-source-zh').fill('授权来源')
+  await page.getByTestId('asset-alt-upload-zh').fill('上传封面')
+  expect(await protectedFromLeaving()).toBe(true)
+  await page.getByRole('button', { name: 'Current snapshot', exact: true }).click()
+  await page.getByTestId('picker-library').click()
+  await expect(page.getByTestId('asset-source-zh')).toHaveValue('授权来源')
+  await expect(page.locator('.file-picker')).toContainText('cover.webp')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('picker-keep')).toBeVisible()
+  await page.getByTestId('picker-keep').click()
+  await expect(page.getByTestId('dialog-close')).toBeFocused()
+  await page.getByTestId('asset-upload').click()
+  await expect.poll(() => Boolean(releaseUpload)).toBe(true)
+  await expect(page.getByTestId('dialog-close')).toBeDisabled()
+  await expect(page.getByTestId('picker-library')).toBeDisabled()
+  await expect(page.getByTestId('studio-logout').first()).toBeDisabled()
+  expect(await protectedFromLeaving()).toBe(true)
+  releaseUpload!()
+  await expect(page.getByRole('button', { name: 'Retry confirmation', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Current snapshot', exact: true }).click()
+  await page.getByTestId('picker-library').click()
+  await page.getByRole('button', { name: 'Retry confirmation', exact: true }).click()
+  await expect(page.getByTestId('asset-stage')).toContainText('Upload complete')
+  await expect(page.getByTestId('asset-alt-zh')).toHaveValue('上传封面')
+  expect({ uploads, blobs, confirmations }).toEqual({ uploads: 1, blobs: 1, confirmations: 2 })
+  expect(await protectedFromLeaving()).toBe(false)
+  await page.getByTestId('dialog-close').click()
+  expect(await protectedFromLeaving()).toBe(false)
+})
+
+test('字段上传确认遇到会话过期后可在原页面恢复，只重试确认并保留替代文本', async ({ page }) => {
+  await startStudio(page)
+  let uploads = 0
+  let blobs = 0
+  let confirmations = 0
+  const asset = {
+    id: 'asset_609bc694-1202-4501-9e77-a5c35fb663eb', status: 'ready', src: 'https://media.example/recovered.webp',
+    metadata: { fileName: 'cover.webp', contentType: 'image/webp', declaredSize: 5, checksum: 'sha256:' + 'a'.repeat(64), width: 64, height: 64 },
+    rights: { source: { 'zh-CN': '授权来源' } },
+  }
+  await page.route('**/api/v1/assets/uploads', async route => {
+    uploads++
+    await route.fulfill({ json: { asset: { ...asset, status: 'pending' }, uploadUrl: 'https://upload.example/recovery', expiresAt: '2026-10-24T00:00:00Z' } })
+  })
+  await page.route('https://upload.example/recovery', async route => {
+    if (route.request().method() === 'PUT') blobs++
+    await route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'PUT', 'access-control-allow-headers': '*' } })
+  })
+  await page.route(`**/api/v1/assets/${asset.id}/complete`, async route => {
+    confirmations++
+    await route.fulfill({ status: confirmations === 1 ? 401 : 200, json: confirmations === 1 ? { code: 'unauthorized', message: 'Expired' } : asset })
+  })
+  await navigate(page, 'site')
+  const trigger = page.getByTestId('site-og-image').locator('..').getByTestId('asset-picker-open')
+  await trigger.click()
+  await page.getByTestId('picker-library').click()
+  await page.getByTestId('asset-file-input').setInputFiles({ name: 'cover.webp', mimeType: 'image/webp', buffer: Buffer.from('asset') })
+  await page.getByTestId('asset-source-zh').fill('授权来源')
+  await page.getByTestId('asset-alt-upload-zh').fill('恢复后的封面')
+  await page.getByTestId('asset-upload').click()
+  await expect(page.getByTestId('studio-login')).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden')
+  expect(await page.evaluate(() => !window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true)
+  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Sharing image', exact: true })).toBeVisible()
+  await expect(page.getByTestId('dialog-close')).toBeFocused()
+  await expect(page.getByTestId('asset-source-zh')).toHaveValue('授权来源')
+  await expect(page.getByTestId('asset-alt-upload-zh')).toHaveValue('恢复后的封面')
+  await expect(page.locator('.file-picker')).toContainText('cover.webp')
+  await page.getByRole('button', { name: 'Retry confirmation', exact: true }).click()
+  await expect(page.getByTestId('asset-stage')).toContainText('Upload complete')
+  await expect(page.getByTestId('asset-alt-zh')).toHaveValue('恢复后的封面')
+  expect({ uploads, blobs, confirmations }).toEqual({ uploads: 1, blobs: 1, confirmations: 2 })
+  await page.getByTestId('dialog-close').click()
+  await expect(trigger).toBeFocused()
+})
+
 test('历史对比显示字段变化且保留当前版本和未保存 JSON', async ({ page }) => {
   const api = await startStudio(page)
   api.records.get('ver_8bb3a437-061d-4dcd-805e-7d5e6f716921')!.snapshot.site.brand['zh-CN'] = '历史站名'

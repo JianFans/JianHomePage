@@ -2,7 +2,7 @@
 import { X } from '@lucide/vue'
 import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 
-const props = defineProps<{ open: boolean; contentKey?: string; title: string; closeLabel: string; busy?: boolean; wide?: boolean }>()
+const props = defineProps<{ open: boolean; contentKey?: string; title: string; closeLabel: string; busy?: boolean; wide?: boolean; keepMounted?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const id = useId()
 const root = ref<HTMLElement | null>(null)
@@ -65,7 +65,8 @@ watch(() => [props.open, props.contentKey] as const, async ([open], previous) =>
   const wasOpen = previous?.[0] || false
   if (open) {
     if (!wasOpen) {
-      previousFocus = document.activeElement as HTMLElement | null
+      // 临时隐藏上传弹窗时保留字段触发者，避免恢复后关闭只返回登录重试按钮。
+      if (!props.keepMounted || !previousFocus?.isConnected) previousFocus = document.activeElement as HTMLElement | null
       previousOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
     }
@@ -82,7 +83,7 @@ watch(() => [props.open, props.contentKey] as const, async ([open], previous) =>
     clearFrameListeners()
     document.body.style.overflow = previousOverflow
     previousFocus?.focus()
-    previousFocus = null
+    if (!props.keepMounted) previousFocus = null
   }
 }, { immediate: true })
 
@@ -120,7 +121,8 @@ onBeforeUnmount(() => {
   >
     <Transition name="studio-dialog">
       <div
-        v-if="open"
+        v-if="open || keepMounted"
+        v-show="!keepMounted || open"
         class="studio-dialog-wrap"
       >
         <div
