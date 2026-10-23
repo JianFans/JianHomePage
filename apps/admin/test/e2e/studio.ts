@@ -10,7 +10,7 @@ const assertContentSnapshot: (value: unknown) => asserts value is YujianContentS
 
 export const csrfToken = 'csrf-browser-contract'
 export type Snapshot = YujianContentSnapshot
-export type Module = 'overview' | 'homepage' | 'music' | 'video' | 'event' | 'moment' | 'assets' | 'history'
+export type Module = 'overview' | 'site' | 'homepage' | 'music' | 'video' | 'event' | 'moment' | 'assets' | 'history'
 
 export function fixtureSnapshot(): Snapshot {
   const value: unknown = structuredClone(fixture)

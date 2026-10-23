@@ -8,6 +8,7 @@ import { issueFieldAttributes } from '../utils/issue-accessibility'
 import { musicProviders } from '../utils/music-copy'
 import { homepageItemVisibility, type HomepageDraft } from '../utils/homepage-workbench'
 import LocalizedTextFields from './LocalizedTextFields.vue'
+import AssetPickerButton from './AssetPickerButton.vue'
 
 const model = defineModel<HeroSlide>({ required: true })
 const props = defineProps<{ snapshot: YujianContentSnapshot; draft: HomepageDraft; locale: AdminLocale; issues?: readonly SnapshotEditorIssue[] }>()
@@ -90,46 +91,85 @@ function toggleLabel(link: PlatformLink, event: Event) {
         v-model="model.mediaKind"
         data-testid="homepage-media-kind"
       ><option value="image">{{ copy.image }}</option><option value="gif">{{ copy.gif }}</option><option value="video">{{ copy.video }}</option></select></label>
-      <label><span>{{ copy.asset }}</span><select
-        v-model="model.assetId"
-        data-testid="homepage-hero-asset"
-        :data-snapshot-path="assetIssueAttrs['data-snapshot-path']"
-        :aria-invalid="assetIssueAttrs['aria-invalid']"
-        :aria-describedby="assetIssueAttrs['aria-describedby']"
-      ><option value="">{{ copy.choose }}</option><option
-        v-for="asset in mediaAssets"
-        :key="asset.id"
-        :value="asset.id"
-      >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select>
+      <div class="asset-field">
+        <label :for="`${id}-asset`">{{ copy.asset }}</label><AssetPickerButton
+          :kinds="[model.mediaKind]"
+          :label="copy.asset"
+          @select="id => model.assetId = id"
+        /><select
+          :id="`${id}-asset`"
+          v-model="model.assetId"
+          data-testid="homepage-hero-asset"
+          :data-snapshot-path="assetIssueAttrs['data-snapshot-path']"
+          :aria-invalid="assetIssueAttrs['aria-invalid']"
+          :aria-describedby="assetIssueAttrs['aria-describedby']"
+        >
+          <option value="">
+            {{ copy.choose }}
+          </option><option
+            v-for="asset in mediaAssets"
+            :key="asset.id"
+            :value="asset.id"
+          >
+            {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+          </option>
+        </select>
         <small
           v-if="assetIssue"
           :id="`${id}-asset-error`"
           class="field-issue-hint"
-        >{{ assetIssueAttrs.description }}</small></label>
-      <label><span>{{ copy.mobileAsset }}</span><select
-        :value="model.mobileAssetId || ''"
-        data-testid="homepage-mobile-asset"
-        :data-snapshot-path="field('mobileAssetId')['data-snapshot-path']"
-        :aria-invalid="field('mobileAssetId')['aria-invalid']"
-        :aria-describedby="field('mobileAssetId')['aria-describedby']"
-        @change="optionalField('mobileAssetId', $event)"
-      ><option value="">{{ copy.none }}</option><option
-        v-for="asset in mediaAssets"
-        :key="asset.id"
-        :value="asset.id"
-      >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select></label>
-      <label><span>{{ copy.poster }}</span><select
-        :value="model.posterAssetId || ''"
-        data-testid="homepage-poster-asset"
-        :data-snapshot-path="field('posterAssetId')['data-snapshot-path']"
-        :aria-invalid="field('posterAssetId')['aria-invalid']"
-        :aria-describedby="field('posterAssetId')['aria-describedby']"
-        @change="optionalField('posterAssetId', $event)"
-      ><option value="">{{ copy.none }}</option><option
-        v-for="asset in posterAssets"
-        :key="asset.id"
-        :value="asset.id"
-      >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select></label>
+        >{{ assetIssueAttrs.description }}</small>
+      </div>
+      <div class="asset-field">
+        <label :for="`${id}-mobile`">{{ copy.mobileAsset }}</label><AssetPickerButton
+          :kinds="[model.mediaKind]"
+          :label="copy.mobileAsset"
+          @select="id => model.mobileAssetId = id"
+        /><select
+          :id="`${id}-mobile`"
+          :value="model.mobileAssetId || ''"
+          data-testid="homepage-mobile-asset"
+          :data-snapshot-path="field('mobileAssetId')['data-snapshot-path']"
+          :aria-invalid="field('mobileAssetId')['aria-invalid']"
+          :aria-describedby="field('mobileAssetId')['aria-describedby']"
+          @change="optionalField('mobileAssetId', $event)"
+        >
+          <option value="">
+            {{ copy.none }}
+          </option><option
+            v-for="asset in mediaAssets"
+            :key="asset.id"
+            :value="asset.id"
+          >
+            {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+          </option>
+        </select>
+      </div>
+      <div class="asset-field">
+        <label :for="`${id}-poster`">{{ copy.poster }}</label><AssetPickerButton
+          :kinds="['image', 'gif']"
+          :label="copy.poster"
+          @select="id => model.posterAssetId = id"
+        /><select
+          :id="`${id}-poster`"
+          :value="model.posterAssetId || ''"
+          data-testid="homepage-poster-asset"
+          :data-snapshot-path="field('posterAssetId')['data-snapshot-path']"
+          :aria-invalid="field('posterAssetId')['aria-invalid']"
+          :aria-describedby="field('posterAssetId')['aria-describedby']"
+          @change="optionalField('posterAssetId', $event)"
+        >
+          <option value="">
+            {{ copy.none }}
+          </option><option
+            v-for="asset in posterAssets"
+            :key="asset.id"
+            :value="asset.id"
+          >
+            {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+          </option>
+        </select>
+      </div>
       <label><span>{{ copy.focalX }}</span><input
         v-model.number="model.focalPoint.x"
         type="number"

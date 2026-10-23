@@ -13,13 +13,14 @@ import {
   Upload,
   Video,
 } from '@lucide/vue'
-import { computed, onMounted, reactive, ref, toRef, watch } from 'vue'
+import { computed, onMounted, reactive, ref, toRef, useId, watch } from 'vue'
 import { useAssetWorkspace } from '../composables/useAssetWorkspace'
 import type { AdminAsset } from '../utils/admin-api'
-import { insertSnapshotAsset, toSnapshotAsset, type LocalizedDraft } from '../utils/asset-workbench'
+import { assetKindFromContentType, insertSnapshotAsset, toSnapshotAsset, type LocalizedDraft } from '../utils/asset-workbench'
 import AsyncButton from './AsyncButton.vue'
 import LoadingSkeleton from './LoadingSkeleton.vue'
 import ActivityIndicator from '../../web/components/ui/ActivityIndicator.vue'
+import type { Asset } from '@yujian/schema'
 
 const props = withDefaults(defineProps<{
   locale: 'zh-CN' | 'en'
@@ -31,7 +32,8 @@ const props = withDefaults(defineProps<{
   canUpload?: boolean
   studio?: boolean
   snapshotLocked?: boolean
-}>(), { canUpload: true, csrfToken: '' })
+  pickerKinds?: readonly Asset['kind'][]
+}>(), { canUpload: true, csrfToken: '', pickerKinds: undefined })
 
 const emit = defineEmits<{
   'update:editorText': [value: string]
@@ -39,7 +41,9 @@ const emit = defineEmits<{
   notify: [message: string, tone: 'success' | 'error']
   busy: [value: boolean]
   dirty: [value: boolean]
+  select: [asset: Asset]
 }>()
+const headingId = useId()
 
 const workspace = reactive(useAssetWorkspace({
   apiBaseUrl: toRef(props, 'apiBaseUrl'),
@@ -250,7 +254,9 @@ function insertAsset(asset: AdminAsset) {
   if (props.snapshotLocked) return
   insertError.value = ''
   try {
-    const result = insertSnapshotAsset(props.editorText, toSnapshotAsset(asset, assetAlts[asset.id] || { zhCN: '' }))
+    const converted = toSnapshotAsset(asset, assetAlts[asset.id] || { zhCN: '' })
+    if (props.pickerKinds) { if (props.pickerKinds.includes(converted.kind)) emit('select', converted); return }
+    const result = insertSnapshotAsset(props.editorText, converted)
     if (!result.inserted) {
       insertError.value = copy.value.insertErrors[result.error || 'invalid-asset']
       return
@@ -264,7 +270,7 @@ function insertAsset(asset: AdminAsset) {
 /** 仅允许可用、未重复且具有中文替代文本的素材进入快照。 */
 function canInsert(asset: AdminAsset): boolean {
   return !props.snapshotLocked && asset.status === 'ready'
-    && !existingAssetIds.value.has(asset.id)
+    && (Boolean(props.pickerKinds) || !existingAssetIds.value.has(asset.id))
     && Boolean(assetAlts[asset.id]?.zhCN.trim())
 }
 
@@ -277,6 +283,13 @@ function previewSource(asset: AdminAsset): string {
     return ''
   }
 }
+
+/** 服务端素材按字段用途过滤，不在候选中混入不匹配的音视频。 */
+const displayAssets = computed(() => workspace.filteredAssets.filter(asset => {
+  if (!props.pickerKinds) return true
+  const kind = assetKindFromContentType(asset.metadata.contentType)
+  return kind !== null && props.pickerKinds.includes(kind)
+}))
 
 /** 判断素材是否可以使用固定比例安全预览。 */
 function isVisual(asset: AdminAsset): boolean {
@@ -304,7 +317,7 @@ function formatBytes(value: unknown): string {
 <template>
   <section
     class="asset-workbench panel"
-    aria-labelledby="asset-workbench-title"
+    :aria-labelledby="headingId"
     data-testid="asset-workbench"
   >
     <div class="panel-heading asset-heading">
@@ -312,7 +325,7 @@ function formatBytes(value: unknown): string {
         <p class="eyebrow">
           04
         </p>
-        <h2 id="asset-workbench-title">
+        <h2 :id="headingId">
           {{ copy.title }}
         </h2>
       </div>
@@ -582,7 +595,7 @@ function formatBytes(value: unknown): string {
           />
         </div>
         <p
-          v-else-if="!workspace.loading && workspace.filteredAssets.length === 0"
+          v-else-if="!workspace.loading && displayAssets.length === 0"
           class="asset-empty"
         >
           {{ copy.empty }}
@@ -590,7 +603,7 @@ function formatBytes(value: unknown): string {
 
         <div class="asset-grid">
           <article
-            v-for="asset in workspace.filteredAssets"
+            v-for="asset in displayAssets"
             :key="asset.id"
             class="asset-card"
             :data-asset-id="asset.id"
@@ -638,7 +651,7 @@ function formatBytes(value: unknown): string {
                 class="button asset-insert"
                 type="button"
                 :disabled="!canInsert(asset)"
-                :title="existingAssetIds.has(asset.id) ? copy.duplicate : copy.insert"
+                :title="pickerKinds ? (locale === 'en' ? 'Choose asset' : '选择素材') : existingAssetIds.has(asset.id) ? copy.duplicate : copy.insert"
                 data-testid="asset-insert"
                 @click="insertAsset(asset)"
               >
@@ -646,7 +659,7 @@ function formatBytes(value: unknown): string {
                   :size="16"
                   aria-hidden="true"
                 />
-                <span>{{ existingAssetIds.has(asset.id) ? copy.duplicate : copy.insert }}</span>
+                <span>{{ pickerKinds ? (locale === 'en' ? 'Choose asset' : '选择素材') : existingAssetIds.has(asset.id) ? copy.duplicate : copy.insert }}</span>
               </button>
             </div>
           </article>

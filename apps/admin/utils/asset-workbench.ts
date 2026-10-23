@@ -46,6 +46,12 @@ const fileRules: Readonly<Record<string, AssetFileRule>> = {
 
 const digestChunkBytes = 4 * 1024 * 1024
 
+/** 使用上传与快照转换共用的 MIME 规则筛选素材，未知类型不参与类型匹配。 */
+export function assetKindFromContentType(contentType: unknown): Asset['kind'] | null {
+  if (typeof contentType !== 'string' || !Object.hasOwn(fileRules, contentType)) return null
+  return fileRules[contentType]!.kind
+}
+
 /** 在摘要计算前校验文件 MIME、扩展名和大小，并返回对应 canonical 规则。 */
 export function validateAssetFile(file: Pick<File, 'name' | 'size' | 'type'>): AssetFileRule {
   if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new AssetFileError('empty-file')

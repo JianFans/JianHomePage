@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { canRebaseAssets } from '../utils/asset-selection'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { applyHomepageDraft, createHomepageDraft, type HomepageDraft, type HomepageErrorCode } from '../utils/homepage-workbench'
 
@@ -6,6 +7,12 @@ import { applyHomepageDraft, createHomepageDraft, type HomepageDraft, type Homep
 export function useHomepageWorkspace(options: { editorText: Ref<string>; busy: Readonly<Ref<boolean>> }) {
   const draft = ref<HomepageDraft | null>(null)
   const baseline = ref('')
+  /** 只为当前基线的安全素材追加重建基线，不重建或清空临时表单。 */
+  function rebaseAssets(before: string, after: string): boolean {
+    if (!canRebaseAssets(draft.value, baseline.value, options.editorText.value, before, after)) return false
+    baseline.value = after
+    return true
+  }
   const initial = ref('')
   const error = ref<HomepageErrorCode | null>(null)
   const issues = ref<readonly SnapshotEditorIssue[]>([])
@@ -80,5 +87,5 @@ export function useHomepageWorkspace(options: { editorText: Ref<string>; busy: R
     else readCurrent()
   }
 
-  return { draft, dirty, stale, error, issues, pending, open, apply, reset, close, keepEditing, discardPending }
+  return { draft, dirty, stale, error, issues, pending, open, apply, reset, close, keepEditing, discardPending, rebaseAssets }
 }

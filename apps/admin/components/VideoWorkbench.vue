@@ -9,6 +9,7 @@ import { createVideo, type VideoDraft, type VideoErrorCode } from '../utils/vide
 import { videoCopy } from '../utils/video-copy'
 import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
+import AssetPickerButton from './AssetPickerButton.vue'
 import PlatformLinkFields from './PlatformLinkFields.vue'
 
 const draft = defineModel<VideoDraft | null>('draft', { required: true })
@@ -228,37 +229,63 @@ function setVideoAsset(event: Event) {
               :issues="issues"
             />
             <div class="music-field-grid">
-              <label><span>{{ copy.poster }}</span><select
-                v-model="selected.posterAssetId"
-                data-testid="video-poster"
-                :data-snapshot-path="field('posterAssetId')['data-snapshot-path']"
-                :aria-invalid="field('posterAssetId')['aria-invalid']"
-                :aria-describedby="field('posterAssetId')['aria-describedby']"
-              ><option value="">{{ copy.select }}</option><option
-                v-for="asset in posters"
-                :key="asset.id"
-                :value="asset.id"
-              >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select><small
-                v-if="field('posterAssetId').description"
-                :id="`${issueId}-posterAssetId`"
-                class="sr-only"
-              >{{ field('posterAssetId').description }}</small></label>
-              <label><span>{{ copy.asset }}</span><select
-                :value="selected.videoAssetId || ''"
-                data-testid="video-asset"
-                :data-snapshot-path="field('videoAssetId')['data-snapshot-path']"
-                :aria-invalid="field('videoAssetId')['aria-invalid']"
-                :aria-describedby="field('videoAssetId')['aria-describedby']"
-                @change="setVideoAsset"
-              ><option value="">{{ copy.none }}</option><option
-                v-for="asset in videoAssets"
-                :key="asset.id"
-                :value="asset.id"
-              >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select><small
-                v-if="field('videoAssetId').description"
-                :id="`${issueId}-videoAssetId`"
-                class="sr-only"
-              >{{ field('videoAssetId').description }}</small></label>
+              <div class="asset-field">
+                <label :for="`${issueId}-poster`">{{ copy.poster }}</label><AssetPickerButton
+                  :kinds="['image', 'gif']"
+                  :label="copy.poster"
+                  @select="id => selected!.posterAssetId = id"
+                /><select
+                  :id="`${issueId}-poster`"
+                  v-model="selected.posterAssetId"
+                  data-testid="video-poster"
+                  :data-snapshot-path="field('posterAssetId')['data-snapshot-path']"
+                  :aria-invalid="field('posterAssetId')['aria-invalid']"
+                  :aria-describedby="field('posterAssetId')['aria-describedby']"
+                >
+                  <option value="">
+                    {{ copy.select }}
+                  </option><option
+                    v-for="asset in posters"
+                    :key="asset.id"
+                    :value="asset.id"
+                  >
+                    {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+                  </option>
+                </select><small
+                  v-if="field('posterAssetId').description"
+                  :id="`${issueId}-posterAssetId`"
+                  class="sr-only"
+                >{{ field('posterAssetId').description }}</small>
+              </div>
+              <div class="asset-field">
+                <label :for="`${issueId}-video`">{{ copy.asset }}</label><AssetPickerButton
+                  :kinds="['video']"
+                  :label="copy.asset"
+                  @select="id => selected!.videoAssetId = id"
+                /><select
+                  :id="`${issueId}-video`"
+                  :value="selected.videoAssetId || ''"
+                  data-testid="video-asset"
+                  :data-snapshot-path="field('videoAssetId')['data-snapshot-path']"
+                  :aria-invalid="field('videoAssetId')['aria-invalid']"
+                  :aria-describedby="field('videoAssetId')['aria-describedby']"
+                  @change="setVideoAsset"
+                >
+                  <option value="">
+                    {{ copy.none }}
+                  </option><option
+                    v-for="asset in videoAssets"
+                    :key="asset.id"
+                    :value="asset.id"
+                  >
+                    {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+                  </option>
+                </select><small
+                  v-if="field('videoAssetId').description"
+                  :id="`${issueId}-videoAssetId`"
+                  class="sr-only"
+                >{{ field('videoAssetId').description }}</small>
+              </div>
               <label><span>{{ copy.duration }}</span><input
                 v-model.number="selected.durationSeconds"
                 type="number"

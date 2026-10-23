@@ -17,7 +17,7 @@ const pictureURL = computed(() => {
 })
 watch(() => props.picture, () => { failedPicture.value = '' })
 const groups = [
-  { id: 'workspace', modules: [{ id: 'overview', icon: LayoutDashboard, tone: 'sage' }] },
+  { id: 'workspace', modules: [{ id: 'overview', icon: LayoutDashboard, tone: 'sage' }, { id: 'site', icon: UserRound, tone: 'blue' }] },
   { id: 'content', modules: [
     { id: 'homepage', icon: LayoutList, tone: 'sage' },
     { id: 'music', icon: Music2, tone: 'sage' }, { id: 'video', icon: Film, tone: 'blue' },

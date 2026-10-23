@@ -6,6 +6,7 @@ import { useHomepageWorkspace } from './useHomepageWorkspace'
 import { useVideoWorkspace } from './useVideoWorkspace'
 import { useEventWorkspace } from './useEventWorkspace'
 import { useMomentWorkspace } from './useMomentWorkspace'
+import { useSiteWorkspace } from './useSiteWorkspace'
 import { useToasts } from './useToasts'
 import { analyzeSnapshotText, type SnapshotImportFile } from '../utils/snapshot-workbench'
 import { studioCopy, type StudioModule } from '../utils/studio-copy'
@@ -16,6 +17,8 @@ import { videoCopy } from '../utils/video-copy'
 import { eventCopy } from '../utils/event-copy'
 import { momentCopy } from '../utils/moment-copy'
 import { focusSnapshotIssue } from '../utils/issue-accessibility'
+import { appendPickedAsset } from '../utils/asset-selection'
+import type { Asset } from '@yujian/schema'
 
 type StudioAction = { kind: 'module'; module: StudioModule } | { kind: 'version'; id: string } | { kind: 'import'; file: SnapshotImportFile } | { kind: 'logout' } | { kind: 'clone' } | { kind: 'release'; id: string | null } | { kind: 'close-release' }
 
@@ -38,7 +41,8 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
   const video = reactive(useVideoWorkspace(options))
   const event = reactive(useEventWorkspace(options))
   const moment = reactive(useMomentWorkspace(options))
-  const forms = { music, homepage, video, event, moment }
+  const site = reactive(useSiteWorkspace(options))
+  const forms = { music, homepage, video, event, moment, site }
   const formDirty = computed(() => Object.values(forms).some(form => form.dirty))
   const unsaved = computed(() => workspace.dirty || formDirty.value)
   const pending = shallowRef<StudioAction | null>(null)
@@ -67,7 +71,7 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
   function reportFormFailure() {
     const active = module.value as keyof typeof forms
     const form = forms[active]
-    const copies = { music: musicCopy(locale.value), homepage: homepageCopy(locale.value), video: videoCopy(locale.value), event: eventCopy(locale.value), moment: momentCopy(locale.value) }
+    const copies = { music: musicCopy(locale.value), homepage: homepageCopy(locale.value), video: videoCopy(locale.value), event: eventCopy(locale.value), moment: momentCopy(locale.value), site: { errors: { 'stale-snapshot': locale.value === 'en' ? 'Snapshot changed. Reopen this module.' : '快照已变化，请重新进入此模块。' } } }
     const errors = copies[active]?.errors as Record<string, string> | undefined
     const message = (form?.error && errors?.[form.error]) || copy.value.formInvalid
     const path = form?.issues[0]?.path
@@ -77,7 +81,7 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
   /** 历史表单允许读取，但所有修改控件通过 locked 禁用。 */
   function openModule() {
     const active = module.value
-    const readableForms = { homepage, video, event, moment }
+    const readableForms = { homepage, video, event, moment, site }
     if (!(active in readableForms)) return
     const form = readableForms[active as keyof typeof readableForms]
     if (!workspace.busy) form.open()
@@ -205,5 +209,27 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
     return false
   }
 
-  return { session, workspace, toasts, module, copy, canEdit, canReview, canPublish, locked, forms, music, homepage, video, event, moment, formDirty, unsaved, assetBusy, assetDirty, pending, initializing, cloneRequested, textRevision, request, save, discardPending, savePending, clone, initialize, applyForPreview }
+  /** 字段选择素材仅追加合法素材，并保留所有当前表单的未保存输入。 */
+  function acceptPickedAsset(asset: Asset, kinds: readonly Asset['kind'][]): boolean {
+    if (locked.value || Object.values(forms).some(form => form.stale)) return false
+    const before = workspace.editorText
+    const result = appendPickedAsset(before, asset, kinds)
+    if (result.error) { toasts.notify(locale.value === 'en' ? 'Asset cannot be bound to this field.' : '该素材无法绑定到此字段。', 'error'); return false }
+    if (result.text !== before) {
+      workspace.editorText = result.text
+      for (const form of Object.values(forms)) form.rebaseAssets(before, result.text)
+    }
+    return true
+  }
+
+  /** 删除事务只替换干净表单对应的草稿，继续等待用户统一保存。 */
+  function applyContentText(text: string): boolean {
+    if (locked.value || formDirty.value || !analyzeSnapshotText(text).snapshot) return false
+    workspace.editorText = text
+    resetForms()
+    openModule()
+    return true
+  }
+
+  return { session, workspace, toasts, module, copy, canEdit, canReview, canPublish, locked, forms, music, homepage, video, event, moment, site, formDirty, unsaved, assetBusy, assetDirty, pending, initializing, cloneRequested, textRevision, request, save, discardPending, savePending, clone, initialize, applyForPreview, acceptPickedAsset, applyContentText }
 }

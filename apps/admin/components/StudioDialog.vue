@@ -2,12 +2,13 @@
 import { X } from '@lucide/vue'
 import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 
-const props = defineProps<{ open: boolean; contentKey?: string; title: string; closeLabel: string; busy?: boolean; wide?: boolean }>()
+const props = defineProps<{ open: boolean; contentKey?: string; title: string; closeLabel: string; busy?: boolean; wide?: boolean; keepMounted?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const id = useId()
 const root = ref<HTMLElement | null>(null)
 let previousFocus: HTMLElement | null = null
 let previousOverflow = ''
+let disposed = false
 const frameListeners = new Map<HTMLIFrameElement, { document: Document; keydown: (event: KeyboardEvent) => void }>()
 let frameObserver: MutationObserver | null = null
 const focusableSelector = 'button, input, textarea, select, a[href], iframe, summary, [tabindex]'
@@ -59,15 +60,18 @@ function syncFrameListeners() {
 }
 
 /** 锁定背景滚动并把焦点送入弹窗，关闭后恢复触发者。 */
-watch(() => [props.open, props.contentKey] as const, async ([open], [wasOpen]) => {
+watch(() => [props.open, props.contentKey] as const, async ([open], previous) => {
+  if (typeof document === 'undefined') return
+  const wasOpen = previous?.[0] || false
   if (open) {
     if (!wasOpen) {
-      previousFocus = document.activeElement as HTMLElement | null
+      // 临时隐藏上传弹窗时保留字段触发者，避免恢复后关闭只返回登录重试按钮。
+      if (!props.keepMounted || !previousFocus?.isConnected) previousFocus = document.activeElement as HTMLElement | null
       previousOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
     }
     await nextTick()
-    if (!props.open) return
+    if (!props.open || disposed) return
     frameObserver?.disconnect()
     frameObserver = new MutationObserver(syncFrameListeners)
     if (root.value) frameObserver.observe(root.value, { childList: true, subtree: true })
@@ -79,9 +83,9 @@ watch(() => [props.open, props.contentKey] as const, async ([open], [wasOpen]) =
     clearFrameListeners()
     document.body.style.overflow = previousOverflow
     previousFocus?.focus()
-    previousFocus = null
+    if (!props.keepMounted) previousFocus = null
   }
-})
+}, { immediate: true })
 
 /** Tab 限定在弹窗和仍可操作的消息区；Escape 不打断正在执行的写操作。 */
 function keydown(event: KeyboardEvent) {
@@ -94,8 +98,13 @@ function keydown(event: KeyboardEvent) {
   else if (!event.shiftKey && document.activeElement === nodes.at(-1)) { event.preventDefault(); nodes[0]?.focus() }
 }
 onBeforeUnmount(() => {
+  disposed = true
   clearFrameListeners()
-  if (props.open) document.body.style.overflow = previousOverflow
+  if (props.open) {
+    document.body.style.overflow = previousOverflow
+    previousFocus?.focus()
+    previousFocus = null
+  }
 })
 </script>
 
@@ -112,7 +121,8 @@ onBeforeUnmount(() => {
   >
     <Transition name="studio-dialog">
       <div
-        v-if="open"
+        v-if="open || keepMounted"
+        v-show="!keepMounted || open"
         class="studio-dialog-wrap"
       >
         <div

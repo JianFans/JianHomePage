@@ -8,6 +8,7 @@ import { musicProviders } from '../utils/music-copy'
 import type { SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
+import AssetPickerButton from './AssetPickerButton.vue'
 
 const model = defineModel<Moment>({ required: true })
 const props = defineProps<{ snapshot: YujianContentSnapshot; draft: MomentDraft; locale: AdminLocale; path?: string; issues?: readonly SnapshotEditorIssue[] }>()
@@ -53,21 +54,34 @@ function toggleLabel(link: PlatformLink, event: Event) {
 
 <template>
   <div class="music-fields">
-    <label><span>{{ copy.asset }}</span><select
-      v-model="model.assetId"
-      data-testid="moment-asset"
-      :data-snapshot-path="field('assetId')['data-snapshot-path']"
-      :aria-invalid="field('assetId')['aria-invalid']"
-      :aria-describedby="field('assetId')['aria-describedby']"
-    ><option value="">{{ copy.choose }}</option><option
-      v-for="asset in imageAssets"
-      :key="asset.id"
-      :value="asset.id"
-    >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select><small
-      v-if="field('assetId').description"
-      :id="field('assetId')['aria-describedby']"
-      class="sr-only"
-    >{{ field('assetId').description }}</small></label>
+    <div class="asset-field">
+      <label :for="`${issueId}-asset`">{{ copy.asset }}</label><AssetPickerButton
+        :kinds="['image', 'gif']"
+        :label="copy.asset"
+        @select="id => model.assetId = id"
+      /><select
+        :id="`${issueId}-asset`"
+        v-model="model.assetId"
+        data-testid="moment-asset"
+        :data-snapshot-path="field('assetId')['data-snapshot-path']"
+        :aria-invalid="field('assetId')['aria-invalid']"
+        :aria-describedby="field('assetId')['aria-describedby']"
+      >
+        <option value="">
+          {{ copy.choose }}
+        </option><option
+          v-for="asset in imageAssets"
+          :key="asset.id"
+          :value="asset.id"
+        >
+          {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+        </option>
+      </select><small
+        v-if="field('assetId').description"
+        :id="field('assetId')['aria-describedby']"
+        class="sr-only"
+      >{{ field('assetId').description }}</small>
+    </div>
     <label class="music-checkbox"><input
       type="checkbox"
       :checked="Boolean(model.caption)"

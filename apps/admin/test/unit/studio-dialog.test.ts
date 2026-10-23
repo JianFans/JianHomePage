@@ -3,6 +3,31 @@ import { defineComponent, ref } from 'vue'
 import { expect, it, vi } from 'vitest'
 import StudioDialog from '../../components/StudioDialog.vue'
 
+it('initializes an initially open dialog and restores focus and scrolling on unmount', async () => {
+  const trigger = document.createElement('button')
+  document.body.append(trigger)
+  trigger.focus()
+  const originalOverflow = document.body.style.overflow
+  document.body.style.overflow = 'auto'
+  const wrapper = mount(StudioDialog, {
+    attachTo: document.body,
+    props: { open: true, title: 'Assets', closeLabel: 'Close' },
+    slots: { default: '<input autofocus />' },
+  })
+  try {
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('input').element)
+    expect(document.body.style.overflow).toBe('hidden')
+    wrapper.unmount()
+    expect(document.activeElement).toBe(trigger)
+    expect(document.body.style.overflow).toBe('auto')
+  } finally {
+    if (wrapper.exists()) wrapper.unmount()
+    trigger.remove()
+    document.body.style.overflow = originalOverflow
+  }
+})
+
 it('moves focus into replacement dialog content and restores the original trigger', async () => {
   const host = defineComponent({
     components: { StudioDialog },
@@ -26,6 +51,37 @@ it('moves focus into replacement dialog content and restores the original trigge
     await flushPromises()
     expect(document.activeElement).toBe(trigger.element)
   } finally { wrapper.unmount() }
+})
+
+it('retains the original trigger across temporary hiding of a mounted upload dialog', async () => {
+  const trigger = document.createElement('button')
+  const restore = document.createElement('button')
+  document.body.append(trigger, restore)
+  trigger.focus()
+  const originalOverflow = document.body.style.overflow
+  const wrapper = mount(StudioDialog, {
+    attachTo: document.body,
+    props: { open: true, keepMounted: true, title: 'Upload', closeLabel: 'Close' },
+    slots: { default: '<input autofocus />' },
+  })
+  try {
+    await flushPromises()
+    const input = wrapper.get('input').element
+    await wrapper.setProps({ open: false })
+    expect(wrapper.get('input').isVisible()).toBe(false)
+    expect(document.body.style.overflow).toBe(originalOverflow)
+    restore.focus()
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+    expect(wrapper.get('input').element).toBe(input)
+    expect(document.activeElement).toBe(input)
+    wrapper.unmount()
+    expect(document.activeElement).toBe(trigger)
+  } finally {
+    if (wrapper.exists()) wrapper.unmount()
+    trigger.remove(); restore.remove()
+    document.body.style.overflow = originalOverflow
+  }
 })
 
 it('guards iframe Escape while busy and removes listeners on close and unmount', async () => {
