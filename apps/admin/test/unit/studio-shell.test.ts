@@ -57,6 +57,19 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
 
+it('places the music deletion kind before its dependent record selector', async () => {
+  const { wrapper } = await mountStudio()
+  try {
+    await wrapper.get('[data-testid="nav-music"]').trigger('click')
+    const kind = wrapper.findAll('select').find(select => select.find('option[value="track"]').exists())!
+    const records = wrapper.get('[data-testid="content-delete-select"]')
+    expect(kind.element.compareDocumentPosition(records.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(records.findAll('option').map(option => option.attributes('value'))).toEqual(fixture.releases.map(release => release.id))
+    await kind.setValue('track')
+    expect(records.findAll('option').map(option => option.attributes('value'))).toEqual(fixture.tracks.map(track => track.id))
+  } finally { wrapper.unmount() }
+})
+
 it('shows a site profile error when the current snapshot cannot be opened', async () => {
   const { wrapper } = await mountStudio()
   try {

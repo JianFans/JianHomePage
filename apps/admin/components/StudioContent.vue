@@ -68,6 +68,13 @@ async function listHistory(append = false) {
 </script>
 
 <template>
+  <label
+    v-if="studio.module === 'music'"
+    class="studio-muted"
+  >{{ locale === 'en' ? 'Delete from' : '删除对象' }}<select
+    v-model="deleteMusicKind"
+    :disabled="studio.locked || studio.formDirty"
+  ><option value="release">{{ locale === 'en' ? 'Releases' : '作品' }}</option><option value="track">{{ locale === 'en' ? 'Tracks' : '曲目' }}</option></select></label>
   <ContentDeletionPanel
     v-if="deletionKind"
     :key="studio.module"
@@ -80,13 +87,6 @@ async function listHistory(append = false) {
     @update:text="studio.applyContentText"
     @notify="(message, tone) => toasts.notify(message, tone)"
   />
-  <label
-    v-if="studio.module === 'music'"
-    class="studio-muted"
-  >{{ locale === 'en' ? 'Delete from' : '删除对象' }}<select
-    v-model="deleteMusicKind"
-    :disabled="studio.locked || studio.formDirty"
-  ><option value="release">{{ locale === 'en' ? 'Releases' : '作品' }}</option><option value="track">{{ locale === 'en' ? 'Tracks' : '曲目' }}</option></select></label>
   <Transition
     name="studio-page"
     mode="out-in"
