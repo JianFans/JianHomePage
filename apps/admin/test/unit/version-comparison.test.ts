@@ -169,9 +169,10 @@ describe('read-only version comparison', () => {
       expect(wrapper.findAll('[data-testid="compare-change"]')).toHaveLength(50)
       expect(wrapper.find('img').exists()).toBe(false)
       const expanded = wrapper.get('[data-testid="compare-value-details"]')
+      expect(expanded.find('pre').exists()).toBe(false)
       ;(expanded.element as HTMLDetailsElement).open = true
       await expanded.trigger('toggle')
-      expect(wrapper.text()).toContain(malicious)
+      expect(expanded.get('pre').text()).toContain(malicious)
       await wrapper.get('[data-testid="compare-changes-more"]').trigger('click')
       expect(wrapper.findAll('[data-testid="compare-change"]')).toHaveLength(100)
     } finally { wrapper.unmount() }
