@@ -3,6 +3,31 @@ import { defineComponent, ref } from 'vue'
 import { expect, it, vi } from 'vitest'
 import StudioDialog from '../../components/StudioDialog.vue'
 
+it('initializes an initially open dialog and restores focus and scrolling on unmount', async () => {
+  const trigger = document.createElement('button')
+  document.body.append(trigger)
+  trigger.focus()
+  const originalOverflow = document.body.style.overflow
+  document.body.style.overflow = 'auto'
+  const wrapper = mount(StudioDialog, {
+    attachTo: document.body,
+    props: { open: true, title: 'Assets', closeLabel: 'Close' },
+    slots: { default: '<input autofocus />' },
+  })
+  try {
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('input').element)
+    expect(document.body.style.overflow).toBe('hidden')
+    wrapper.unmount()
+    expect(document.activeElement).toBe(trigger)
+    expect(document.body.style.overflow).toBe('auto')
+  } finally {
+    if (wrapper.exists()) wrapper.unmount()
+    trigger.remove()
+    document.body.style.overflow = originalOverflow
+  }
+})
+
 it('moves focus into replacement dialog content and restores the original trigger', async () => {
   const host = defineComponent({
     components: { StudioDialog },
