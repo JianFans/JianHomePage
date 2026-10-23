@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowRight } from '@lucide/vue'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, provide, onBeforeUnmount, watch } from 'vue'
+import type { Asset } from '@yujian/schema'
 import AssetWorkbench from './AssetWorkbench.vue'
 import MusicWorkbench from './MusicWorkbench.vue'
 import HomepageWorkbench from './HomepageWorkbench.vue'
@@ -8,6 +9,10 @@ import VideoWorkbench from './VideoWorkbench.vue'
 import EventWorkbench from './EventWorkbench.vue'
 import MomentWorkbench from './MomentWorkbench.vue'
 import SiteWorkbench from './SiteWorkbench.vue'
+import AssetPicker from './AssetPicker.vue'
+import ContentDeletionPanel from './ContentDeletionPanel.vue'
+import VersionComparison from './VersionComparison.vue'
+import { assetPickerKey, type AssetPickerRequest } from '../utils/asset-selection'
 import SnapshotInsights from './SnapshotInsights.vue'
 import PublishStatusPanel from './PublishStatusPanel.vue'
 import AsyncButton from './AsyncButton.vue'
@@ -22,6 +27,26 @@ const { workspace, session, toasts, music, homepage, video, event, moment, site 
 const copy = computed(() => props.studio.copy)
 const assetOpened = ref(false)
 const historyAction = ref('')
+const pickerRequest = shallowRef<(AssetPickerRequest & { before: string; module: StudioModule; finish: (asset: Asset | null) => void }) | null>(null)
+const deleteMusicKind = ref<'release' | 'track'>('release')
+const deletionKind = computed(() => ({ homepage: 'hero', music: deleteMusicKind.value, video: 'video', event: 'event', moment: 'moment' } as const)[props.studio.module as 'homepage' | 'music' | 'video' | 'event' | 'moment'])
+/** 所有字段共享一个选择器，关闭和上下文变化立即取消待选择。 */
+function closePicker() { const current = pickerRequest.value; pickerRequest.value = null; current?.finish(null) }
+provide(assetPickerKey, request => {
+  closePicker()
+  if (props.studio.locked) return Promise.resolve(null)
+  return new Promise(resolve => { pickerRequest.value = { ...request, before: workspace.editorText, module: props.studio.module, finish: resolve } })
+})
+/** 只在原文和模块均未变化时接受结果，不能让迟到回调绑定其他表单。 */
+function chooseAsset(asset: Asset) {
+  const request = pickerRequest.value
+  if (!request || props.studio.locked || request.before !== workspace.editorText || request.module !== props.studio.module) { closePicker(); return }
+  pickerRequest.value = null
+  if (props.studio.acceptPickedAsset(asset, request.kinds)) request.finish(asset)
+  else request.finish(null)
+}
+watch(() => [props.studio.module, workspace.editorText, session.authenticated], () => { if (pickerRequest.value) closePicker() }, { flush: 'sync' })
+onBeforeUnmount(closePicker)
 watch(() => props.studio.module, (module) => { if (module === 'assets') assetOpened.value = true }, { immediate: true })
 /** 模块导航复用全局未保存保护，不在展示组件中自行重建编辑上下文。 */
 function navigate(module: StudioModule) { emit('navigate', module) }
@@ -34,6 +59,25 @@ async function listHistory(append = false) {
 </script>
 
 <template>
+  <ContentDeletionPanel
+    v-if="deletionKind"
+    :key="studio.module"
+    :text="workspace.editorText"
+    :analyzed-text="workspace.analyzedText"
+    :snapshot="workspace.editorAnalysis.snapshot"
+    :kind="deletionKind"
+    :locale="locale"
+    :locked="studio.locked || studio.formDirty"
+    @update:text="studio.applyContentText"
+    @notify="(message, tone) => toasts.notify(message, tone)"
+  />
+  <label
+    v-if="studio.module === 'music'"
+    class="studio-muted"
+  >{{ locale === 'en' ? 'Delete from' : '删除对象' }}<select
+    v-model="deleteMusicKind"
+    :disabled="studio.locked || studio.formDirty"
+  ><option value="release">{{ locale === 'en' ? 'Releases' : '作品' }}</option><option value="track">{{ locale === 'en' ? 'Tracks' : '曲目' }}</option></select></label>
   <Transition
     name="studio-page"
     mode="out-in"
@@ -220,8 +264,19 @@ async function listHistory(append = false) {
       <section
         v-else-if="studio.module === 'history'"
         class="studio-history"
-        :aria-busy="workspace.listing"
       >
+        <VersionComparison
+          :versions="workspace.versions"
+          :current-version-id="workspace.version?.id"
+          :api-base-url="workspace.apiBaseUrl"
+          :csrf-token="session.csrfToken"
+          :locale="locale"
+          :active="session.authenticated"
+          :next-cursor="workspace.nextCursor"
+          :listing="workspace.listing"
+          @unauthorized="session.expire"
+          @more="listHistory(true)"
+        />
         <div class="studio-section-heading">
           <h2>{{ copy.versions }}</h2><AsyncButton
             type="button"
@@ -246,7 +301,10 @@ async function listHistory(append = false) {
           @retry="workspace.retryPublish"
           @recover="workspace.recoverPublish"
         />
-        <div class="studio-history-list">
+        <div
+          class="studio-history-list"
+          :aria-busy="workspace.listing"
+        >
           <button
             v-for="item in workspace.versions"
             :key="item.id"
@@ -305,6 +363,21 @@ async function listHistory(append = false) {
     :snapshot-locked="studio.locked"
     @busy="value => emit('assetBusy', value)"
     @dirty="value => emit('assetDirty', value)"
+    @unauthorized="session.expire"
+    @notify="(message, tone) => toasts.notify(message, tone)"
+  />
+  <AssetPicker
+    v-if="pickerRequest && workspace.editorAnalysis.snapshot"
+    :open="true"
+    :snapshot="workspace.editorAnalysis.snapshot"
+    :kinds="pickerRequest.kinds"
+    :label="pickerRequest.label"
+    :locale="locale"
+    :api-base-url="workspace.apiBaseUrl"
+    :csrf-token="session.csrfToken"
+    :locked="studio.locked"
+    @select="chooseAsset"
+    @close="closePicker"
     @unauthorized="session.expire"
     @notify="(message, tone) => toasts.notify(message, tone)"
   />

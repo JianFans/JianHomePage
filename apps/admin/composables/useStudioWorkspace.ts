@@ -17,6 +17,8 @@ import { videoCopy } from '../utils/video-copy'
 import { eventCopy } from '../utils/event-copy'
 import { momentCopy } from '../utils/moment-copy'
 import { focusSnapshotIssue } from '../utils/issue-accessibility'
+import { appendPickedAsset } from '../utils/asset-selection'
+import type { Asset } from '@yujian/schema'
 
 type StudioAction = { kind: 'module'; module: StudioModule } | { kind: 'version'; id: string } | { kind: 'import'; file: SnapshotImportFile } | { kind: 'logout' } | { kind: 'clone' } | { kind: 'release'; id: string | null } | { kind: 'close-release' }
 
@@ -207,5 +209,27 @@ export function useStudioWorkspace(locale: Ref<AdminLocale>) {
     return false
   }
 
-  return { session, workspace, toasts, module, copy, canEdit, canReview, canPublish, locked, forms, music, homepage, video, event, moment, site, formDirty, unsaved, assetBusy, assetDirty, pending, initializing, cloneRequested, textRevision, request, save, discardPending, savePending, clone, initialize, applyForPreview }
+  /** 字段选择素材仅追加合法素材，并保留所有当前表单的未保存输入。 */
+  function acceptPickedAsset(asset: Asset, kinds: readonly Asset['kind'][]): boolean {
+    if (locked.value || Object.values(forms).some(form => form.stale)) return false
+    const before = workspace.editorText
+    const result = appendPickedAsset(before, asset, kinds)
+    if (result.error) { toasts.notify(locale.value === 'en' ? 'Asset cannot be bound to this field.' : '该素材无法绑定到此字段。', 'error'); return false }
+    if (result.text !== before) {
+      workspace.editorText = result.text
+      for (const form of Object.values(forms)) form.rebaseAssets(before, result.text)
+    }
+    return true
+  }
+
+  /** 删除事务只替换干净表单对应的草稿，继续等待用户统一保存。 */
+  function applyContentText(text: string): boolean {
+    if (locked.value || formDirty.value || !analyzeSnapshotText(text).snapshot) return false
+    workspace.editorText = text
+    resetForms()
+    openModule()
+    return true
+  }
+
+  return { session, workspace, toasts, module, copy, canEdit, canReview, canPublish, locked, forms, music, homepage, video, event, moment, site, formDirty, unsaved, assetBusy, assetDirty, pending, initializing, cloneRequested, textRevision, request, save, discardPending, savePending, clone, initialize, applyForPreview, acceptPickedAsset, applyContentText }
 }
