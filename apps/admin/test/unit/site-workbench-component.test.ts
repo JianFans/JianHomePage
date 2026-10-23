@@ -8,6 +8,17 @@ import { createSiteDraft } from '../../utils/site-workbench'
 const snapshot = fixture as unknown as YujianContentSnapshot
 
 describe('站点资料表单', () => {
+  it.each(['zh-CN', 'en'] as const)('读取失败时显示说明，已有草稿保持展示：%s', async (locale) => {
+    const wrapper = mount(SiteWorkbench, { props: { draft: null, snapshot: null, locale, locked: false, stale: false, issues: [], error: 'invalid-snapshot' } })
+    try {
+      expect(wrapper.get('[role="status"]').text()).toMatch(locale === 'en' ? /snapshot/i : /快照/)
+      expect(wrapper.find('[data-testid="site-canonical"]').exists()).toBe(false)
+      await wrapper.setProps({ draft: createSiteDraft(snapshot), snapshot })
+      expect(wrapper.find('[role="status"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="site-canonical"]').isVisible()).toBe(true)
+    } finally { wrapper.unmount() }
+  })
+
   it('编辑网址与可选图片，清空图片后移除对应键', async () => {
     const draft = createSiteDraft(snapshot)
     const wrapper = mount(SiteWorkbench, { props: { draft, snapshot, locale: 'zh-CN', locked: false, stale: false, issues: [] } })

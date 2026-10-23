@@ -2,7 +2,7 @@
 import { computed, useId } from 'vue'
 import type { YujianContentSnapshot } from '@yujian/schema'
 import type { AdminLocale } from '../utils/admin-locale'
-import type { SiteDraft } from '../utils/site-workbench'
+import type { SiteDraft, SiteError } from '../utils/site-workbench'
 import type { SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
@@ -10,7 +10,7 @@ import AssetPickerButton from './AssetPickerButton.vue'
 import PlatformLinkFields from './PlatformLinkFields.vue'
 
 const draft = defineModel<SiteDraft | null>('draft', { required: true })
-const props = defineProps<{ snapshot: YujianContentSnapshot | null; locale: AdminLocale; locked: boolean; stale: boolean; issues: readonly SnapshotEditorIssue[] }>()
+const props = defineProps<{ snapshot: YujianContentSnapshot | null; locale: AdminLocale; locked: boolean; stale: boolean; issues: readonly SnapshotEditorIssue[]; error?: SiteError | null }>()
 const id = useId()
 const en = computed(() => props.locale === 'en')
 const images = computed(() => props.snapshot?.assets.filter(asset => asset.kind === 'image' || asset.kind === 'gif') || [])
@@ -35,6 +35,13 @@ function setImage(kind: 'ogAssetId' | 'portraitAssetId', event: Event) {
     data-testid="site-workbench"
     :aria-label="copy.title"
   >
+    <p
+      v-if="!draft && error"
+      class="studio-muted"
+      role="status"
+    >
+      {{ en ? 'Could not load site profile. Check the snapshot and reopen this module.' : '无法读取站点资料，请检查快照并重新进入此模块。' }}
+    </p>
     <p
       v-if="stale"
       class="studio-muted"

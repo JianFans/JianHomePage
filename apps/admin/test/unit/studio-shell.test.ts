@@ -57,6 +57,17 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
 
+it('shows a site profile error when the current snapshot cannot be opened', async () => {
+  const { wrapper } = await mountStudio()
+  try {
+    const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+    studio.workspace.editorText = '{'
+    await wrapper.get('[data-testid="nav-site"]').trigger('click')
+    expect(wrapper.get('[data-testid="site-workbench"] [role="status"]').text()).toMatch(/snapshot/i)
+    expect(wrapper.find('[data-testid="site-canonical"]').exists()).toBe(false)
+  } finally { wrapper.unmount() }
+})
+
 it('shows an accessible workspace skeleton during session restoration and clears it on completion', async () => {
   let finish!: (response: Response) => void
   backend().mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve }))

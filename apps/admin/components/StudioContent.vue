@@ -173,6 +173,7 @@ async function listHistory(append = false) {
         :locked="studio.locked"
         :stale="site.stale"
         :issues="site.issues"
+        :error="site.error"
       />
       <HomepageWorkbench
         v-else-if="studio.module === 'homepage'"
