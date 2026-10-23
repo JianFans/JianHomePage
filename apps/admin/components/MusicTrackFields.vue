@@ -7,6 +7,7 @@ import { musicCopy } from '../utils/music-copy'
 import type { SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
+import AssetPickerButton from './AssetPickerButton.vue'
 import PlatformLinkFields from './PlatformLinkFields.vue'
 
 const track = defineModel<Track>({ required: true })
@@ -117,9 +118,15 @@ function addCredit() {
         :id="field('durationSeconds')['aria-describedby']"
         class="field-issue-hint"
       >{{ field('durationSeconds').description }}</small></label>
-      <label>
-        <span>{{ copy.preview }}</span>
+      <div class="asset-field">
+        <label :for="`${issueId}-preview`">{{ copy.preview }}</label>
+        <AssetPickerButton
+          :kinds="['audio']"
+          :label="copy.preview"
+          @select="id => track.previewAssetId = id"
+        />
         <select
+          :id="`${issueId}-preview`"
           :value="track.previewAssetId || ''"
           data-testid="track-preview"
           :data-snapshot-path="field('previewAssetId')['data-snapshot-path']"
@@ -127,19 +134,23 @@ function addCredit() {
           :aria-describedby="field('previewAssetId')['aria-describedby']"
           @change="setPreview"
         >
-          <option value="">{{ copy.noPreview }}</option>
+          <option value="">
+            {{ copy.noPreview }}
+          </option>
           <option
             v-for="asset in audioAssets"
             :key="asset.id"
             :value="asset.id"
-          >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option>
+          >
+            {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+          </option>
         </select>
         <small
           v-if="field('previewAssetId').description"
           :id="field('previewAssetId')['aria-describedby']"
           class="field-issue-hint"
         >{{ field('previewAssetId').description }}</small>
-      </label>
+      </div>
       <label v-if="track.previewAssetId">
         <span>{{ copy.previewDuration }}</span>
         <input

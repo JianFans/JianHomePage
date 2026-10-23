@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { isAssetAppendOnly } from '../utils/asset-selection'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { applyVideoDraft, createVideoDraft, type VideoDraft, type VideoErrorCode } from '../utils/video-workbench'
 
@@ -6,6 +7,12 @@ import { applyVideoDraft, createVideoDraft, type VideoDraft, type VideoErrorCode
 export function useVideoWorkspace(options: { editorText: Ref<string>; busy: Readonly<Ref<boolean>> }) {
   const draft = ref<VideoDraft | null>(null)
   const baseline = ref('')
+  /** 只为当前基线的安全素材追加重建基线，不重建或清空临时表单。 */
+  function rebaseAssets(before: string, after: string): boolean {
+    if (!draft.value || baseline.value !== before || options.editorText.value !== after || !isAssetAppendOnly(before, after)) return false
+    baseline.value = after
+    return true
+  }
   const initial = ref('')
   const dirty = computed(() => Boolean(draft.value && JSON.stringify(draft.value) !== initial.value))
   const stale = computed(() => Boolean(draft.value && options.editorText.value !== baseline.value))
@@ -70,5 +77,5 @@ export function useVideoWorkspace(options: { editorText: Ref<string>; busy: Read
     if (pending.value === 'close') reset()
     else readCurrent()
   }
-  return { draft, dirty, stale, error, issues, pending, open, apply, reset, close, keepEditing, discardPending }
+  return { draft, dirty, stale, error, issues, pending, open, apply, reset, close, keepEditing, discardPending, rebaseAssets }
 }

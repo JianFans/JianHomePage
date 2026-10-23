@@ -9,6 +9,7 @@ import { createEvent, type EventDraft, type EventErrorCode } from '../utils/even
 import { eventCopy } from '../utils/event-copy'
 import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
+import AssetPickerButton from './AssetPickerButton.vue'
 
 const draft = defineModel<EventDraft | null>('draft', { required: true })
 const props = defineProps<{
@@ -282,15 +283,28 @@ function setPosterAsset(event: Event) {
                   :id="`${issueId}-detail-url`"
                   class="field-issue-hint"
                 >{{ detailUrlIssueAttrs.description }}</small></label>
-              <label><span>{{ copy.poster }}</span><select
-                :value="selected.posterAssetId || ''"
-                data-testid="event-poster"
-                @change="setPosterAsset"
-              ><option value="">{{ copy.none }}</option><option
-                v-for="asset in posters"
-                :key="asset.id"
-                :value="asset.id"
-              >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option></select></label>
+              <div class="asset-field">
+                <label :for="`${issueId}-poster`">{{ copy.poster }}</label><AssetPickerButton
+                  :kinds="['image', 'gif']"
+                  :label="copy.poster"
+                  @select="id => selected!.posterAssetId = id"
+                /><select
+                  :id="`${issueId}-poster`"
+                  :value="selected.posterAssetId || ''"
+                  data-testid="event-poster"
+                  @change="setPosterAsset"
+                >
+                  <option value="">
+                    {{ copy.none }}
+                  </option><option
+                    v-for="asset in posters"
+                    :key="asset.id"
+                    :value="asset.id"
+                  >
+                    {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+                  </option>
+                </select>
+              </div>
             </div>
           </fieldset>
         </div>

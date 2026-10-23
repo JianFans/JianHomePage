@@ -9,6 +9,7 @@ import { createMusicTrack, musicAssets, musicDraftTracks, type MusicDraft, type 
 import { musicCopy } from '../utils/music-copy'
 import { issueFieldAttributes } from '../utils/issue-accessibility'
 import LocalizedTextFields from './LocalizedTextFields.vue'
+import AssetPickerButton from './AssetPickerButton.vue'
 import PlatformLinkFields from './PlatformLinkFields.vue'
 import MusicTrackFields from './MusicTrackFields.vue'
 
@@ -302,28 +303,38 @@ function visible(section: MusicDraft['sections'][number]): boolean {
               data-testid="music-featured"
             ><span>{{ copy.featured }}</span></label>
           </div>
-          <label>
-            <span>{{ copy.cover }}</span>
+          <div class="asset-field">
+            <label :for="`${issueId}-cover`">{{ copy.cover }}</label>
+            <AssetPickerButton
+              :kinds="['image', 'gif']"
+              :label="copy.cover"
+              @select="id => draft!.release.coverAssetId = id"
+            />
             <select
+              :id="`${issueId}-cover`"
               v-model="draft.release.coverAssetId"
               data-testid="music-cover"
               :data-snapshot-path="coverIssueAttrs['data-snapshot-path']"
               :aria-invalid="coverIssueAttrs['aria-invalid']"
               :aria-describedby="coverIssueAttrs['aria-describedby']"
             >
-              <option value="">{{ copy.choose }}</option>
+              <option value="">
+                {{ copy.choose }}
+              </option>
               <option
                 v-for="asset in covers"
                 :key="asset.id"
                 :value="asset.id"
-              >{{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}</option>
+              >
+                {{ asset.alt[locale] || asset.alt['zh-CN'] }} · {{ asset.id }}
+              </option>
             </select>
             <small
               v-if="coverIssue"
               :id="issueId"
               class="field-issue-hint"
             >{{ coverIssueAttrs.description }}</small>
-          </label>
+          </div>
           <PlatformLinkFields
             v-model="draft.release.platformLinks"
             :locale="locale"

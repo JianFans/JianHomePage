@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { flushPromises, mount } from '@vue/test-utils'
+import { defineComponent } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fixtureData from '../../../../content/fixtures/homepage.json'
 import AssetWorkbench from '../../components/AssetWorkbench.vue'
@@ -13,6 +14,24 @@ afterEach(/** 还原全局 fetch 和 spy，防止跨测试共享网络响应或�
 })
 
 describe('素材工作台组件', () => {
+  it('独立素材库与字段选择器同时存在时分别关联自身标题', () => {
+    const host = defineComponent({
+      components: { AssetWorkbench },
+      template: '<AssetWorkbench locale="en" editor-text="{}" api-base-url="" token="" /><AssetWorkbench locale="en" editor-text="{}" api-base-url="" token="" />',
+    })
+    const wrapper = mount(host)
+    try {
+      const [first, second] = wrapper.findAllComponents(AssetWorkbench)
+      expect(first).toBeDefined()
+      expect(second).toBeDefined()
+      const firstId = first!.get('h2').attributes('id')
+      const secondId = second!.get('h2').attributes('id')
+      expect(firstId).not.toBe(secondId)
+      expect(first!.attributes('aria-labelledby')).toBe(firstId)
+      expect(second!.attributes('aria-labelledby')).toBe(secondId)
+    } finally { wrapper.unmount() }
+  })
+
   it('自动加载素材时显示列表骨架，不将刷新按钮标记为加载', async () => {
     const gate = deferred<Response>()
     vi.stubGlobal('fetch', vi.fn(() => gate.promise))
@@ -89,7 +108,7 @@ describe('素材工作台组件', () => {
       expect(Number(upload.opacity)).toBeLessThan(1)
       expect(Number(refresh.opacity)).toBeLessThan(1)
       expect(getComputedStyle(wrapper.get('.panel-heading').element).display).toBe('flex')
-      expect(getComputedStyle(wrapper.get('#asset-workbench-title').element).fontSize).toBe('16px')
+      expect(getComputedStyle(wrapper.get('h2').element).fontSize).toBe('16px')
     } finally {
       wrapper.unmount()
       stylesheet.remove()
@@ -133,7 +152,7 @@ describe('素材工作台组件', () => {
   it('展示双语字段和可访问工具按钮', /** 切换语言后可访问名称同步更新，上传状态保留 polite 播报且文件选择限制 MIME。 */ async () => {
     const wrapper = mountWorkbench()
 
-    expect(wrapper.get('[data-testid="asset-workbench"]').attributes('aria-labelledby')).toBe('asset-workbench-title')
+    expect(wrapper.get('[data-testid="asset-workbench"]').attributes('aria-labelledby')).toBe(wrapper.get('h2').attributes('id'))
     expect(wrapper.get('[data-testid="asset-refresh"]').attributes('aria-label')).toBeTruthy()
     expect(wrapper.get('[data-testid="asset-file-input"]').attributes('accept')).toContain('image/webp')
     expect(wrapper.get('[data-testid="asset-stage"]').attributes('aria-live')).toBe('polite')
@@ -141,7 +160,7 @@ describe('素材工作台组件', () => {
     expect(wrapper.get('[data-testid="asset-kind-filter"]').attributes('aria-label')).toBe('类型')
 
     await wrapper.setProps({ locale: 'en' })
-    expect(wrapper.get('#asset-workbench-title').text()).toContain('Assets')
+    expect(wrapper.get('h2').text()).toContain('Assets')
     expect(wrapper.get('[data-testid="asset-source-zh"]').attributes('aria-label')).toContain('Chinese')
     expect(wrapper.get('[data-testid="asset-status-filter"]').attributes('aria-label')).toBe('Status')
     expect(wrapper.get('[data-testid="asset-kind-filter"]').attributes('aria-label')).toBe('Type')

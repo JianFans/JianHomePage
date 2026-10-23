@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { isAssetAppendOnly } from '../utils/asset-selection'
 import type { YujianContentSnapshot } from '@yujian/schema'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { applyMusicDraft, createMusicDraft, type MusicDraft, type MusicErrorCode } from '../utils/music-workbench'
@@ -16,6 +17,12 @@ export function useMusicWorkspace(options: {
 }) {
   const draft = ref<MusicDraft | null>(null)
   const baseline = ref('')
+  /** 只为当前基线的安全素材追加重建基线，不重建或清空临时表单。 */
+  function rebaseAssets(before: string, after: string): boolean {
+    if (!draft.value || baseline.value !== before || options.editorText.value !== after || !isAssetAppendOnly(before, after)) return false
+    baseline.value = after
+    return true
+  }
   const initialDraft = ref('')
   const error = ref<MusicErrorCode | null>(null)
   const issues = ref<readonly SnapshotEditorIssue[]>([])
@@ -96,5 +103,5 @@ export function useMusicWorkspace(options: {
     else if (open(action.id)) pending.value = null
   }
 
-  return { draft, error, issues, pending, dirty, stale, releases, select, apply, reset, close, keepEditing, discardPending }
+  return { draft, error, issues, pending, dirty, stale, releases, select, apply, reset, close, keepEditing, discardPending, rebaseAssets }
 }

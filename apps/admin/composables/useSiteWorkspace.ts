@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { isAssetAppendOnly } from '../utils/asset-selection'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { applySiteDraft, createSiteDraft, type SiteDraft, type SiteError } from '../utils/site-workbench'
 
@@ -6,6 +7,12 @@ import { applySiteDraft, createSiteDraft, type SiteDraft, type SiteError } from 
 export function useSiteWorkspace(options: { editorText: Ref<string>; busy: Readonly<Ref<boolean>> }) {
   const draft = ref<SiteDraft | null>(null)
   const baseline = ref('')
+  /** 只为当前基线的安全素材追加重建基线，不重建或清空临时表单。 */
+  function rebaseAssets(before: string, after: string): boolean {
+    if (!draft.value || baseline.value !== before || options.editorText.value !== after || !isAssetAppendOnly(before, after)) return false
+    baseline.value = after
+    return true
+  }
   const initial = ref('')
   const error = ref<SiteError | null>(null)
   const issues = ref<readonly SnapshotEditorIssue[]>([])
@@ -37,5 +44,5 @@ export function useSiteWorkspace(options: { editorText: Ref<string>; busy: Reado
   }
   /** 切换成功后清理表单，不清理已应用的 JSON。 */
   function reset() { draft.value = null; baseline.value = ''; initial.value = ''; error.value = null; issues.value = [] }
-  return { draft, dirty, stale, error, issues, open, apply, reset }
+  return { draft, dirty, stale, error, issues, open, apply, reset, rebaseAssets }
 }
