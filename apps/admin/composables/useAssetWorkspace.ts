@@ -12,6 +12,7 @@ import {
 } from '../utils/admin-api'
 import {
   AssetFileError,
+  assetKindFromContentType,
   sha256File,
   validateAssetFile,
   type AssetFileErrorCode,
@@ -92,7 +93,7 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
     const needle = searchText.value.trim().toLowerCase()
     return assets.value.filter((asset) => {
       if (!matchesStatus(asset)) return false
-      if (kindFilter.value !== 'all' && kindFromContentType(asset.metadata.contentType) !== kindFilter.value) return false
+      if (kindFilter.value !== 'all' && assetKindFromContentType(asset.metadata.contentType) !== kindFilter.value) return false
       if (!needle) return true
       return [asset.id, asset.metadata.fileName, asset.metadata.contentType]
         .some(value => typeof value === 'string' && value.toLowerCase().includes(needle))
@@ -316,15 +317,6 @@ export function useAssetWorkspace(options: AssetWorkspaceOptions) {
     loadMore,
     setStatusFilter,
   }
-}
-
-/** 依据服务端 canonical MIME 推导本地类型筛选值。 */
-function kindFromContentType(contentType: unknown): Asset['kind'] | '' {
-  if (contentType === 'image/webp') return 'image'
-  if (contentType === 'image/gif') return 'gif'
-  if (contentType === 'video/mp4') return 'video'
-  if (contentType === 'audio/wav' || contentType === 'audio/mpeg') return 'audio'
-  return ''
 }
 
 /** 以原顺序合并分页结果，并让后页同 ID 记录覆盖旧值。 */

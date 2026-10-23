@@ -16,7 +16,7 @@ import {
 import { computed, onMounted, reactive, ref, toRef, useId, watch } from 'vue'
 import { useAssetWorkspace } from '../composables/useAssetWorkspace'
 import type { AdminAsset } from '../utils/admin-api'
-import { insertSnapshotAsset, toSnapshotAsset, type LocalizedDraft } from '../utils/asset-workbench'
+import { assetKindFromContentType, insertSnapshotAsset, toSnapshotAsset, type LocalizedDraft } from '../utils/asset-workbench'
 import AsyncButton from './AsyncButton.vue'
 import LoadingSkeleton from './LoadingSkeleton.vue'
 import ActivityIndicator from '../../web/components/ui/ActivityIndicator.vue'
@@ -287,8 +287,7 @@ function previewSource(asset: AdminAsset): string {
 /** 服务端素材按字段用途过滤，不在候选中混入不匹配的音视频。 */
 const displayAssets = computed(() => workspace.filteredAssets.filter(asset => {
   if (!props.pickerKinds) return true
-  const mime = asset.metadata.contentType
-  const kind = mime === 'image/webp' ? 'image' : mime === 'image/gif' ? 'gif' : mime === 'video/mp4' ? 'video' : mime === 'audio/mpeg' || mime === 'audio/wav' ? 'audio' : null
+  const kind = assetKindFromContentType(asset.metadata.contentType)
   return kind !== null && props.pickerKinds.includes(kind)
 }))
 

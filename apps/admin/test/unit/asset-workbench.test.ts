@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import fixtureData from '../../../../content/fixtures/homepage.json'
 import {
   AssetFileError,
+  assetKindFromContentType,
   insertSnapshotAsset,
   sha256File,
   toSnapshotAsset,
@@ -14,6 +15,22 @@ import { analyzeSnapshotText } from '../../utils/snapshot-workbench'
 const fixture = fixtureData as unknown as YujianContentSnapshot
 
 describe('asset workbench utilities', () => {
+  it.each([
+    ['image/webp', 'image'],
+    ['image/gif', 'gif'],
+    ['audio/mpeg', 'audio'],
+    ['audio/wav', 'audio'],
+    ['video/mp4', 'video'],
+    ['image/svg+xml', null],
+    ['', null],
+    [undefined, null],
+    [null, null],
+    ['constructor', null],
+    ['__proto__', null],
+  ] as const)('resolves asset kind for %s', /** 素材筛选遵循 canonical MIME，未知或缺失类型及对象原型键不进入任何类型候选。 */ (contentType, kind) => {
+    expect(assetKindFromContentType(contentType)).toBe(kind)
+  })
+
   it('validates supported file rules without allocating large files', /** 使用文件描述验证 MIME、扩展名和大小上限，不为视频边界分配真实大文件。 */ () => {
     expect(validateAssetFile({ name: 'cover.WEBP', size: 1024, type: 'image/webp' })).toMatchObject({
       kind: 'image',
