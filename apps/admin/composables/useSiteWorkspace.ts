@@ -1,5 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
-import { isAssetAppendOnly } from '../utils/asset-selection'
+import { canRebaseAssets } from '../utils/asset-selection'
 import { analyzeSnapshotText, type SnapshotEditorIssue } from '../utils/snapshot-workbench'
 import { applySiteDraft, createSiteDraft, type SiteDraft, type SiteError } from '../utils/site-workbench'
 
@@ -9,7 +9,7 @@ export function useSiteWorkspace(options: { editorText: Ref<string>; busy: Reado
   const baseline = ref('')
   /** 只为当前基线的安全素材追加重建基线，不重建或清空临时表单。 */
   function rebaseAssets(before: string, after: string): boolean {
-    if (!draft.value || baseline.value !== before || options.editorText.value !== after || !isAssetAppendOnly(before, after)) return false
+    if (!canRebaseAssets(draft.value, baseline.value, options.editorText.value, before, after)) return false
     baseline.value = after
     return true
   }

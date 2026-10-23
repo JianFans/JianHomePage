@@ -2,12 +2,27 @@ import { describe, expect, it } from 'vitest'
 import { reactive, ref } from 'vue'
 import fixture from '../../../../content/fixtures/homepage.json'
 import { useVideoWorkspace } from '../../composables/useVideoWorkspace'
-import { appendPickedAsset, isAssetAppendOnly } from '../../utils/asset-selection'
+import { appendPickedAsset, canRebaseAssets, isAssetAppendOnly } from '../../utils/asset-selection'
 import type { Asset } from '@yujian/schema'
 
 const extra = { ...fixture.assets[0], id: 'asset_132b59fd-f9b4-47b4-acd1-bbfae60d66b1' } as Asset
 
 describe('字段素材选择事务', () => {
+  it('仅允许有草稿且基线和当前文本均匹配的安全素材追加重建基线', () => {
+    const before = JSON.stringify(fixture)
+    const after = appendPickedAsset(before, extra, ['image', 'gif']).text
+    const draft = { title: '尚未保存的输入' }
+    expect(canRebaseAssets(draft, before, after, before, after)).toBe(true)
+    expect(canRebaseAssets(null, before, after, before, after)).toBe(false)
+    expect(canRebaseAssets(draft, before + ' ', after, before, after)).toBe(false)
+    expect(canRebaseAssets(draft, before, after + ' ', before, after)).toBe(false)
+    expect(canRebaseAssets(draft, before, before, before, before)).toBe(false)
+    const changed = JSON.parse(after)
+    changed.site.brand['zh-CN'] = '其他内容变更'
+    const unsafe = JSON.stringify(changed)
+    expect(canRebaseAssets(draft, before, unsafe, before, unsafe)).toBe(false)
+  })
+
   it('重复绑定忽略素材及嵌套对象的键顺序，但仍拒绝嵌套值变化', () => {
     const asset = fixture.assets[0] as Asset
     const reordered = Object.fromEntries(Object.entries(asset).reverse()) as Asset

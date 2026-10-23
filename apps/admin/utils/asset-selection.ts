@@ -7,6 +7,11 @@ export type AssetPickerRequest = { kinds: readonly Asset['kind'][]; label: strin
 export type PickAsset = (request: AssetPickerRequest) => Promise<Asset | null>
 export const assetPickerKey: InjectionKey<PickAsset> = Symbol('studio-asset-picker')
 
+/** 只允许当前草稿在基线和编辑器文本均匹配时接受安全素材追加。 */
+export function canRebaseAssets(draft: unknown, baseline: string, editorText: string, before: string, after: string): boolean {
+  return Boolean(draft) && baseline === before && editorText === after && isAssetAppendOnly(before, after)
+}
+
 /** 素材选择只允许追加，不覆盖同 ID 的已发布元数据。 */
 export function appendPickedAsset(text: string, asset: Asset, kinds: readonly Asset['kind'][]): { text: string; error: 'invalid-snapshot' | 'invalid-asset' | 'conflict' | null } {
   const snapshot = analyzeSnapshotText(text).snapshot
