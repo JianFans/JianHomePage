@@ -57,6 +57,27 @@ async function mountStudio(options: Parameters<typeof backend>[0] = {}) {
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); localStorage.clear() })
 
+it('settles picker requests immediately without a valid snapshot and allows reopening after recovery', async () => {
+  const { wrapper } = await mountStudio()
+  try {
+    await wrapper.get('[data-testid="nav-site"]').trigger('click')
+    const { studio } = wrapper.vm as unknown as { studio: StudioWorkspace }
+    const original = studio.workspace.editorText
+    studio.workspace.editorText = '{'
+    await vi.waitFor(() => expect(studio.workspace.editorAnalysis.snapshot).toBeNull())
+    const trigger = wrapper.get('[data-testid="site-og-image"]').element.parentElement!.querySelector<HTMLButtonElement>('[data-testid="asset-picker-open"]')!
+    trigger.click()
+    await flushPromises()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    studio.workspace.editorText = original
+    await vi.waitFor(() => expect(studio.workspace.editorAnalysis.snapshot).not.toBeNull())
+    trigger.click()
+    await flushPromises()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+  } finally { wrapper.unmount() }
+})
+
 it('places the music deletion kind before its dependent record selector', async () => {
   const { wrapper } = await mountStudio()
   try {

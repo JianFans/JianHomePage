@@ -41,7 +41,7 @@ const deletionKind = computed(() => ({ homepage: 'hero', music: deleteMusicKind.
 function closePicker() { const current = pickerRequest.value; pickerRequest.value = null; pickerBusy.value = false; pickerDirty.value = false; current?.finish(null) }
 provide(assetPickerKey, request => {
   closePicker()
-  if (props.studio.locked) return Promise.resolve(null)
+  if (props.studio.locked || !workspace.editorAnalysis.snapshot) return Promise.resolve(null)
   return new Promise(resolve => { pickerRequest.value = { ...request, before: workspace.editorText, module: props.studio.module, finish: resolve } })
 })
 /** 只在原文和模块均未变化时接受结果，不能让迟到回调绑定其他表单。 */
