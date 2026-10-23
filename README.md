@@ -38,8 +38,8 @@
   -> Go API 创建和审核内容版本
   -> canonical JSON 快照与素材完整性校验
   -> PostgreSQL 冻结发布目标
-  -> S3/COS 保存不可变快照
-  -> 同一 Go 进程读取并校验 COS 快照
+  -> PostgreSQL 保存不可变发布快照
+  -> 同一 Go 进程读取并校验数据库快照
   -> Goja 执行内嵌 Vue SSR，组合内嵌浏览器资源
   -> Pages Direct Upload 创建 Production 部署
   -> EdgeOne Pages 分发 yujian.me
@@ -55,6 +55,7 @@
 - 管理端、渲染器和浏览器资源在编译 Go 前生成并内嵌；生产运行只需要一个 Go 二进制，不需要 Node.js 或外部构建子进程。
 - QQ 音乐、网易云音乐、Bilibili、微博、抖音等第三方站点只作为外链目标。
 - PostgreSQL、OIDC、S3/COS 与 EdgeOne 通过明确接口和配置接入，领域层不依赖服务商 SDK 类型。
+- S3/COS 仅存储媒体文件，发布快照存储在 PostgreSQL `publish_snapshots`，生成的网站文件直接上传 EdgeOne Pages。
 
 ## 环境要求
 
@@ -133,7 +134,7 @@ go run ./cmd/api
 
 本地构建默认读取 `content/fixtures/homepage.json`。该文件只用于开发和自动测试。
 
-正式后台发布由 Go 直接读取 COS 中已审核的不可变快照，并验证 checksum、发布批次、完整 Go 二进制 SHA-256 和稳定 HTTPS 素材。无需设置 `CONTENT_SNAPSHOT_PATH`。
+正式后台发布由 Go 直接读取 PostgreSQL `publish_snapshots` 中已审核的不可变快照，并验证 checksum、发布批次、完整 Go 二进制 SHA-256 和稳定 HTTPS 素材。无需设置 `CONTENT_SNAPSHOT_PATH`，也不从 COS 读取网站快照。
 
 本地可以使用同一二进制导出预览；输出目录必须为空，允许开发 fixture，不连接数据库或 Pages，也不会发布：
 

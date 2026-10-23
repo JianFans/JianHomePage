@@ -20,7 +20,7 @@
 
 ## 内容快照
 
-正式后台发布读取 COS 中已经审核的不可变快照，校验原始 checksum、release ID、canonical 契约、冻结目标和稳定 HTTPS 素材，再使用内嵌渲染器生成页面。生产 worker 拒绝相对素材地址，不使用开发 fixture，也无需 `CONTENT_SNAPSHOT_PATH`。
+正式后台发布读取 PostgreSQL `publish_snapshots` 中已经审核的不可变快照，校验原始 checksum、release ID、canonical 契约、冻结目标和稳定 HTTPS 素材，再使用内嵌渲染器生成页面。S3/COS 仅存储媒体文件，不存储发布快照或网站构建产物。生产 worker 拒绝相对素材地址，不使用开发 fixture，也无需 `CONTENT_SNAPSHOT_PATH`。
 
 本地执行 `pnpm verify` 时默认读取 `content/fixtures/homepage.json`。独立 Nuxt／可选 Git 构建执行 `pnpm verify:edgeone` 时，仍必须通过 `CONTENT_SNAPSHOT_PATH` 注入经过审核的非 fixture 快照；变量值支持仓库根目录下的相对路径或构建环境中的绝对路径。变量缺失、文件不存在或指向 `content/fixtures` 时，该门禁直接失败。
 
