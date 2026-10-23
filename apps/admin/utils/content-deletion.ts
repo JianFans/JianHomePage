@@ -78,7 +78,7 @@ export function applyContentDeletion(text: string, plan: ContentDeletionPlan): C
     events: snapshot.events.filter(record => !ids.has(record.id)),
     moments: snapshot.moments.filter(record => !ids.has(record.id)),
     heroSlides: snapshot.heroSlides.filter(record => !ids.has(record.id)),
-    homepage: { sections: snapshot.homepage.sections.map(section => ({
+    homepage: { ...snapshot.homepage, sections: snapshot.homepage.sections.map(section => ({
       ...section, itemIds: section.itemIds.filter(id => !ids.has(id)),
     })) as YujianContentSnapshot['homepage']['sections'] },
   }

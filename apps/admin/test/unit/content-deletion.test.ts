@@ -27,7 +27,11 @@ describe('引用安全删除事务', () => {
     const next = JSON.parse(result.text)
     expect(next.releases).toEqual(source.releases.filter(item => item.id !== releaseId))
     expect(next.tracks).toEqual(source.tracks.filter(item => item.id !== trackId))
-    expect(next.homepage.sections[1].itemIds).not.toContain(releaseId)
+    expect(next.homepage.sections.map((section: { itemIds: string[] }) => section.itemIds)).toEqual(
+      source.homepage.sections.map(section => section.itemIds.filter(id => id !== releaseId)),
+    )
+    expect(source.homepage.sections[1]!.itemIds).toContain(releaseId)
+    expect(next.homepage.sections[1].itemIds).toContain(source.releases[0]!.id)
     expect(next.assets).toEqual(source.assets)
     expect(next.videos).toEqual(source.videos)
     expect(analyzeSnapshotText(result.text).snapshot).not.toBeNull()
@@ -75,7 +79,11 @@ describe('引用安全删除事务', () => {
     expect(result.error).toBeNull()
     const next = JSON.parse(result.text)
     expect(next[key]).toEqual(fixture[key].slice(1))
-    expect(next.homepage.sections[section].itemIds).not.toContain(id)
+    expect(next.homepage.sections.map((item: { itemIds: string[] }) => item.itemIds)).toEqual(
+      fixture.homepage.sections.map(item => item.itemIds.filter(itemId => itemId !== id)),
+    )
+    expect(fixture.homepage.sections[section]!.itemIds).toContain(id)
+    expect(next.homepage.sections[section].itemIds).toContain(fixture[key][1]!.id)
     expect(next.assets).toEqual(fixture.assets)
   })
 
