@@ -14,10 +14,10 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "@lucide/vue": "1.57.0",
+    "@lucide/vue": "1.61.0",
     "@noble/hashes": "2.4.0",
     "@yujian/schema": "workspace:*",
-    "nuxt": "4.6.1",
+    "nuxt": "4.6.2",
     "vue": "3.5.44"
   },
   "devDependencies": {
