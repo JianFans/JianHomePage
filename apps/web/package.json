@@ -28,14 +28,14 @@
     "@axe-core/playwright": "4.14.0",
     "@nuxt/test-utils": "4.3.4",
     "@playwright/test": "1.64.1",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "@vitejs/plugin-vue": "6.0.10",
-    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/coverage-v8": "5.1.0",
     "@vue/server-renderer": "3.5.44",
     "@vue/test-utils": "2.5.1",
     "happy-dom": "21.0.4",
-    "vite": "8.3.5",
-    "vitest": "5.0.5",
-    "vue-tsc": "3.3.13"
+    "vite": "8.3.6",
+    "vitest": "5.1.0",
+    "vue-tsc": "3.3.14"
   }
 }
