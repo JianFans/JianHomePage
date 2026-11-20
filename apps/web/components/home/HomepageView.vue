@@ -4,7 +4,11 @@ import { computed } from 'vue'
 import type { AudioPlayerController } from '../../utils/audio-player'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
+import { MUSIC_CATALOG_PATH } from '../../utils/music-catalog'
+import { EVENT_CATALOG_PATH } from '../../utils/event-catalog'
+import { MOMENT_CATALOG_PATH } from '../../utils/moments-catalog'
 import { resolveHomepageSections } from '../../utils/sections'
+import { VIDEO_CATALOG_PATH } from '../../utils/video-catalog'
 import SiteFooter from '../site/SiteFooter.vue'
 import SiteHeader from '../site/SiteHeader.vue'
 import ArtistSection from './ArtistSection.vue'
@@ -19,6 +23,10 @@ const props = withDefaults(defineProps<{
   locale: SupportedLocale
   player: AudioPlayerController
   autoplayEnabled?: boolean
+  linkMusicCatalog?: boolean
+  linkVideoCatalog?: boolean
+  linkEventCatalog?: boolean
+  linkMomentCatalog?: boolean
 }>(), { autoplayEnabled: true })
 
 const emit = defineEmits<{
@@ -38,6 +46,9 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
     :brand="brand"
     :artist-name="artistName"
     :locale="locale"
+    :music-href="linkMusicCatalog ? MUSIC_CATALOG_PATH : undefined"
+    :video-href="linkVideoCatalog ? VIDEO_CATALOG_PATH : undefined"
+    :events-href="linkEventCatalog ? EVENT_CATALOG_PATH : undefined"
     @toggle-locale="emit('toggleLocale')"
   />
   <template
@@ -72,6 +83,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
       :tracks="snapshot.tracks"
       :assets="snapshot.assets"
       :locale="locale"
+      :catalog-href="linkMusicCatalog ? MUSIC_CATALOG_PATH : undefined"
       :active-track-id="player.current.value?.id ?? null"
       :player-status="player.status.value"
       @preview="player.toggle"
@@ -83,6 +95,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
       :items="section.items"
       :assets="snapshot.assets"
       :locale="locale"
+      :catalog-href="linkVideoCatalog ? '/video/' : undefined"
     />
 
     <EventSection
@@ -90,6 +103,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
       data-home-section="event"
       :items="section.items"
       :locale="locale"
+      :catalog-href="linkEventCatalog ? EVENT_CATALOG_PATH : undefined"
     />
 
     <MomentSection
@@ -98,6 +112,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
       :items="section.items"
       :assets="snapshot.assets"
       :locale="locale"
+      :catalog-href="linkMomentCatalog ? MOMENT_CATALOG_PATH : undefined"
     />
 
     <ArtistSection

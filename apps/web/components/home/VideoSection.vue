@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Asset, Video } from '@yujian/schema'
-import { ArrowUpRight, Film } from '@lucide/vue'
+import { ArrowUpRight, Film, ListVideo } from '@lucide/vue'
 import { computed } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
@@ -10,12 +10,13 @@ const props = defineProps<{
   items: Video[]
   assets: Asset[]
   locale: SupportedLocale
+  catalogHref?: string
 }>()
 
 const assetById = computed(() => new Map(props.assets.map(asset => [asset.id, asset])))
 const labels = computed(() => props.locale === 'en'
-  ? { heading: 'Video', open: 'Open video' }
-  : { heading: '影像', open: '打开影像' })
+  ? { heading: 'Video', open: 'Open video', all: 'View all videos' }
+  : { heading: '影像', open: '打开影像', all: '查看全部影像' })
 const cards = computed(() => props.items.flatMap((video) => {
   const poster = assetById.value.get(video.posterAssetId)
   const link = video.platformLinks.find((item) => {
@@ -45,6 +46,16 @@ function durationLabel(seconds: number) {
       <h2 id="video-section-title">
         {{ labels.heading }}
       </h2>
+      <a
+        v-if="catalogHref"
+        class="section-more"
+        data-testid="video-more"
+        :href="catalogHref"
+        :aria-label="labels.all"
+        :title="labels.all"
+      >
+        <ListVideo aria-hidden="true" />
+      </a>
     </div>
 
     <div class="video-grid">
@@ -107,6 +118,10 @@ function durationLabel(seconds: number) {
   font-weight: 580;
   letter-spacing: 0;
 }
+
+.section-more { display: grid; width: 2.75rem; height: 2.75rem; margin-left: auto; place-items: center; border: 1px solid var(--color-border); color: var(--color-muted); }
+.section-more svg { width: 1.1rem; height: 1.1rem; }
+.section-more:hover, .section-more:focus-visible { color: var(--color-text); border-color: var(--color-accent); }
 
 .video-grid {
   display: grid;

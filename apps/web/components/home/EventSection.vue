@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Event } from '@yujian/schema'
-import { ArrowUpRight, CalendarDays } from '@lucide/vue'
+import { ArrowUpRight, CalendarDays, List } from '@lucide/vue'
 import { computed } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
@@ -8,6 +8,7 @@ import { resolveLocalized } from '../../utils/localized'
 const props = defineProps<{
   items: Event[]
   locale: SupportedLocale
+  catalogHref?: string
 }>()
 
 const labels = computed(() => props.locale === 'en'
@@ -31,6 +32,16 @@ const dateFormatter = computed(() => new Intl.DateTimeFormat(
         <h2 id="event-section-title">
           {{ labels.heading }}
         </h2>
+        <a
+          v-if="catalogHref"
+          class="section-more"
+          data-testid="event-more"
+          :href="catalogHref"
+          :aria-label="props.locale === 'en' ? 'View all live events' : '查看全部现场'"
+          :title="props.locale === 'en' ? 'View all live events' : '查看全部现场'"
+        >
+          <List aria-hidden="true" />
+        </a>
       </div>
 
       <ol class="event-list">
@@ -91,6 +102,10 @@ const dateFormatter = computed(() => new Intl.DateTimeFormat(
   font-weight: 580;
   letter-spacing: 0;
 }
+
+.section-more { display: grid; width: 2.75rem; height: 2.75rem; margin-left: auto; place-items: center; border: 1px solid var(--color-border); color: var(--color-muted); }
+.section-more svg { width: 1.1rem; height: 1.1rem; }
+.section-more:hover, .section-more:focus-visible { color: var(--color-text); border-color: var(--color-accent); }
 
 .event-list {
   margin: 0;

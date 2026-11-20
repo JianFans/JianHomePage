@@ -6,6 +6,11 @@ const clientHydrationTimeout = 15_000
 async function openHomepage(page: import('@playwright/test').Page) {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toContainText(/遇健我|Meet Jian/)
+  await waitForLocaleHydration(page)
+}
+
+/** The shared standalone app persists its browser locale from onMounted on every route. */
+async function waitForLocaleHydration(page: import('@playwright/test').Page) {
   await expect.poll(
     () => page.evaluate(() => localStorage.getItem('yujian:locale')),
     { timeout: clientHydrationTimeout },
@@ -44,6 +49,54 @@ async function expectHeroPixels(page: import('@playwright/test').Page) {
 test.describe('桌面首页', () => {
   test.use({ viewport: { width: 1440, height: 1000 } })
 
+  test('影像目录展示全部作品、稳定地址和双语页面标题', async ({ page }) => {
+    await page.goto('/video/')
+    await waitForLocaleHydration(page)
+
+    await expect(page).toHaveTitle(/全部影像|All videos/)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/全部影像|All videos/)
+    await expect(page.locator('article.video-card')).toHaveCount(3)
+    await expect(page.getByRole('navigation').getByRole('link', { name: /影像|Video/ })).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/video/')
+
+    if (await page.locator('html').getAttribute('lang') !== 'en') {
+      await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
+    }
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('All videos')
+    await expect(page.getByRole('button', { name: /Switch to Chinese|切换为中文/ })).toBeVisible()
+  })
+
+  test('现场目录展示完整演出列表、状态和稳定页面地址', async ({ page }) => {
+    await page.goto('/events/')
+    await waitForLocaleHydration(page)
+
+    await expect(page).toHaveTitle(/全部现场|Live events/)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/全部现场|Live events/)
+    await expect(page.locator('[data-testid="event-card"]')).toHaveCount(2)
+    await expect(page.getByRole('navigation').getByRole('link', { name: /现场|Live/ })).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/events/')
+    await expect(page.locator('[data-testid="event-card"] a').first()).toHaveAttribute('rel', 'noopener noreferrer')
+
+    if (await page.locator('html').getAttribute('lang') !== 'en') {
+      await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
+    }
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Live events')
+  })
+
+  test('片段目录入口可浏览发布快照中的全部片段', async ({ page }) => {
+    await openHomepage(page)
+    await page.getByRole('link', { name: /查看全部片段|View all moments/ }).click()
+
+    await expect(page).toHaveURL(/\/moments\/$/)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/全部片段|Moments/)
+    await expect(page.locator('[data-testid="moment-card"]')).toHaveCount(3)
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/moments/')
+  })
+
   test('预渲染完整板块并保留首屏的下一段提示', async ({ page }, testInfo) => {
     await openHomepage(page)
 
@@ -51,10 +104,12 @@ test.describe('桌面首页', () => {
     for (const sectionId of sectionIds) {
       await expect(page.locator(`#${sectionId}`)).toBeAttached()
     }
-    await expect(page.getByTestId('music-more')).toHaveAttribute(
+    await expect(page.getByTestId('music-more')).toHaveAttribute('href', '/music/')
+    await expect(page.getByTestId('music-external')).toHaveAttribute(
       'href',
       'https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB',
     )
+    await expect(page.getByTestId('video-more')).toHaveAttribute('href', '/video/')
     await expect(page.locator('footer')).toContainText('© 2026')
 
     const edge = await page.locator('.next-section-edge').boundingBox()
@@ -187,6 +242,94 @@ test.describe('移动首页', () => {
     ))
     expect(dockBox).not.toBeNull()
     expect(footerTargets.every(target => target.bottom <= dockBox!.y)).toBe(true)
+  })
+
+  test('现场卡片在窄屏上统一使用三列布局', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/events/')
+    await waitForLocaleHydration(page)
+
+    const cards = page.locator('[data-testid="event-card"] a')
+    await expect(cards).toHaveCount(2)
+    await cards.first().evaluate((element) => {
+      element.classList.add('event-row--with-poster')
+      const poster = document.createElement('img')
+      poster.className = 'event-poster'
+      poster.alt = 'Test poster'
+      element.prepend(poster)
+    })
+    await expect(cards.first()).toHaveClass(/event-row--with-poster/)
+    for (const card of await cards.all()) {
+      const columns = await card.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)
+      expect(columns).toBe(3)
+    }
+  })
+
+  test('影像卡片保留单个平台直达并让五个平台菜单越过卡片边界', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/video/')
+    await waitForLocaleHydration(page)
+
+    const card = page.locator('.video-card').first()
+    const primary = card.getByTestId('platform-primary')
+    await expect(primary).toHaveAttribute('href', 'https://space.bilibili.com/21096618')
+    const popupPromise = page.waitForEvent('popup')
+    await primary.click()
+    const popup = await popupPromise
+    await expect(popup).toHaveURL('https://space.bilibili.com/21096618')
+    await popup.close()
+
+    const menuBounds = await card.evaluate((element) => {
+      const links = element.querySelector('.platform-links')!
+      const mobile = links.querySelector('.platform-links__mobile')!
+      const scopes = links.getAttributeNames().filter(name => name.startsWith('data-v-'))
+      const details = document.createElement('details')
+      details.className = 'platform-more'
+      details.open = true
+      const menu = document.createElement('div')
+      menu.className = 'platform-more__menu'
+      for (let index = 0; index < 5; index++) {
+        const link = document.createElement('a')
+        link.href = `https://example.com/platform-${index + 1}`
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        link.textContent = `平台 ${index + 1}`
+        for (const scope of scopes) link.setAttribute(scope, '')
+        menu.append(link)
+      }
+      const summary = document.createElement('summary')
+      summary.textContent = '更多平台'
+      for (const scope of scopes) {
+        details.setAttribute(scope, '')
+        menu.setAttribute(scope, '')
+        summary.setAttribute(scope, '')
+      }
+      details.append(summary, menu)
+      mobile.append(details)
+      summary.focus()
+      const cardBounds = element.getBoundingClientRect()
+      const bounds = menu.getBoundingClientRect()
+      return {
+        cardOverflow: getComputedStyle(element).overflow,
+        posterOverflow: element.querySelector('.video-poster-frame')
+          ? getComputedStyle(element.querySelector('.video-poster-frame')!).overflow
+          : 'missing',
+        menuLinkCount: menu.querySelectorAll('a').length,
+        menuTop: bounds.top,
+        cardTop: cardBounds.top,
+      }
+    })
+
+    expect(menuBounds.cardOverflow).toBe('visible')
+    expect(menuBounds.posterOverflow).toBe('hidden')
+    expect(menuBounds.menuLinkCount).toBe(5)
+    expect(menuBounds.menuTop).toBeLessThan(menuBounds.cardTop)
+    await page.route('https://example.com/platform-5', route => route.fulfill({ status: 200, body: 'opened' }))
+    const menuPopupPromise = page.context().waitForEvent('page')
+    await page.locator('.video-card').first().locator('.platform-more__menu a').last().click()
+    const menuPopup = await menuPopupPromise
+    await expect(menuPopup).toHaveURL('https://example.com/platform-5')
+    await menuPopup.close()
   })
 })
 
