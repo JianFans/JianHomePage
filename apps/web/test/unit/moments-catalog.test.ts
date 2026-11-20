@@ -24,4 +24,15 @@ describe('片段目录', () => {
     expect(internalContentUrl(snapshot, snapshot.moments[0]!.id)).toBe(`/moments/#${snapshot.moments[0]!.id}`)
     expect(internalContentUrl(snapshot, 'missing')).toBeNull()
   })
+
+  it('不为首页中未渲染的艺人和轮播锚点生成链接', () => {
+    const hiddenArtist = structuredClone(snapshot)
+    hiddenArtist.homepage.sections.find(section => section.type === 'artist')!.enabled = false
+    expect(internalContentUrl(hiddenArtist, hiddenArtist.artist.id)).toBeNull()
+
+    const hiddenSlide = structuredClone(snapshot)
+    const slide = hiddenSlide.heroSlides[0]!
+    slide.startsAt = '2028-01-01T00:00:00.000Z'
+    expect(internalContentUrl(hiddenSlide, slide.id)).toBeNull()
+  })
 })

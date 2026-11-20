@@ -1,6 +1,7 @@
 import type { YujianContentSnapshot } from '@yujian/schema'
 import type { SupportedLocale } from './localized'
 import { resolveLocalized } from './localized'
+import { resolveHomepageSections } from './sections'
 
 export const MOMENT_CATALOG_PATH = '/moments/'
 
@@ -33,7 +34,10 @@ export function momentCatalogMetadata(snapshot: YujianContentSnapshot, locale: S
 
 export function internalContentUrl(snapshot: YujianContentSnapshot, contentId: string): string | null {
   const id = encodeURIComponent(contentId)
-  if (snapshot.artist.id === contentId || snapshot.heroSlides.some(slide => slide.id === contentId)) return `/#${id}`
+  const homepageSections = resolveHomepageSections(snapshot, snapshot.site.defaultLocale)
+  if (homepageSections.some(section => (section.type === 'artist' || section.type === 'hero') && section.items.some(item => item.id === contentId))) {
+    return `/#${id}`
+  }
   if (snapshot.releases.some(release => release.id === contentId) || snapshot.tracks.some(track => track.id === contentId)) {
     return `/music/#${id}`
   }
