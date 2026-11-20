@@ -5,6 +5,7 @@ import type { AudioPlayerController } from '../../utils/audio-player'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
 import { MUSIC_CATALOG_PATH } from '../../utils/music-catalog'
+import { EVENT_CATALOG_PATH } from '../../utils/event-catalog'
 import { resolveHomepageSections } from '../../utils/sections'
 import { VIDEO_CATALOG_PATH } from '../../utils/video-catalog'
 import SiteFooter from '../site/SiteFooter.vue'
@@ -23,6 +24,7 @@ const props = withDefaults(defineProps<{
   autoplayEnabled?: boolean
   linkMusicCatalog?: boolean
   linkVideoCatalog?: boolean
+  linkEventCatalog?: boolean
 }>(), { autoplayEnabled: true })
 
 const emit = defineEmits<{
@@ -44,6 +46,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
     :locale="locale"
     :music-href="linkMusicCatalog ? MUSIC_CATALOG_PATH : undefined"
     :video-href="linkVideoCatalog ? VIDEO_CATALOG_PATH : undefined"
+    :events-href="linkEventCatalog ? EVENT_CATALOG_PATH : undefined"
     @toggle-locale="emit('toggleLocale')"
   />
   <template
@@ -98,6 +101,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
       data-home-section="event"
       :items="section.items"
       :locale="locale"
+      :catalog-href="linkEventCatalog ? EVENT_CATALOG_PATH : undefined"
     />
 
     <MomentSection

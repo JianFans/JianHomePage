@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import HomepageView from '../components/home/HomepageView.vue'
 import MusicCatalog from '../components/music/MusicCatalog.vue'
 import VideoCatalog from '../components/video/VideoCatalog.vue'
+import EventCatalog from '../components/event/EventCatalog.vue'
 import AudioDock from '../components/player/AudioDock.vue'
 import { createAudioPlayerController } from '../utils/audio-player'
 import { detectLocale, readLocalePreference, writeLocalePreference } from '../composables/useLocale'
@@ -11,7 +12,7 @@ import type { SupportedLocale } from '../utils/localized'
 import en from '../locales/en'
 import zhCN from '../locales/zh-CN'
 
-const props = defineProps<{ snapshot: YujianContentSnapshot, page: 'home' | 'music' | 'video' }>()
+const props = defineProps<{ snapshot: YujianContentSnapshot, page: 'home' | 'music' | 'video' | 'events' }>()
 const locale = ref<SupportedLocale>(props.snapshot.site.defaultLocale)
 const player = createAudioPlayerController()
 const notice = ref(false)
@@ -46,6 +47,12 @@ onMounted(() => {
       :locale="locale"
       @toggle-locale="selectLocale(locale === 'en' ? 'zh-CN' : 'en')"
     />
+    <EventCatalog
+      v-else-if="page === 'events'"
+      :snapshot="snapshot"
+      :locale="locale"
+      @toggle-locale="selectLocale(locale === 'en' ? 'zh-CN' : 'en')"
+    />
     <HomepageView
       v-else
       :snapshot="snapshot"
@@ -53,6 +60,7 @@ onMounted(() => {
       :player="player"
       link-music-catalog
       link-video-catalog
+      link-event-catalog
       @toggle-locale="selectLocale(locale === 'en' ? 'zh-CN' : 'en')"
     />
   </main>

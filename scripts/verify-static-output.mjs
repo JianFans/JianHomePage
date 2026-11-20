@@ -10,7 +10,7 @@ import {
 
 export const DEFAULT_INITIAL_SCRIPT_BUDGET = 320 * 1024
 
-const pageFiles = ['index.html', 'music/index.html', 'video/index.html']
+const pageFiles = ['index.html', 'music/index.html', 'video/index.html', 'events/index.html']
 const requiredFiles = [...pageFiles, 'robots.txt', 'sitemap.xml']
 const runtimeContentApiPattern = /(?:\/api\/(?:content|homepage|snapshot)\b|CONTENT_(?:API|ENDPOINT|SNAPSHOT_URL)|runtime-content-api)/i
 const textExtensions = new Set(['.html', '.js', '.mjs', '.json'])

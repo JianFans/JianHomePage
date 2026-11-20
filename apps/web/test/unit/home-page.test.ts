@@ -34,6 +34,13 @@ describe('公开首页', () => {
     expect(catalog.attributes('aria-label')).toMatch(/查看全部影像|View all videos/)
   })
 
+  it('在现场板块提供全部演出目录入口', async () => {
+    const wrapper = await mountSuspended(HomePage, { props: { linkEventCatalog: true } })
+    const catalog = wrapper.get('[data-testid="event-more"]')
+    expect(catalog.attributes('href')).toBe('/events/')
+    expect(catalog.attributes('aria-label')).toMatch(/查看全部现场|View all live events/)
+  })
+
   it('按后台顺序渲染所有有内容的启用板块', async () => {
     const wrapper = await mountSuspended(HomePage)
 

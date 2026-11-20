@@ -8,6 +8,7 @@ it('从发布快照 canonical 生成 sitemap', () => {
   expect(body).toContain(`<loc>${canonicalUrl}/</loc>`)
   expect(body).toContain(`<loc>${canonicalUrl}/music/</loc>`)
   expect(body).toContain(`<loc>${canonicalUrl}/video/</loc>`)
+  expect(body).toContain(`<loc>${canonicalUrl}/events/</loc>`)
 })
 
 it('从发布快照 canonical 生成 robots', () => {

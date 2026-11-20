@@ -131,22 +131,24 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 		HTML    string `json:"html"`
 		Music   string `json:"music"`
 		Video   string `json:"video"`
+		Events  string `json:"events"`
 		Robots  string `json:"robots"`
 		Sitemap string `json:"sitemap"`
 	}
 	if err := vm.ExportTo(promise.Result(), &document); err != nil {
 		return nil, errors.New("invalid renderer output")
 	}
-	if document.HTML == "" || document.Music == "" || document.Video == "" || len(document.HTML)+len(document.Music)+len(document.Video)+len(document.Robots)+len(document.Sitemap) > maxOutput {
+	if document.HTML == "" || document.Music == "" || document.Video == "" || document.Events == "" || len(document.HTML)+len(document.Music)+len(document.Video)+len(document.Events)+len(document.Robots)+len(document.Sitemap) > maxOutput {
 		return nil, errors.New("rendered document exceeds size limit")
 	}
-	files := make(map[string][]byte, len(generator.files)+5)
+	files := make(map[string][]byte, len(generator.files)+6)
 	for name, data := range generator.files {
 		files[name] = append([]byte(nil), data...)
 	}
 	files["index.html"] = []byte(document.HTML)
 	files["music/index.html"] = []byte(document.Music)
 	files["video/index.html"] = []byte(document.Video)
+	files["events/index.html"] = []byte(document.Events)
 	files["robots.txt"] = []byte(document.Robots)
 	files["sitemap.xml"] = []byte(document.Sitemap)
 	return files, ctx.Err()
@@ -170,8 +172,14 @@ func installBrowserPrimitives(vm *goja.Runtime) error {
 	}); err != nil {
 		return err
 	}
-	if err := vm.Set("__date", func(locale string, milliseconds float64) string {
+	if err := vm.Set("__date", func(locale string, milliseconds float64, detailed bool) string {
 		value := time.UnixMilli(int64(milliseconds)).UTC()
+		if detailed && locale == "en" {
+			return value.Format("Jan 02, 2006 3:04 PM")
+		}
+		if detailed {
+			return fmt.Sprintf("%d年%d月%d日 %02d:%02d", value.Year(), value.Month(), value.Day(), value.Hour(), value.Minute())
+		}
 		if locale == "en" {
 			return value.Format("Jan 02")
 		}
@@ -179,6 +187,6 @@ func installBrowserPrimitives(vm *goja.Runtime) error {
 	}); err != nil {
 		return err
 	}
-	_, err := vm.RunString(`globalThis.console = { warn(...args) { throw new Error(args.join(' ')); }, error(...args) { throw new Error(args.join(' ')); } }; globalThis.URL = class URL { constructor(value, base) { Object.assign(this, __url(String(value), String(base))); } }; globalThis.Intl = { DateTimeFormat: class DateTimeFormat { constructor(locale) { this.locale = locale; } format(value) { return __date(this.locale, Number(value)); } } };`)
+	_, err := vm.RunString(`globalThis.console = { warn(...args) { throw new Error(args.join(' ')); }, error(...args) { throw new Error(args.join(' ')); } }; globalThis.URL = class URL { constructor(value, base) { Object.assign(this, __url(String(value), String(base))); } }; globalThis.Intl = { DateTimeFormat: class DateTimeFormat { constructor(locale, options) { this.locale = locale; this.options = options || {}; } format(value) { return __date(this.locale, Number(value), Boolean(this.options.year)); } } };`)
 	return err
 }

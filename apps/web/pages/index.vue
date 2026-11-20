@@ -39,6 +39,7 @@ function toggleLocale() {
     :player="player"
     link-music-catalog
     link-video-catalog
+    link-event-catalog
     @toggle-locale="toggleLocale"
   />
   <LocaleNotice :raised="Boolean(player.current.value)" />

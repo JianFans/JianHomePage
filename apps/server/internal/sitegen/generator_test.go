@@ -52,6 +52,9 @@ func TestEmbeddedVueRendersSnapshotWithoutNode(t *testing.T) {
 	if !strings.Contains(string(files["sitemap.xml"]), "<loc>https://yujian.me/video/</loc>") {
 		t.Error("missing video catalog sitemap entry")
 	}
+	if !strings.Contains(string(files["sitemap.xml"]), "<loc>https://yujian.me/events/</loc>") {
+		t.Error("missing event catalog sitemap entry")
+	}
 	for _, fragment := range []string{`<h1`, `全部音乐作品`, `rel="canonical" href="https://yujian.me/music/"`, `id="track_1765c647-056c-47ac-b130-b738ed8744e1"`} {
 		if !strings.Contains(string(files["music/index.html"]), fragment) {
 			t.Errorf("rendered music catalog missing %q", fragment)
@@ -64,6 +67,14 @@ func TestEmbeddedVueRendersSnapshotWithoutNode(t *testing.T) {
 	}
 	if count := strings.Count(string(files["video/index.html"]), "<main"); count != 1 {
 		t.Errorf("rendered video catalog has %d main landmarks, want one", count)
+	}
+	for _, fragment := range []string{`<h1`, `全部现场`, `rel="canonical" href="https://yujian.me/events/"`, `id="event_dc200c4c-abbb-476e-984d-405470f2dbea"`, `>2027年5月16日 12:00 UTC<`} {
+		if !strings.Contains(string(files["events/index.html"]), fragment) {
+			t.Errorf("rendered event catalog missing %q", fragment)
+		}
+	}
+	if count := strings.Count(string(files["events/index.html"]), "<main"); count != 1 {
+		t.Errorf("rendered event catalog has %d main landmarks, want one", count)
 	}
 	updated := strings.Replace(string(raw), "遇健我", "新的站名", -1)
 	updated = strings.ReplaceAll(updated, "/media/hero-studio.webp", "https://media.example.test/new-cover.webp")
@@ -144,6 +155,9 @@ func TestInitialContentRendersWithoutMedia(t *testing.T) {
 	if !strings.Contains(string(files["video/index.html"]), "暂无影像作品") {
 		t.Fatal("empty video catalog did not explain the empty state")
 	}
+	if !strings.Contains(string(files["events/index.html"]), "暂无现场信息") {
+		t.Fatal("empty event catalog did not explain the empty state")
+	}
 }
 
 // TestGeneratedHTMLPreservesDataWithoutExecutableInjection distinguishes safe
@@ -157,7 +171,7 @@ func TestGeneratedHTMLPreservesDataWithoutExecutableInjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, page := range map[string]string{"index.html": "home", "music/index.html": "music", "video/index.html": "video"} {
+	for path, page := range map[string]string{"index.html": "home", "music/index.html": "music", "video/index.html": "video", "events/index.html": "events"} {
 		html := string(files[path])
 		if strings.Contains(html, malicious) || !strings.Contains(html, `&lt;/script&gt;`) || !strings.Contains(html, `\u003c/script\u003e`) {
 			t.Fatalf("content escaped incorrectly in %s", path)
@@ -210,6 +224,9 @@ func TestRenderingRespectsSectionsAndDefaultLocale(t *testing.T) {
 	if !strings.Contains(string(files["video/index.html"]), `id="video_8ba6c435-f5b3-4603-a43e-f326ba0a12a5"`) {
 		t.Fatal("disabled homepage section hid a published video from the catalog")
 	}
+	if !strings.Contains(string(files["events/index.html"]), `id="event_dc200c4c-abbb-476e-984d-405470f2dbea"`) {
+		t.Fatal("disabled homepage section hid a published event from the catalog")
+	}
 }
 
 // TestRendererURLMatchesBrowserNormalization guards hydration against Go URL
@@ -238,7 +255,7 @@ func TestRendererBoundsAndUnavailableCapabilities(t *testing.T) {
 		"pending":   `globalThis.__render = () => new Promise(() => {});`,
 		"rejected":  `globalThis.__render = () => Promise.reject(new Error('invalid'));`,
 		"empty":     `globalThis.__render = () => Promise.resolve({html:'',robots:'',sitemap:''});`,
-		"oversized": `globalThis.__render = () => Promise.resolve({html:'ok',music:'ok',video:'a'.repeat(33554432),robots:'',sitemap:''});`,
+		"oversized": `globalThis.__render = () => Promise.resolve({html:'ok',music:'ok',video:'ok',events:'a'.repeat(33554432),robots:'',sitemap:''});`,
 		"noentry":   `globalThis.x=1;`,
 		"network":   `globalThis.__render = () => Promise.resolve(fetch('https://example.test'));`,
 		"process":   `globalThis.__render = () => Promise.resolve(require('child_process'));`,
@@ -277,7 +294,7 @@ func TestRendererBoundsAndUnavailableCapabilities(t *testing.T) {
 // changing future generated artifacts or their frozen resource identity.
 func TestResourceIdentityAndResultsAreImmutable(t *testing.T) {
 	assets := fstest.MapFS{"site/client.js": &fstest.MapFile{Data: []byte("version-one")}}
-	script := []byte(`globalThis.__render = () => Promise.resolve({html:'<html></html>',music:'<html></html>',video:'<html></html>',robots:'robots',sitemap:'sitemap'});`)
+	script := []byte(`globalThis.__render = () => Promise.resolve({html:'<html></html>',music:'<html></html>',video:'<html></html>',events:'<html></html>',robots:'robots',sitemap:'sitemap'});`)
 	one, err := New(script, assets)
 	if err != nil {
 		t.Fatal(err)

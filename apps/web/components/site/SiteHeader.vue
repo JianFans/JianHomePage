@@ -13,16 +13,20 @@ const props = withDefaults(defineProps<{
   musicCurrent?: boolean
   videoHref?: string
   videoCurrent?: boolean
+  eventsHref?: string
+  eventsCurrent?: boolean
   showVideo?: boolean
   showEvents?: boolean
 }>(), {
   homeHref: '',
   musicHref: '',
   videoHref: '',
+  eventsHref: '',
   showVideo: true,
   showEvents: true,
   musicCurrent: false,
   videoCurrent: false,
+  eventsCurrent: false,
 })
 
 const emit = defineEmits<{
@@ -96,7 +100,9 @@ const labels = computed(() => props.locale === 'en'
       <a
         v-if="showEvents"
         class="site-header__events"
-        :href="`${homeHref || ''}#event`"
+        :class="{ 'site-header__events--current': eventsCurrent }"
+        :href="eventsHref || `${homeHref || ''}#event`"
+        :aria-current="eventsCurrent ? 'page' : undefined"
         :aria-label="labels.events"
         :title="labels.events"
       >
@@ -200,7 +206,7 @@ nav > a svg {
   }
 
   .site-identity small,
-  .site-header__events {
+  .site-header__events:not(.site-header__events--current) {
     display: none;
   }
 }

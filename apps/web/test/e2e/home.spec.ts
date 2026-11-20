@@ -60,6 +60,22 @@ test.describe('桌面首页', () => {
     await expect(page.getByRole('button', { name: /Switch to Chinese|切换为中文/ })).toBeVisible()
   })
 
+  test('现场目录展示完整演出列表、状态和稳定页面地址', async ({ page }) => {
+    await page.goto('/events/')
+
+    await expect(page).toHaveTitle(/全部现场|Live events/)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/全部现场|Live events/)
+    await expect(page.locator('[data-testid="event-card"]')).toHaveCount(2)
+    await expect(page.getByRole('navigation').getByRole('link', { name: '现场' })).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/events/')
+    await expect(page.locator('[data-testid="event-card"] a').first()).toHaveAttribute('rel', 'noopener noreferrer')
+
+    await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Live events')
+  })
+
   test('预渲染完整板块并保留首屏的下一段提示', async ({ page }, testInfo) => {
     await openHomepage(page)
 
