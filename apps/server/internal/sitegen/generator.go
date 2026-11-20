@@ -1,4 +1,4 @@
-// Package sitegen renders the shared Vue homepage inside the Go process.
+// Package sitegen renders the public Vue pages inside the Go process.
 // Only the application-owned bundle executes; content is passed as JSON data.
 package sitegen
 
@@ -118,7 +118,7 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 	}
 	result, err := render(goja.Undefined(), vm.ToValue(string(raw)))
 	if err != nil {
-		return nil, fmt.Errorf("render homepage: %w", err)
+		return nil, fmt.Errorf("render public site: %w", err)
 	}
 	promise, ok := result.Export().(*goja.Promise)
 	if ok && promise.State() == goja.PromiseStateRejected {
@@ -129,20 +129,22 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 	}
 	var document struct {
 		HTML    string `json:"html"`
+		Music   string `json:"music"`
 		Robots  string `json:"robots"`
 		Sitemap string `json:"sitemap"`
 	}
 	if err := vm.ExportTo(promise.Result(), &document); err != nil {
 		return nil, errors.New("invalid renderer output")
 	}
-	if len(document.HTML) == 0 || len(document.HTML)+len(document.Robots)+len(document.Sitemap) > maxOutput {
+	if document.HTML == "" || document.Music == "" || len(document.HTML)+len(document.Music)+len(document.Robots)+len(document.Sitemap) > maxOutput {
 		return nil, errors.New("rendered document exceeds size limit")
 	}
-	files := make(map[string][]byte, len(generator.files)+3)
+	files := make(map[string][]byte, len(generator.files)+4)
 	for name, data := range generator.files {
 		files[name] = append([]byte(nil), data...)
 	}
 	files["index.html"] = []byte(document.HTML)
+	files["music/index.html"] = []byte(document.Music)
 	files["robots.txt"] = []byte(document.Robots)
 	files["sitemap.xml"] = []byte(document.Sitemap)
 	return files, ctx.Err()

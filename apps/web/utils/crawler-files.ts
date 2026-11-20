@@ -1,3 +1,5 @@
+import { musicCatalogUrl } from './music-catalog'
+
 function canonicalBase(canonicalUrl: string): string {
   return canonicalUrl.replace(/\/+$/, '')
 }
@@ -13,12 +15,16 @@ function escapeXML(value: string): string {
 
 export function renderSitemap(canonicalUrl: string): string {
   const homepageUrl = escapeXML(`${canonicalBase(canonicalUrl)}/`)
+  const musicUrl = escapeXML(musicCatalogUrl(canonicalUrl))
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>${homepageUrl}</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${musicUrl}</loc>
   </url>
 </urlset>`
 }

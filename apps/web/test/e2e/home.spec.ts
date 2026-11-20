@@ -51,7 +51,8 @@ test.describe('桌面首页', () => {
     for (const sectionId of sectionIds) {
       await expect(page.locator(`#${sectionId}`)).toBeAttached()
     }
-    await expect(page.getByTestId('music-more')).toHaveAttribute(
+    await expect(page.getByTestId('music-more')).toHaveAttribute('href', '/music/')
+    await expect(page.getByTestId('music-external')).toHaveAttribute(
       'href',
       'https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB',
     )

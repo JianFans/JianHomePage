@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import type { AudioPlayerController } from '../../utils/audio-player'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
+import { MUSIC_CATALOG_PATH } from '../../utils/music-catalog'
 import { resolveHomepageSections } from '../../utils/sections'
 import SiteFooter from '../site/SiteFooter.vue'
 import SiteHeader from '../site/SiteHeader.vue'
@@ -19,6 +20,7 @@ const props = withDefaults(defineProps<{
   locale: SupportedLocale
   player: AudioPlayerController
   autoplayEnabled?: boolean
+  linkMusicCatalog?: boolean
 }>(), { autoplayEnabled: true })
 
 const emit = defineEmits<{
@@ -38,6 +40,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
     :brand="brand"
     :artist-name="artistName"
     :locale="locale"
+    :music-href="linkMusicCatalog ? MUSIC_CATALOG_PATH : undefined"
     @toggle-locale="emit('toggleLocale')"
   />
   <template
@@ -72,6 +75,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
       :tracks="snapshot.tracks"
       :assets="snapshot.assets"
       :locale="locale"
+      :catalog-href="linkMusicCatalog ? MUSIC_CATALOG_PATH : undefined"
       :active-track-id="player.current.value?.id ?? null"
       :player-status="player.status.value"
       @preview="player.toggle"

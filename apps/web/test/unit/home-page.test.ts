@@ -12,14 +12,17 @@ describe('公开首页', () => {
     )
   })
 
-  it('按首页配置渲染最新音乐作品', async () => {
-    const wrapper = await mountSuspended(HomePage)
+  it('保留平台入口并增加前往音乐目录的入口', async () => {
+    const wrapper = await mountSuspended(HomePage, { props: { linkMusicCatalog: true } })
 
     expect(wrapper.find('#music').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid="music-card"]')).toHaveLength(5)
-    const more = wrapper.get('[data-testid="music-more"]')
-    expect(more.attributes('aria-label')).toMatch(/查看全部音乐|View all music/)
-    expect(more.attributes('href')).toBe(
+    const catalog = wrapper.get('[data-testid="music-more"]')
+    expect(catalog.attributes('aria-label')).toMatch(/查看全部音乐|View all music/)
+    expect(catalog.attributes('href')).toBe('/music/')
+    const external = wrapper.get('[data-testid="music-external"]')
+    expect(external.attributes('aria-label')).toMatch(/外部音乐链接|External music link/)
+    expect(external.attributes('href')).toBe(
       'https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB',
     )
   })

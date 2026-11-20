@@ -4,11 +4,16 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import IconButton from '../ui/IconButton.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   brand: string
   artistName: string
   locale: SupportedLocale
-}>()
+  homeHref?: string
+  musicHref?: string
+  musicCurrent?: boolean
+  showVideo?: boolean
+  showEvents?: boolean
+}>(), { homeHref: '', musicHref: '', showVideo: true, showEvents: true, musicCurrent: false })
 
 const emit = defineEmits<{
   toggleLocale: []
@@ -53,7 +58,7 @@ const labels = computed(() => props.locale === 'en'
     <a
       ref="identity"
       class="site-identity"
-      href="#top"
+      :href="homeHref || '#top'"
       :title="labels.home"
     >
       <span>{{ brand }}</span>
@@ -62,21 +67,25 @@ const labels = computed(() => props.locale === 'en'
 
     <nav :aria-label="labels.navigation">
       <a
-        href="#music"
+        :href="musicHref || '#music'"
+        :aria-current="musicCurrent ? 'page' : undefined"
         :aria-label="labels.music"
         :title="labels.music"
       >
         <Music2 aria-hidden="true" />
       </a>
       <a
-        href="#video"
+        v-if="showVideo"
+        :href="`${homeHref || ''}#video`"
         :aria-label="labels.video"
         :title="labels.video"
       >
         <Video aria-hidden="true" />
       </a>
       <a
-        href="#event"
+        v-if="showEvents"
+        class="site-header__events"
+        :href="`${homeHref || ''}#event`"
         :aria-label="labels.events"
         :title="labels.events"
       >
@@ -157,7 +166,8 @@ nav > a {
 }
 
 nav > a:hover,
-nav > a:focus-visible {
+nav > a:focus-visible,
+nav > a[aria-current="page"] {
   border-color: var(--color-border);
   color: var(--color-text);
 }
@@ -179,7 +189,7 @@ nav > a svg {
   }
 
   .site-identity small,
-  nav > a:nth-child(3) {
+  .site-header__events {
     display: none;
   }
 }

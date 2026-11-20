@@ -5,7 +5,7 @@ import type {
   Release,
   Track,
 } from '@yujian/schema'
-import { ArrowUpRight, Headphones, Pause, Play } from '@lucide/vue'
+import { ArrowUpRight, Headphones, ListMusic, Pause, Play } from '@lucide/vue'
 import { computed } from 'vue'
 import type {
   AudioPlayerStatus,
@@ -25,6 +25,7 @@ const props = defineProps<{
   locale: SupportedLocale
   activeTrackId: string | null
   playerStatus: AudioPlayerStatus
+  catalogHref?: string
 }>()
 
 const emit = defineEmits<{
@@ -35,8 +36,8 @@ const releaseById = computed(() => new Map(props.releases.map(release => [releas
 const trackById = computed(() => new Map(props.tracks.map(track => [track.id, track])))
 const assetById = computed(() => new Map(props.assets.map(asset => [asset.id, asset])))
 const labels = computed(() => props.locale === 'en'
-  ? { heading: 'Music', preview: 'Preview', all: 'View all music' }
-  : { heading: '音乐', preview: '试听', all: '查看全部音乐' })
+  ? { heading: 'Music', preview: 'Preview', all: 'View all music', external: 'External music link' }
+  : { heading: '音乐', preview: '试听', all: '查看全部音乐', external: '外部音乐链接' })
 
 const cards = computed(() => props.section.itemIds
   .slice(0, props.section.limit)
@@ -104,18 +105,33 @@ function preview(track: AudioPlayerTrack) {
       <h2 :id="`${section.id}-title`">
         {{ labels.heading }}
       </h2>
-      <a
-        v-if="moreHref"
-        class="section-more"
-        data-testid="music-more"
-        :href="moreHref"
-        target="_blank"
-        rel="noopener noreferrer"
-        :aria-label="labels.all"
-        :title="labels.all"
+      <div
+        v-if="catalogHref || moreHref"
+        class="section-actions"
       >
-        <ArrowUpRight aria-hidden="true" />
-      </a>
+        <a
+          v-if="moreHref"
+          class="section-more"
+          :data-testid="catalogHref ? 'music-external' : 'music-more'"
+          :href="moreHref"
+          target="_blank"
+          rel="noopener noreferrer"
+          :aria-label="catalogHref ? labels.external : labels.all"
+          :title="catalogHref ? labels.external : labels.all"
+        >
+          <ArrowUpRight aria-hidden="true" />
+        </a>
+        <a
+          v-if="catalogHref"
+          class="section-more"
+          data-testid="music-more"
+          :href="catalogHref"
+          :aria-label="labels.all"
+          :title="labels.all"
+        >
+          <ListMusic aria-hidden="true" />
+        </a>
+      </div>
     </div>
 
     <div class="music-grid">
@@ -222,11 +238,16 @@ function preview(track: AudioPlayerTrack) {
   letter-spacing: 0;
 }
 
+.section-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
 .section-more {
   display: grid;
   width: 2.75rem;
   height: 2.75rem;
-  margin-left: auto;
   place-items: center;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-tool);

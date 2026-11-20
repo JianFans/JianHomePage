@@ -3,13 +3,15 @@ import { fileURLToPath } from 'node:url'
 import {
   extname,
   isAbsolute,
+  posix,
   relative,
   resolve,
 } from 'node:path'
 
 export const DEFAULT_INITIAL_SCRIPT_BUDGET = 320 * 1024
 
-const requiredFiles = ['index.html', 'robots.txt', 'sitemap.xml']
+const pageFiles = ['index.html', 'music/index.html']
+const requiredFiles = [...pageFiles, 'robots.txt', 'sitemap.xml']
 const runtimeContentApiPattern = /(?:\/api\/(?:content|homepage|snapshot)\b|CONTENT_(?:API|ENDPOINT|SNAPSHOT_URL)|runtime-content-api)/i
 const textExtensions = new Set(['.html', '.js', '.mjs', '.json'])
 
@@ -22,7 +24,7 @@ function parseAttributes(source) {
   return attributes
 }
 
-function localReference(value) {
+function localReference(value, pageDirectory) {
   if (
     !value
     || value.startsWith('#')
@@ -37,10 +39,11 @@ function localReference(value) {
   if (!path || path === '/') {
     return null
   }
-  return decodeURIComponent(path).replace(/^\/+/, '')
+  const decoded = decodeURIComponent(path)
+  return path.startsWith('/') ? decoded.replace(/^\/+/, '') : posix.join(pageDirectory, decoded)
 }
 
-function extractPageReferences(html) {
+function extractPageReferences(html, pageDirectory) {
   const references = new Set()
   const initialScripts = new Set()
   const tagPattern = /<(script|link|img|source|video|audio)\b([^>]*)>/gi
@@ -66,7 +69,7 @@ function extractPageReferences(html) {
     }
 
     for (const candidate of candidates) {
-      const reference = localReference(candidate)
+      const reference = localReference(candidate, pageDirectory)
       if (!reference) {
         continue
       }
@@ -130,16 +133,31 @@ export async function verifyStaticOutput(
     await requireFile(root, name)
   }
 
-  const indexPath = resolveInside(root, 'index.html')
-  const html = await readFile(indexPath, 'utf8')
-  const { initialScripts, references } = extractPageReferences(html)
-
-  for (const reference of references) {
-    try {
-      await access(resolveInside(root, reference))
-    } catch {
-      throw new Error(`首页引用的静态资源不存在：${reference}`)
+  const checkedReferences = new Set()
+  let initialScriptBytes = 0
+  for (const page of pageFiles) {
+    const html = await readFile(resolveInside(root, page), 'utf8')
+    const { initialScripts, references } = extractPageReferences(html, posix.dirname(page))
+    for (const reference of references) {
+      if (checkedReferences.has(reference)) continue
+      try {
+        await access(resolveInside(root, reference))
+      } catch {
+        throw new Error(`${page} 引用的静态资源不存在：${reference}`)
+      }
+      checkedReferences.add(reference)
     }
+
+    let scriptBytes = 0
+    for (const reference of initialScripts) {
+      scriptBytes += (await stat(resolveInside(root, reference))).size
+    }
+    if (scriptBytes > initialScriptBudget) {
+      throw new Error(
+        `${page} 的首屏 JavaScript 为 ${Math.ceil(scriptBytes / 1024)} KiB，超过 ${Math.floor(initialScriptBudget / 1024)} KiB 预算`,
+      )
+    }
+    initialScriptBytes = Math.max(initialScriptBytes, scriptBytes)
   }
 
   for (const file of await collectTextFiles(root)) {
@@ -149,18 +167,8 @@ export async function verifyStaticOutput(
     }
   }
 
-  let initialScriptBytes = 0
-  for (const reference of initialScripts) {
-    initialScriptBytes += (await stat(resolveInside(root, reference))).size
-  }
-  if (initialScriptBytes > initialScriptBudget) {
-    throw new Error(
-      `首屏 JavaScript 为 ${Math.ceil(initialScriptBytes / 1024)} KiB，超过 ${Math.floor(initialScriptBudget / 1024)} KiB 预算`,
-    )
-  }
-
   return {
-    checkedReferences: references.size,
+    checkedReferences: checkedReferences.size,
     initialScriptBytes,
   }
 }

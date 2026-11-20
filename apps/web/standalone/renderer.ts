@@ -4,6 +4,7 @@ import type { YujianContentSnapshot } from '@yujian/schema'
 import App from './App.vue'
 import { buildStructuredData, serializeStructuredData } from '../utils/structured-data'
 import { renderRobots, renderSitemap } from '../utils/crawler-files'
+import { musicCatalogMetadata } from '../utils/music-catalog'
 
 declare const __SITE_ASSETS__: { script: string, styles: string[] }
 
@@ -16,18 +17,27 @@ function escapeHTML(value: string) {
 async function render(raw: string) {
   const snapshot: YujianContentSnapshot = JSON.parse(raw)
   const locale = snapshot.site.defaultLocale
-  const body = await renderToString(createSSRApp(App, { snapshot }))
   const seo = snapshot.site.seo
   const asset = snapshot.assets.find(item => item.id === seo.ogAssetId)
-  const title = escapeHTML(seo.title[locale])
-  const description = escapeHTML(seo.description[locale])
-  const canonical = escapeHTML(snapshot.site.canonicalUrl)
   const imageMeta = asset
     ? `<meta property="og:image" content="${escapeHTML(new URL(asset.src, snapshot.site.canonicalUrl).href)}"><meta property="og:image:alt" content="${escapeHTML(asset.alt[locale])}">`
     : ''
   const data = JSON.stringify(snapshot).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e').replaceAll('&', '\\u0026')
-  return {
-    html: [
+  const homeMetadata = {
+    title: seo.title[locale],
+    description: seo.description[locale],
+    canonical: snapshot.site.canonicalUrl,
+  }
+
+  async function renderPage(page: 'home' | 'music', metadata: typeof homeMetadata) {
+    const body = await renderToString(createSSRApp(App, { snapshot, page }))
+    const title = escapeHTML(metadata.title)
+    const description = escapeHTML(metadata.description)
+    const canonical = escapeHTML(metadata.canonical)
+    const structuredData = page === 'home'
+      ? `<script type="application/ld+json">${serializeStructuredData(buildStructuredData(snapshot, locale))}</script>`
+      : ''
+    return [
       `<!doctype html><html lang="${locale}"><head>`,
       '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
       '<link rel="icon" type="image/svg+xml" href="/site/favicon.svg">',
@@ -37,11 +47,16 @@ async function render(raw: string) {
       `<meta property="og:url" content="${canonical}">${imageMeta}`,
       `<meta name="twitter:card" content="${asset ? 'summary_large_image' : 'summary'}">`,
       ...__SITE_ASSETS__.styles.map(path => `<link rel="stylesheet" href="${path}">`),
-      `<script type="application/ld+json">${serializeStructuredData(buildStructuredData(snapshot, locale))}</script>`,
+      structuredData,
       `</head><body><div id="app">${body}</div>`,
-      `<script type="application/json" id="yujian-snapshot">${data}</script>`,
+      `<script type="application/json" id="yujian-snapshot" data-page="${page}">${data}</script>`,
       `<script type="module" src="${__SITE_ASSETS__.script}"></script></body></html>`,
-    ].join(''),
+    ].join('')
+  }
+
+  return {
+    html: await renderPage('home', homeMetadata),
+    music: await renderPage('music', musicCatalogMetadata(snapshot, locale)),
     robots: renderRobots(snapshot.site.canonicalUrl),
     sitemap: renderSitemap(snapshot.site.canonicalUrl),
   }
