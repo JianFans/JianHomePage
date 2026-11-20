@@ -16,13 +16,13 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "@lucide/vue": "1.61.0",
-    "@nuxt/image": "2.2.0",
+    "@lucide/vue": "1.73.0",
+    "@nuxt/image": "2.2.1",
     "@yujian/schema": "workspace:*",
-    "nuxt": "4.6.2",
+    "nuxt": "4.6.4",
     "vue": "3.5.45",
-    "vue-i18n": "11.4.16",
-    "vue-router": "5.4.0"
+    "vue-i18n": "11.4.20",
+    "vue-router": "5.5.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
