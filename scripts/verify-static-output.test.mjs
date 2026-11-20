@@ -27,8 +27,10 @@ async function createOutput({
   temporaryDirectories.push(directory)
   await mkdir(join(directory, '_nuxt'), { recursive: true })
   await mkdir(join(directory, 'music'))
+  await mkdir(join(directory, 'video'))
   await writeFile(join(directory, 'index.html'), html)
   await writeFile(join(directory, 'music', 'index.html'), music)
+  await writeFile(join(directory, 'video', 'index.html'), music)
   await writeFile(join(directory, '_nuxt', 'app.js'), script)
   await writeFile(join(directory, 'robots.txt'), robots)
   await writeFile(join(directory, 'sitemap.xml'), sitemap)
@@ -60,6 +62,18 @@ test('拒绝缺少音乐目录 HTML 的产物', async () => {
   const directory = await createOutput()
   await unlink(join(directory, 'music', 'index.html'))
   await assert.rejects(verifyStaticOutput(directory), /music\/index\.html/)
+})
+
+test('拒绝缺少影像目录 HTML 的产物', async () => {
+  const directory = await createOutput()
+  await unlink(join(directory, 'video', 'index.html'))
+  await assert.rejects(verifyStaticOutput(directory), /video\/index\.html/)
+})
+
+test('拒绝影像目录引用不存在的静态资源', async () => {
+  const directory = await createOutput()
+  await writeFile(join(directory, 'video', 'index.html'), '<!doctype html><script type="module" src="../_nuxt/video.js"></script>')
+  await assert.rejects(verifyStaticOutput(directory), /_nuxt\/video\.js/)
 })
 
 test('拒绝音乐目录引用不存在的静态资源', async () => {

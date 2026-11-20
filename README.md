@@ -12,6 +12,7 @@
 
 - 低饱和深色响应式首页：首屏、音乐、影像、现场、片段、音乐人与平台入口。
 - `/music/` 展示发布快照中的全部音乐作品和曲目，支持已配置的试听和音乐平台链接。首页编排只影响首页精选。
+- `/video/` 展示发布快照中的全部影像作品及其海报和平台入口。首页编排只影响首页精选。
 - `zh-CN` / `en` 双语：优先读取 `localStorage`，其次读取浏览器语言，无法识别时回退到默认语言并显示非阻断提示。
 - 单实例音乐试听：封面播放入口、底部 Dock、进度控制、上一首/下一首和平台降级入口。
 - 静态 SEO：canonical、Open Graph、JSON-LD、`robots.txt` 和 `sitemap.xml`。
@@ -161,7 +162,7 @@ pnpm verify:edgeone
 - 内部跳转是否映射到实际生成的静态锚点。
 - 本地素材的文件大小、MIME 和 SHA-256。
 - 静态产物不包含运行时内容 API 标记。
-- `index.html`、`music/index.html`、`robots.txt`、`sitemap.xml` 和各页首屏脚本预算。
+- `index.html`、`music/index.html`、`video/index.html`、`robots.txt`、`sitemap.xml` 和各页首屏脚本预算。
 
 ## 测试与发布门禁
 

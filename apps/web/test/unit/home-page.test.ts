@@ -27,6 +27,13 @@ describe('公开首页', () => {
     )
   })
 
+  it('在影像板块提供全部作品目录入口', async () => {
+    const wrapper = await mountSuspended(HomePage, { props: { linkVideoCatalog: true } })
+    const catalog = wrapper.get('[data-testid="video-more"]')
+    expect(catalog.attributes('href')).toBe('/video/')
+    expect(catalog.attributes('aria-label')).toMatch(/查看全部影像|View all videos/)
+  })
+
   it('按后台顺序渲染所有有内容的启用板块', async () => {
     const wrapper = await mountSuspended(HomePage)
 

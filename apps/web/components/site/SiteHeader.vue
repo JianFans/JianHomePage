@@ -11,9 +11,19 @@ const props = withDefaults(defineProps<{
   homeHref?: string
   musicHref?: string
   musicCurrent?: boolean
+  videoHref?: string
+  videoCurrent?: boolean
   showVideo?: boolean
   showEvents?: boolean
-}>(), { homeHref: '', musicHref: '', showVideo: true, showEvents: true, musicCurrent: false })
+}>(), {
+  homeHref: '',
+  musicHref: '',
+  videoHref: '',
+  showVideo: true,
+  showEvents: true,
+  musicCurrent: false,
+  videoCurrent: false,
+})
 
 const emit = defineEmits<{
   toggleLocale: []
@@ -76,7 +86,8 @@ const labels = computed(() => props.locale === 'en'
       </a>
       <a
         v-if="showVideo"
-        :href="`${homeHref || ''}#video`"
+        :href="videoHref || `${homeHref || ''}#video`"
+        :aria-current="videoCurrent ? 'page' : undefined"
         :aria-label="labels.video"
         :title="labels.video"
       >

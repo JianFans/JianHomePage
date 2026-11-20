@@ -44,6 +44,22 @@ async function expectHeroPixels(page: import('@playwright/test').Page) {
 test.describe('桌面首页', () => {
   test.use({ viewport: { width: 1440, height: 1000 } })
 
+  test('影像目录展示全部作品、稳定地址和双语页面标题', async ({ page }) => {
+    await page.goto('/video/')
+
+    await expect(page).toHaveTitle(/全部影像|All videos/)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/全部影像|All videos/)
+    await expect(page.locator('article.video-card')).toHaveCount(3)
+    await expect(page.getByRole('navigation').getByRole('link', { name: '影像' })).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/video/')
+
+    await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('All videos')
+    await expect(page.getByRole('button', { name: /Switch to Chinese|切换为中文/ })).toBeVisible()
+  })
+
   test('预渲染完整板块并保留首屏的下一段提示', async ({ page }, testInfo) => {
     await openHomepage(page)
 
@@ -56,6 +72,7 @@ test.describe('桌面首页', () => {
       'href',
       'https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB',
     )
+    await expect(page.getByTestId('video-more')).toHaveAttribute('href', '/video/')
     await expect(page.locator('footer')).toContainText('© 2026')
 
     const edge = await page.locator('.next-section-edge').boundingBox()

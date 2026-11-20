@@ -4,7 +4,7 @@
 
 ## Git 构建基线与 Direct Upload
 
-本项目的后台自动发布方案使用 Direct Upload（直接上传）项目：Go worker 生成 `index.html`、`music/index.html`、`robots.txt`、`sitemap.xml`，组合内嵌的 `/site/assets/*` 浏览器文件，再上传 Pages。按这套方案部署，不需要在 Pages 填安装命令或构建命令，也不要同时启用 Git 自动部署。配置为 `PAGES_API_TOKEN`、`PAGES_PROJECT_ID`、`PAGES_REGION` 和 `PAGES_PUBLIC_URL`，详见 [服务端参数](../server/README.md#环境变量)。
+本项目的后台自动发布方案使用 Direct Upload（直接上传）项目：Go worker 生成 `index.html`、`music/index.html`、`video/index.html`、`robots.txt`、`sitemap.xml`，组合内嵌的 `/site/assets/*` 浏览器文件，再上传 Pages。按这套方案部署，不需要在 Pages 填安装命令或构建命令，也不要同时启用 Git 自动部署。配置为 `PAGES_API_TOKEN`、`PAGES_PROJECT_ID`、`PAGES_REGION` 和 `PAGES_PUBLIC_URL`，详见 [服务端参数](../server/README.md#环境变量)。
 
 下面仅供单独研究 Git 集成构建时参考，与根 `edgeone.json` 对应，不是首次部署的额外步骤：
 
@@ -16,7 +16,7 @@
 | Output directory | `apps/web/.output/public` |
 | Node.js | 满足根 `package.json` 的 `engines.node` 要求 |
 
-关闭 SPA fallback。首页、音乐目录、`robots.txt` 和 `sitemap.xml` 都是构建时生成的文件。
+关闭 SPA fallback。首页、音乐与影像目录、`robots.txt` 和 `sitemap.xml` 都是构建时生成的文件。
 
 ## 内容快照
 
@@ -47,7 +47,7 @@
 | 路径 | 建议 Cache-Control |
 | --- | --- |
 | `/site/assets/*` | `public, max-age=31536000, immutable` |
-| `/`, `/index.html`, `/music/`, `/music/index.html` | `public, max-age=0, must-revalidate` |
+| `/`, `/index.html`, `/music/`, `/music/index.html`, `/video/`, `/video/index.html` | `public, max-age=0, must-revalidate` |
 | `/robots.txt`, `/sitemap.xml` | `public, max-age=300` |
 
 `/site/assets/*` 文件名包含内容哈希，可以长期缓存。独立 Nuxt 构建的 `/_nuxt/*` 可采用同样策略，`/_payload.json` 应重新验证；Go 输出不依赖 Nuxt payload。管理端 HTML 由 Go 返回 `no-store`，管理端带哈希的 Nuxt 资源长期缓存。
@@ -69,8 +69,8 @@ pnpm test:embedded
 
 完整门禁会执行 ESLint、TypeScript、单元测试、静态生成与产物校验，并检查：
 
-- `index.html`、`music/index.html`、`robots.txt` 和 `sitemap.xml` 是否存在。
-- 首页和音乐目录引用的本地资源是否完整。
+- `index.html`、`music/index.html`、`video/index.html`、`robots.txt` 和 `sitemap.xml` 是否存在。
+- 首页、音乐目录和影像目录引用的本地资源是否完整。
 - 产物是否包含运行时内容 API 标记。
 - 每页首屏 JavaScript 未压缩体积是否超过 320 KiB。
 
@@ -79,6 +79,7 @@ pnpm test:embedded
 ```text
 GET https://yujian.me/             -> 200, text/html
 GET https://yujian.me/music/       -> 200, text/html
+GET https://yujian.me/video/       -> 200, text/html
 GET https://yujian.me/robots.txt   -> 200, text/plain
 GET https://yujian.me/sitemap.xml  -> 200, application/xml
 ```
