@@ -4,6 +4,7 @@ import { loadBuildSnapshot } from './utils/build-snapshot'
 import { MUSIC_CATALOG_PATH } from './utils/music-catalog'
 import { VIDEO_CATALOG_PATH } from './utils/video-catalog'
 import { EVENT_CATALOG_PATH } from './utils/event-catalog'
+import { MOMENT_CATALOG_PATH } from './utils/moments-catalog'
 
 const appDirectory = fileURLToPath(new URL('.', import.meta.url))
 const workspaceRoot = resolve(appDirectory, '../..')
@@ -48,7 +49,7 @@ export default defineNuxtConfig({
       inline: [/[/\\]nuxt[/\\]dist[/\\]/],
     },
     prerender: {
-      routes: ['/robots.txt', '/sitemap.xml', MUSIC_CATALOG_PATH, VIDEO_CATALOG_PATH, EVENT_CATALOG_PATH],
+      routes: ['/robots.txt', '/sitemap.xml', MUSIC_CATALOG_PATH, VIDEO_CATALOG_PATH, EVENT_CATALOG_PATH, MOMENT_CATALOG_PATH],
     },
   },
   runtimeConfig: {

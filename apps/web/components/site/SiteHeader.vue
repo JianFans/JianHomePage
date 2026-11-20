@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowUp, CalendarDays, Languages, Music2, Video } from '@lucide/vue'
+import { ArrowUp, CalendarDays, Images, Languages, Music2, Video } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import IconButton from '../ui/IconButton.vue'
@@ -15,6 +15,8 @@ const props = withDefaults(defineProps<{
   videoCurrent?: boolean
   eventsHref?: string
   eventsCurrent?: boolean
+  momentsHref?: string
+  momentsCurrent?: boolean
   showVideo?: boolean
   showEvents?: boolean
 }>(), {
@@ -22,11 +24,13 @@ const props = withDefaults(defineProps<{
   musicHref: '',
   videoHref: '',
   eventsHref: '',
+  momentsHref: '/moments/',
   showVideo: true,
   showEvents: true,
   musicCurrent: false,
   videoCurrent: false,
   eventsCurrent: false,
+  momentsCurrent: false,
 })
 
 const emit = defineEmits<{
@@ -52,6 +56,7 @@ const labels = computed(() => props.locale === 'en'
       music: 'Music',
       video: 'Video',
       events: 'Live',
+      moments: 'Moments',
       language: '切换为中文',
       navigation: 'Primary navigation',
       top: 'Back to top',
@@ -61,6 +66,7 @@ const labels = computed(() => props.locale === 'en'
       music: '音乐',
       video: '影像',
       events: '现场',
+      moments: '片段',
       language: 'Switch to English',
       navigation: '主导航',
       top: '返回顶部',
@@ -107,6 +113,16 @@ const labels = computed(() => props.locale === 'en'
         :title="labels.events"
       >
         <CalendarDays aria-hidden="true" />
+      </a>
+      <a
+        class="site-header__moments"
+        :class="{ 'site-header__moments--current': momentsCurrent }"
+        :href="momentsHref"
+        :aria-current="momentsCurrent ? 'page' : undefined"
+        :aria-label="labels.moments"
+        :title="labels.moments"
+      >
+        <Images aria-hidden="true" />
       </a>
       <IconButton
         :label="labels.language"
@@ -206,7 +222,8 @@ nav > a svg {
   }
 
   .site-identity small,
-  .site-header__events:not(.site-header__events--current) {
+  .site-header__events:not(.site-header__events--current),
+  .site-header__moments:not(.site-header__moments--current) {
     display: none;
   }
 }

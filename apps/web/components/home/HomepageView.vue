@@ -6,6 +6,7 @@ import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
 import { MUSIC_CATALOG_PATH } from '../../utils/music-catalog'
 import { EVENT_CATALOG_PATH } from '../../utils/event-catalog'
+import { MOMENT_CATALOG_PATH } from '../../utils/moments-catalog'
 import { resolveHomepageSections } from '../../utils/sections'
 import { VIDEO_CATALOG_PATH } from '../../utils/video-catalog'
 import SiteFooter from '../site/SiteFooter.vue'
@@ -25,6 +26,7 @@ const props = withDefaults(defineProps<{
   linkMusicCatalog?: boolean
   linkVideoCatalog?: boolean
   linkEventCatalog?: boolean
+  linkMomentCatalog?: boolean
 }>(), { autoplayEnabled: true })
 
 const emit = defineEmits<{
@@ -110,6 +112,7 @@ const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTC
       :items="section.items"
       :assets="snapshot.assets"
       :locale="locale"
+      :catalog-href="linkMomentCatalog ? MOMENT_CATALOG_PATH : undefined"
     />
 
     <ArtistSection

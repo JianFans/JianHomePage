@@ -29,10 +29,12 @@ async function createOutput({
   await mkdir(join(directory, 'music'))
   await mkdir(join(directory, 'video'))
   await mkdir(join(directory, 'events'))
+  await mkdir(join(directory, 'moments'))
   await writeFile(join(directory, 'index.html'), html)
   await writeFile(join(directory, 'music', 'index.html'), music)
   await writeFile(join(directory, 'video', 'index.html'), music)
   await writeFile(join(directory, 'events', 'index.html'), music)
+  await writeFile(join(directory, 'moments', 'index.html'), music)
   await writeFile(join(directory, '_nuxt', 'app.js'), script)
   await writeFile(join(directory, 'robots.txt'), robots)
   await writeFile(join(directory, 'sitemap.xml'), sitemap)
@@ -76,6 +78,18 @@ test('拒绝缺少现场目录 HTML 的产物', async () => {
   const directory = await createOutput()
   await unlink(join(directory, 'events', 'index.html'))
   await assert.rejects(verifyStaticOutput(directory), /events\/index\.html/)
+})
+
+test('拒绝缺少片段目录 HTML 的产物', async () => {
+  const directory = await createOutput()
+  await unlink(join(directory, 'moments', 'index.html'))
+  await assert.rejects(verifyStaticOutput(directory), /moments\/index\.html/)
+})
+
+test('拒绝片段目录引用不存在的静态资源', async () => {
+  const directory = await createOutput()
+  await writeFile(join(directory, 'moments', 'index.html'), '<!doctype html><script type="module" src="../_nuxt/moments.js"></script>')
+  await assert.rejects(verifyStaticOutput(directory), /_nuxt\/moments\.js/)
 })
 
 test('拒绝现场目录引用不存在的静态资源', async () => {

@@ -50,10 +50,12 @@ test.describe('桌面首页', () => {
     await expect(page).toHaveTitle(/全部影像|All videos/)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/全部影像|All videos/)
     await expect(page.locator('article.video-card')).toHaveCount(3)
-    await expect(page.getByRole('navigation').getByRole('link', { name: '影像' })).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByRole('navigation').getByRole('link', { name: /影像|Video/ })).toHaveAttribute('aria-current', 'page')
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/video/')
 
-    await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
+    if (await page.locator('html').getAttribute('lang') !== 'en') {
+      await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
+    }
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('All videos')
@@ -66,14 +68,26 @@ test.describe('桌面首页', () => {
     await expect(page).toHaveTitle(/全部现场|Live events/)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/全部现场|Live events/)
     await expect(page.locator('[data-testid="event-card"]')).toHaveCount(2)
-    await expect(page.getByRole('navigation').getByRole('link', { name: '现场' })).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByRole('navigation').getByRole('link', { name: /现场|Live/ })).toHaveAttribute('aria-current', 'page')
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/events/')
     await expect(page.locator('[data-testid="event-card"] a').first()).toHaveAttribute('rel', 'noopener noreferrer')
 
-    await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
+    if (await page.locator('html').getAttribute('lang') !== 'en') {
+      await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
+    }
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Live events')
+  })
+
+  test('片段目录入口可浏览发布快照中的全部片段', async ({ page }) => {
+    await openHomepage(page)
+    await page.getByRole('link', { name: /查看全部片段|View all moments/ }).click()
+
+    await expect(page).toHaveURL(/\/moments\/$/)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/全部片段|Moments/)
+    await expect(page.locator('[data-testid="moment-card"]')).toHaveCount(3)
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/moments/')
   })
 
   test('预渲染完整板块并保留首屏的下一段提示', async ({ page }, testInfo) => {

@@ -55,6 +55,9 @@ func TestEmbeddedVueRendersSnapshotWithoutNode(t *testing.T) {
 	if !strings.Contains(string(files["sitemap.xml"]), "<loc>https://yujian.me/events/</loc>") {
 		t.Error("missing event catalog sitemap entry")
 	}
+	if !strings.Contains(string(files["sitemap.xml"]), "<loc>https://yujian.me/moments/</loc>") {
+		t.Error("missing moments catalog sitemap entry")
+	}
 	for _, fragment := range []string{`<h1`, `全部音乐作品`, `rel="canonical" href="https://yujian.me/music/"`, `id="track_1765c647-056c-47ac-b130-b738ed8744e1"`} {
 		if !strings.Contains(string(files["music/index.html"]), fragment) {
 			t.Errorf("rendered music catalog missing %q", fragment)
@@ -75,6 +78,11 @@ func TestEmbeddedVueRendersSnapshotWithoutNode(t *testing.T) {
 	}
 	if count := strings.Count(string(files["events/index.html"]), "<main"); count != 1 {
 		t.Errorf("rendered event catalog has %d main landmarks, want one", count)
+	}
+	for _, fragment := range []string{`<main`, `全部片段`, `rel="canonical" href="https://yujian.me/moments/"`, `id="moment_c8f0a2c9-7b1f-4bcc-a6c0-e6d5e74538c8"`} {
+		if !strings.Contains(string(files["moments/index.html"]), fragment) {
+			t.Errorf("rendered moments catalog missing %q", fragment)
+		}
 	}
 	updated := strings.Replace(string(raw), "遇健我", "新的站名", -1)
 	updated = strings.ReplaceAll(updated, "/media/hero-studio.webp", "https://media.example.test/new-cover.webp")
@@ -158,6 +166,9 @@ func TestInitialContentRendersWithoutMedia(t *testing.T) {
 	if !strings.Contains(string(files["events/index.html"]), "暂无现场信息") {
 		t.Fatal("empty event catalog did not explain the empty state")
 	}
+	if !strings.Contains(string(files["moments/index.html"]), "暂无片段") {
+		t.Fatal("empty moments catalog did not explain the empty state")
+	}
 }
 
 // TestGeneratedHTMLPreservesDataWithoutExecutableInjection distinguishes safe
@@ -171,7 +182,7 @@ func TestGeneratedHTMLPreservesDataWithoutExecutableInjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, page := range map[string]string{"index.html": "home", "music/index.html": "music", "video/index.html": "video", "events/index.html": "events"} {
+	for path, page := range map[string]string{"index.html": "home", "music/index.html": "music", "video/index.html": "video", "events/index.html": "events", "moments/index.html": "moments"} {
 		html := string(files[path])
 		if strings.Contains(html, malicious) || !strings.Contains(html, `&lt;/script&gt;`) || !strings.Contains(html, `\u003c/script\u003e`) {
 			t.Fatalf("content escaped incorrectly in %s", path)
@@ -197,6 +208,9 @@ func TestRenderingRespectsSectionsAndDefaultLocale(t *testing.T) {
 	generator, snapshot := embeddedGenerator(t)
 	for _, section := range snapshot["homepage"].(map[string]any)["sections"].([]any) {
 		if section.(map[string]any)["type"] == "music" {
+			section.(map[string]any)["enabled"] = false
+		}
+		if section.(map[string]any)["type"] == "moment" {
 			section.(map[string]any)["enabled"] = false
 		}
 	}
@@ -227,6 +241,9 @@ func TestRenderingRespectsSectionsAndDefaultLocale(t *testing.T) {
 	if !strings.Contains(string(files["events/index.html"]), `id="event_dc200c4c-abbb-476e-984d-405470f2dbea"`) {
 		t.Fatal("disabled homepage section hid a published event from the catalog")
 	}
+	if !strings.Contains(string(files["moments/index.html"]), `id="moment_c8f0a2c9-7b1f-4bcc-a6c0-e6d5e74538c8"`) {
+		t.Fatal("disabled homepage section hid a published moment from the catalog")
+	}
 }
 
 // TestRendererURLMatchesBrowserNormalization guards hydration against Go URL
@@ -255,7 +272,7 @@ func TestRendererBoundsAndUnavailableCapabilities(t *testing.T) {
 		"pending":   `globalThis.__render = () => new Promise(() => {});`,
 		"rejected":  `globalThis.__render = () => Promise.reject(new Error('invalid'));`,
 		"empty":     `globalThis.__render = () => Promise.resolve({html:'',robots:'',sitemap:''});`,
-		"oversized": `globalThis.__render = () => Promise.resolve({html:'ok',music:'ok',video:'ok',events:'a'.repeat(33554432),robots:'',sitemap:''});`,
+		"oversized": `globalThis.__render = () => Promise.resolve({html:'ok',music:'ok',video:'ok',events:'ok',moments:'a'.repeat(33554432),robots:'',sitemap:''});`,
 		"noentry":   `globalThis.x=1;`,
 		"network":   `globalThis.__render = () => Promise.resolve(fetch('https://example.test'));`,
 		"process":   `globalThis.__render = () => Promise.resolve(require('child_process'));`,
@@ -294,7 +311,7 @@ func TestRendererBoundsAndUnavailableCapabilities(t *testing.T) {
 // changing future generated artifacts or their frozen resource identity.
 func TestResourceIdentityAndResultsAreImmutable(t *testing.T) {
 	assets := fstest.MapFS{"site/client.js": &fstest.MapFile{Data: []byte("version-one")}}
-	script := []byte(`globalThis.__render = () => Promise.resolve({html:'<html></html>',music:'<html></html>',video:'<html></html>',events:'<html></html>',robots:'robots',sitemap:'sitemap'});`)
+	script := []byte(`globalThis.__render = () => Promise.resolve({html:'<html></html>',music:'<html></html>',video:'<html></html>',events:'<html></html>',moments:'<html></html>',robots:'robots',sitemap:'sitemap'});`)
 	one, err := New(script, assets)
 	if err != nil {
 		t.Fatal(err)

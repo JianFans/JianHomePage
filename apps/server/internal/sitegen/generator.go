@@ -132,16 +132,17 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 		Music   string `json:"music"`
 		Video   string `json:"video"`
 		Events  string `json:"events"`
+		Moments string `json:"moments"`
 		Robots  string `json:"robots"`
 		Sitemap string `json:"sitemap"`
 	}
 	if err := vm.ExportTo(promise.Result(), &document); err != nil {
 		return nil, errors.New("invalid renderer output")
 	}
-	if document.HTML == "" || document.Music == "" || document.Video == "" || document.Events == "" || len(document.HTML)+len(document.Music)+len(document.Video)+len(document.Events)+len(document.Robots)+len(document.Sitemap) > maxOutput {
+	if document.HTML == "" || document.Music == "" || document.Video == "" || document.Events == "" || document.Moments == "" || len(document.HTML)+len(document.Music)+len(document.Video)+len(document.Events)+len(document.Moments)+len(document.Robots)+len(document.Sitemap) > maxOutput {
 		return nil, errors.New("rendered document exceeds size limit")
 	}
-	files := make(map[string][]byte, len(generator.files)+6)
+	files := make(map[string][]byte, len(generator.files)+7)
 	for name, data := range generator.files {
 		files[name] = append([]byte(nil), data...)
 	}
@@ -149,6 +150,7 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 	files["music/index.html"] = []byte(document.Music)
 	files["video/index.html"] = []byte(document.Video)
 	files["events/index.html"] = []byte(document.Events)
+	files["moments/index.html"] = []byte(document.Moments)
 	files["robots.txt"] = []byte(document.Robots)
 	files["sitemap.xml"] = []byte(document.Sitemap)
 	return files, ctx.Err()

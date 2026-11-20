@@ -41,6 +41,13 @@ describe('公开首页', () => {
     expect(catalog.attributes('aria-label')).toMatch(/查看全部现场|View all live events/)
   })
 
+  it('在片段板块提供全部片段目录入口', async () => {
+    const wrapper = await mountSuspended(HomePage, { props: { linkMomentCatalog: true } })
+    const catalog = wrapper.get('[data-testid="moment-more"]')
+    expect(catalog.attributes('href')).toBe('/moments/')
+    expect(catalog.attributes('aria-label')).toMatch(/查看全部片段|View all moments/)
+  })
+
   it('按后台顺序渲染所有有内容的启用板块', async () => {
     const wrapper = await mountSuspended(HomePage)
 

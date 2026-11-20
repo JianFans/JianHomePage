@@ -7,6 +7,7 @@ import { renderRobots, renderSitemap } from '../utils/crawler-files'
 import { musicCatalogMetadata } from '../utils/music-catalog'
 import { videoCatalogMetadata } from '../utils/video-catalog'
 import { eventCatalogMetadata } from '../utils/event-catalog'
+import { momentCatalogMetadata } from '../utils/moments-catalog'
 
 declare const __SITE_ASSETS__: { script: string, styles: string[] }
 
@@ -31,7 +32,7 @@ async function render(raw: string) {
     canonical: snapshot.site.canonicalUrl,
   }
 
-  async function renderPage(page: 'home' | 'music' | 'video' | 'events', metadata: typeof homeMetadata) {
+  async function renderPage(page: 'home' | 'music' | 'video' | 'events' | 'moments', metadata: typeof homeMetadata) {
     const body = await renderToString(createSSRApp(App, { snapshot, page }))
     const title = escapeHTML(metadata.title)
     const description = escapeHTML(metadata.description)
@@ -61,6 +62,7 @@ async function render(raw: string) {
     music: await renderPage('music', musicCatalogMetadata(snapshot, locale)),
     video: await renderPage('video', videoCatalogMetadata(snapshot, locale)),
     events: await renderPage('events', eventCatalogMetadata(snapshot, locale)),
+    moments: await renderPage('moments', momentCatalogMetadata(snapshot, locale)),
     robots: renderRobots(snapshot.site.canonicalUrl),
     sitemap: renderSitemap(snapshot.site.canonicalUrl),
   }

@@ -5,6 +5,7 @@ import HomepageView from '../components/home/HomepageView.vue'
 import MusicCatalog from '../components/music/MusicCatalog.vue'
 import VideoCatalog from '../components/video/VideoCatalog.vue'
 import EventCatalog from '../components/event/EventCatalog.vue'
+import MomentCatalog from '../components/moment/MomentCatalog.vue'
 import AudioDock from '../components/player/AudioDock.vue'
 import { createAudioPlayerController } from '../utils/audio-player'
 import { detectLocale, readLocalePreference, writeLocalePreference } from '../composables/useLocale'
@@ -12,7 +13,7 @@ import type { SupportedLocale } from '../utils/localized'
 import en from '../locales/en'
 import zhCN from '../locales/zh-CN'
 
-const props = defineProps<{ snapshot: YujianContentSnapshot, page: 'home' | 'music' | 'video' | 'events' }>()
+const props = defineProps<{ snapshot: YujianContentSnapshot, page: 'home' | 'music' | 'video' | 'events' | 'moments' }>()
 const locale = ref<SupportedLocale>(props.snapshot.site.defaultLocale)
 const player = createAudioPlayerController()
 const notice = ref(false)
@@ -53,6 +54,12 @@ onMounted(() => {
       :locale="locale"
       @toggle-locale="selectLocale(locale === 'en' ? 'zh-CN' : 'en')"
     />
+    <MomentCatalog
+      v-else-if="page === 'moments'"
+      :snapshot="snapshot"
+      :locale="locale"
+      @toggle-locale="selectLocale(locale === 'en' ? 'zh-CN' : 'en')"
+    />
     <HomepageView
       v-else
       :snapshot="snapshot"
@@ -61,6 +68,7 @@ onMounted(() => {
       link-music-catalog
       link-video-catalog
       link-event-catalog
+      link-moment-catalog
       @toggle-locale="selectLocale(locale === 'en' ? 'zh-CN' : 'en')"
     />
   </main>
