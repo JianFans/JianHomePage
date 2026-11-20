@@ -16,10 +16,12 @@ import (
 	"github.com/dop251/goja"
 	weburl "github.com/nlnwa/whatwg-url/url"
 	"yujian.me/server/internal/contract"
+	"yujian.me/server/internal/ports"
 )
 
-const maxSnapshot = 8 << 20
-const maxOutput = 32 << 20
+const maxSnapshot = ports.MaxPublishSnapshotBytes
+const maxResourceFile = ports.MaxSiteArtifactFileBytes
+const maxOutput = ports.MaxSiteArtifactBytes
 
 // Generator retains immutable compiled code and assets, never a shared JS VM.
 type Generator struct {
@@ -30,7 +32,7 @@ type Generator struct {
 
 // New compiles trusted build output and validates embedded public file limits.
 func New(renderer []byte, assets fs.FS) (*Generator, error) {
-	if len(renderer) == 0 || len(renderer) > maxOutput || assets == nil {
+	if len(renderer) == 0 || len(renderer) > maxResourceFile || assets == nil {
 		return nil, errors.New("missing or oversized site resources")
 	}
 	program, err := goja.Compile("renderer.js", string(renderer), false)
@@ -56,7 +58,7 @@ func New(renderer []byte, assets fs.FS) (*Generator, error) {
 		if err != nil {
 			return err
 		}
-		if info.Size() > maxOutput || total+int(info.Size()) > 128<<20 {
+		if info.Size() > maxResourceFile || total+int(info.Size()) > 128<<20 {
 			return errors.New("public assets exceed size limit")
 		}
 		data, err := fs.ReadFile(assets, name)
@@ -96,6 +98,9 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 	if err := contract.NewValidator().Validate(raw); err != nil {
 		return nil, fmt.Errorf("invalid content snapshot: %w", err)
 	}
+	snapshotDigest := sha256.Sum256(raw)
+	snapshotPath := fmt.Sprintf("site/snapshot-%x.json", snapshotDigest)
+	snapshotURL := "/" + snapshotPath
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -116,7 +121,7 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 	if !ok {
 		return nil, errors.New("bundled renderer has no entry point")
 	}
-	result, err := render(goja.Undefined(), vm.ToValue(string(raw)))
+	result, err := render(goja.Undefined(), vm.ToValue(string(raw)), vm.ToValue(snapshotURL))
 	if err != nil {
 		return nil, fmt.Errorf("render public site: %w", err)
 	}
@@ -139,13 +144,33 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 	if err := vm.ExportTo(promise.Result(), &document); err != nil {
 		return nil, errors.New("invalid renderer output")
 	}
-	if document.HTML == "" || document.Music == "" || document.Video == "" || document.Events == "" || document.Moments == "" || len(document.HTML)+len(document.Music)+len(document.Video)+len(document.Events)+len(document.Moments)+len(document.Robots)+len(document.Sitemap) > maxOutput {
+	pages := []string{document.HTML, document.Music, document.Video, document.Events, document.Moments}
+	for _, page := range pages {
+		if page == "" {
+			return nil, errors.New("rendered document is incomplete")
+		}
+		if len(page) > maxResourceFile {
+			return nil, errors.New("rendered page exceeds Pages file size limit")
+		}
+	}
+	if _, exists := generator.files[snapshotPath]; exists {
+		return nil, errors.New("snapshot path conflicts with a public asset")
+	}
+	sizes := []int{len(document.Robots), len(document.Sitemap), len(raw)}
+	for _, page := range pages {
+		sizes = append(sizes, len(page))
+	}
+	for _, file := range generator.files {
+		sizes = append(sizes, len(file))
+	}
+	if !outputWithinLimit(sizes...) {
 		return nil, errors.New("rendered document exceeds size limit")
 	}
-	files := make(map[string][]byte, len(generator.files)+7)
+	files := make(map[string][]byte, len(generator.files)+8)
 	for name, data := range generator.files {
 		files[name] = append([]byte(nil), data...)
 	}
+	files[snapshotPath] = append([]byte(nil), raw...)
 	files["index.html"] = []byte(document.HTML)
 	files["music/index.html"] = []byte(document.Music)
 	files["video/index.html"] = []byte(document.Video)
@@ -154,6 +179,18 @@ func (generator *Generator) Generate(parent context.Context, raw []byte) (map[st
 	files["robots.txt"] = []byte(document.Robots)
 	files["sitemap.xml"] = []byte(document.Sitemap)
 	return files, ctx.Err()
+}
+
+// outputWithinLimit matches the aggregate uncompressed size accepted by Pages.
+func outputWithinLimit(sizes ...int) bool {
+	total := int64(0)
+	for _, size := range sizes {
+		if size < 0 || int64(size) > int64(maxOutput)-total {
+			return false
+		}
+		total += int64(size)
+	}
+	return true
 }
 
 // installBrowserPrimitives supplies only the URL fields and UTC date format
@@ -177,7 +214,7 @@ func installBrowserPrimitives(vm *goja.Runtime) error {
 	if err := vm.Set("__date", func(locale string, milliseconds float64, detailed bool) string {
 		value := time.UnixMilli(int64(milliseconds)).UTC()
 		if detailed && locale == "en" {
-			return value.Format("Jan 02, 2006 3:04 PM")
+			return value.Format("Jan 2, 2006, 3:04\u202fPM")
 		}
 		if detailed {
 			return fmt.Sprintf("%d年%d月%d日 %02d:%02d", value.Year(), value.Month(), value.Day(), value.Hour(), value.Minute())

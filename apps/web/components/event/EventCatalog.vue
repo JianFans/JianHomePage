@@ -154,7 +154,8 @@ function statusLabel(event: Event, upcoming: boolean) {
   .event-catalog { padding: calc(var(--header-height) + 2rem) 1rem 3rem; }
   .catalog-heading { margin-bottom: 1.75rem; }
   .catalog-heading h1 { font-size: 2rem; }
-  .event-list a { min-height: 6rem; grid-template-columns: minmax(0, 1fr) auto 2rem; gap: 0.75rem; }
+  .event-list a,
+  .event-list a.event-row--with-poster { min-height: 6rem; grid-template-columns: minmax(0, 1fr) auto 2rem; gap: 0.75rem; }
   .event-poster { display: none; }
   .event-status { grid-column: 2; grid-row: 1; }
   .event-list a > svg { grid-column: 3; grid-row: 1; }

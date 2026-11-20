@@ -91,15 +91,17 @@ function durationLabel(seconds: number) {
         :class="{ 'video-card--featured': index === 0 }"
         :aria-labelledby="`${video.id}-title`"
       >
-        <FallbackImage
-          class="video-poster"
-          :src="poster.src"
-          :alt="resolveLocalized(poster.alt, locale)"
-          width="1600"
-          height="900"
-          loading="lazy"
-          decoding="async"
-        />
+        <div class="video-poster-frame">
+          <FallbackImage
+            class="video-poster"
+            :src="poster.src"
+            :alt="resolveLocalized(poster.alt, locale)"
+            width="1600"
+            height="900"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
         <span class="video-scrim" />
         <div class="video-meta">
           <div>
@@ -148,15 +150,17 @@ function durationLabel(seconds: number) {
 .catalog-empty { padding-block: 2rem; border-top: 1px solid var(--color-border); color: var(--color-muted); }
 
 .video-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--color-border); }
-.video-card { position: relative; min-width: 0; aspect-ratio: 16 / 9; overflow: hidden; background: var(--color-surface); }
+.video-card { position: relative; min-width: 0; aspect-ratio: 16 / 9; background: var(--color-surface); }
 .video-card--featured { grid-column: 1 / -1; aspect-ratio: 16 / 7; }
-.video-poster, .video-scrim { position: absolute; inset: 0; width: 100%; height: 100%; }
-.video-poster { display: block; object-fit: cover; transition: transform var(--motion-slow) var(--motion-ease-out); }
+.video-poster-frame, .video-scrim { position: absolute; inset: 0; width: 100%; height: 100%; }
+.video-poster-frame { overflow: hidden; }
+.video-poster { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform var(--motion-slow) var(--motion-ease-out); }
 .video-scrim { background: linear-gradient(180deg, rgba(6, 8, 9, 0.12), rgba(6, 8, 9, 0.72)); pointer-events: none; }
-.video-meta { position: absolute; z-index: 1; right: 1rem; bottom: 1rem; left: 1rem; display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
+.video-meta { position: absolute; z-index: 3; right: 1rem; bottom: 1rem; left: 1rem; display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
 .video-meta h2 { margin: 0; font-size: 1.1rem; font-weight: 560; line-height: 1.35; }
 .video-meta span { display: inline-block; margin-top: 0.3rem; color: var(--color-muted); font-size: 0.75rem; }
 .video-meta :deep(.platform-links) { flex: 0 0 auto; }
+.video-card:focus-within { z-index: 3; }
 .video-card__open { position: absolute; z-index: 2; top: 0.75rem; right: 0.75rem; display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-bg) 72%, transparent); }
 .video-card__open svg { width: 1.15rem; height: 1.15rem; }
 .video-card:hover .video-poster, .video-card:focus-within .video-poster { transform: scale(1.018); }

@@ -7,6 +7,7 @@ test('从首页进入音乐目录，查看曲目平台并使用同一个试听�
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => { if (/hydration/i.test(message.text())) errors.push(message.text()) })
   await page.goto('/')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('yujian:locale'))).toBe('zh-CN')
   await page.getByRole('link', { name: '查看全部音乐' }).click()
   await expect(page).toHaveURL(/\/music\/$/)
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('全部音乐作品')

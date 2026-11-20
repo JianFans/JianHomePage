@@ -17,7 +17,7 @@ function escapeHTML(value: string) {
 }
 
 /** A closed, bundled entry point: snapshots are data and no modules or processes are loaded. */
-async function render(raw: string) {
+async function render(raw: string, snapshotURL: string) {
   const snapshot: YujianContentSnapshot = JSON.parse(raw)
   const locale = snapshot.site.defaultLocale
   const seo = snapshot.site.seo
@@ -25,14 +25,13 @@ async function render(raw: string) {
   const imageMeta = asset
     ? `<meta property="og:image" content="${escapeHTML(new URL(asset.src, snapshot.site.canonicalUrl).href)}"><meta property="og:image:alt" content="${escapeHTML(asset.alt[locale])}">`
     : ''
-  const data = JSON.stringify(snapshot).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e').replaceAll('&', '\\u0026')
   const homeMetadata = {
     title: seo.title[locale],
     description: seo.description[locale],
     canonical: snapshot.site.canonicalUrl,
   }
 
-  async function renderPage(page: 'home' | 'music' | 'video' | 'events' | 'moments', metadata: typeof homeMetadata) {
+  async function renderPage(page: 'home' | 'music' | 'video' | 'events' | 'moments', metadata: typeof homeMetadata, snapshotURL: string) {
     const body = await renderToString(createSSRApp(App, { snapshot, page }))
     const title = escapeHTML(metadata.title)
     const description = escapeHTML(metadata.description)
@@ -52,17 +51,17 @@ async function render(raw: string) {
       ...__SITE_ASSETS__.styles.map(path => `<link rel="stylesheet" href="${path}">`),
       structuredData,
       `</head><body><div id="app">${body}</div>`,
-      `<script type="application/json" id="yujian-snapshot" data-page="${page}">${data}</script>`,
+      `<script type="application/json" id="yujian-snapshot" data-page="${page}" data-src="${snapshotURL}"></script>`,
       `<script type="module" src="${__SITE_ASSETS__.script}"></script></body></html>`,
     ].join('')
   }
 
   return {
-    html: await renderPage('home', homeMetadata),
-    music: await renderPage('music', musicCatalogMetadata(snapshot, locale)),
-    video: await renderPage('video', videoCatalogMetadata(snapshot, locale)),
-    events: await renderPage('events', eventCatalogMetadata(snapshot, locale)),
-    moments: await renderPage('moments', momentCatalogMetadata(snapshot, locale)),
+    html: await renderPage('home', homeMetadata, snapshotURL),
+    music: await renderPage('music', musicCatalogMetadata(snapshot, locale), snapshotURL),
+    video: await renderPage('video', videoCatalogMetadata(snapshot, locale), snapshotURL),
+    events: await renderPage('events', eventCatalogMetadata(snapshot, locale), snapshotURL),
+    moments: await renderPage('moments', momentCatalogMetadata(snapshot, locale), snapshotURL),
     robots: renderRobots(snapshot.site.canonicalUrl),
     sitemap: renderSitemap(snapshot.site.canonicalUrl),
   }

@@ -1,9 +1,11 @@
 package sitegen
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
-	"github.com/dop251/goja"
+	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -11,8 +13,69 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/dop251/goja"
+
 	"yujian.me/server/internal/webassets"
 )
+
+// TestEnglishDetailedDateMatchesBrowserFormat preserves the browser's English date punctuation and spacing.
+func TestEnglishDetailedDateMatchesBrowserFormat(t *testing.T) {
+	vm := goja.New()
+	if err := installBrowserPrimitives(vm); err != nil {
+		t.Fatal(err)
+	}
+	instant := time.Date(2026, time.October, 9, 17, 4, 0, 0, time.UTC)
+	result, err := vm.RunString(fmt.Sprintf("__date('en', %d, true)", instant.UnixMilli()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := result.String(), "Oct 9, 2026, 5:04\u202fPM"; got != want {
+		t.Fatalf("date format = %q, want %q", got, want)
+	}
+}
+
+// TestGeneratedOutputBudgetCoversSharedSnapshot verifies one snapshot and five pages fit the shared artifact limit.
+func TestGeneratedOutputBudgetCoversSharedSnapshot(t *testing.T) {
+	sizes := []int{maxSnapshot}
+	for range 5 {
+		sizes = append(sizes, 10<<20)
+	}
+	if !outputWithinLimit(sizes...) {
+		t.Fatal("output budget does not cover one maximum snapshot and bounded rendered pages")
+	}
+	if outputWithinLimit(maxOutput + 1) {
+		t.Fatal("output budget accepted bytes beyond the Pages artifact limit")
+	}
+}
+
+// TestGenerateAllowsExpandedPagesBeyondFormerOutputLimit permits maximum snapshots without repeated HTML copies.
+func TestGenerateAllowsExpandedPagesBeyondFormerOutputLimit(t *testing.T) {
+	_, snapshot := embeddedGenerator(t)
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = append(raw, bytes.Repeat([]byte(" "), maxSnapshot-len(raw))...)
+	const pageBytes = 7 << 20
+	script := []byte(fmt.Sprintf(`const page='a'.repeat(%d);globalThis.__render=(raw,url)=>Promise.resolve({html:'<script data-src="'+url+'"></script>'+page,music:page,video:page,events:page,moments:page,robots:'',sitemap:''});`, pageBytes))
+	generator, err := New(script, fstest.MapFS{"site/client.js": &fstest.MapFile{Data: []byte("export{}")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := generator.Generate(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("generate pages larger than the former output limit: %v", err)
+	}
+	wantHomepageSize := pageBytes + len(`<script data-src="/site/snapshot-`) + 64 + len(`.json"></script>`)
+	if len(files["index.html"]) != wantHomepageSize {
+		t.Fatalf("homepage size = %d, want %d", len(files["index.html"]), wantHomepageSize)
+	}
+	digest := sha256.Sum256(raw)
+	snapshotPath := fmt.Sprintf("site/snapshot-%x.json", digest)
+	if !bytes.Equal(files[snapshotPath], raw) {
+		t.Fatalf("shared snapshot was not emitted once at %q", snapshotPath)
+	}
+}
 
 // TestEmbeddedVueRendersSnapshotWithoutNode exercises the real bundled Vue
 // renderer and verifies a later snapshot cannot reuse stale rendered content.
@@ -38,6 +101,16 @@ func TestEmbeddedVueRendersSnapshotWithoutNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := string(files["index.html"])
+	digest := sha256.Sum256(raw)
+	snapshotURL := fmt.Sprintf("/site/snapshot-%x.json", digest)
+	if !bytes.Equal(files[strings.TrimPrefix(snapshotURL, "/")], raw) {
+		t.Fatal("generated pages do not share the exact immutable snapshot")
+	}
+	for _, path := range []string{"index.html", "music/index.html", "video/index.html", "events/index.html", "moments/index.html"} {
+		if !strings.Contains(string(files[path]), `data-src="`+snapshotURL+`"`) {
+			t.Errorf("%s does not reference the shared static snapshot", path)
+		}
+	}
 	for _, fragment := range []string{"<!doctype html>", "遇健我", "王子健", `id="music"`, `id="video"`, `application/ld+json`, `rel="canonical"`, `id="yujian-snapshot"`} {
 		if !strings.Contains(html, fragment) {
 			t.Errorf("rendered page missing %q", fragment)
@@ -171,8 +244,8 @@ func TestInitialContentRendersWithoutMedia(t *testing.T) {
 	}
 }
 
-// TestGeneratedHTMLPreservesDataWithoutExecutableInjection distinguishes safe
-// display escaping from lossless JSON payload escaping during hydration.
+// TestGeneratedHTMLPreservesDataWithoutExecutableInjection keeps hostile values
+// out of HTML while preserving the immutable JSON snapshot byte for byte.
 func TestGeneratedHTMLPreservesDataWithoutExecutableInjection(t *testing.T) {
 	generator, snapshot := embeddedGenerator(t)
 	malicious := `</script><script>alert("x")</script>`
@@ -182,23 +255,27 @@ func TestGeneratedHTMLPreservesDataWithoutExecutableInjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	digest := sha256.Sum256(raw)
+	snapshotURL := fmt.Sprintf("/site/snapshot-%x.json", digest)
+	snapshotPath := strings.TrimPrefix(snapshotURL, "/")
+	if !bytes.Equal(files[snapshotPath], raw) {
+		t.Fatal("shared snapshot payload was not preserved as a static resource")
+	}
 	for path, page := range map[string]string{"index.html": "home", "music/index.html": "music", "video/index.html": "video", "events/index.html": "events", "moments/index.html": "moments"} {
 		html := string(files[path])
-		if strings.Contains(html, malicious) || !strings.Contains(html, `&lt;/script&gt;`) || !strings.Contains(html, `\u003c/script\u003e`) {
+		if strings.Contains(html, malicious) || !strings.Contains(html, `&lt;/script&gt;`) || !strings.Contains(html, `data-src="`+snapshotURL+`"`) {
 			t.Fatalf("content escaped incorrectly in %s", path)
 		}
-		_, payload, found := strings.Cut(html, `<script type="application/json" id="yujian-snapshot" data-page="`+page+`">`)
-		if !found {
-			t.Fatalf("missing hydration payload in %s", path)
+		if !strings.Contains(html, `id="yujian-snapshot" data-page="`+page+`" data-src="`+snapshotURL+`"></script>`) {
+			t.Fatalf("missing shared snapshot reference in %s", path)
 		}
-		payload, _, _ = strings.Cut(payload, "</script>")
-		var restored map[string]any
-		if err := json.Unmarshal([]byte(payload), &restored); err != nil {
-			t.Fatal(err)
-		}
-		if restored["site"].(map[string]any)["brand"].(map[string]any)["zh-CN"] != malicious {
-			t.Fatalf("escaped payload changed content in %s", path)
-		}
+	}
+	var restored map[string]any
+	if err := json.Unmarshal(files[snapshotPath], &restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored["site"].(map[string]any)["brand"].(map[string]any)["zh-CN"] != malicious {
+		t.Fatal("shared external snapshot changed content")
 	}
 }
 
@@ -269,13 +346,14 @@ func TestRendererBoundsAndUnavailableCapabilities(t *testing.T) {
 	raw, _ := json.Marshal(snapshot)
 	assets := fstest.MapFS{"site/client.js": &fstest.MapFile{Data: []byte("export{}")}}
 	for name, script := range map[string]string{
-		"pending":   `globalThis.__render = () => new Promise(() => {});`,
-		"rejected":  `globalThis.__render = () => Promise.reject(new Error('invalid'));`,
-		"empty":     `globalThis.__render = () => Promise.resolve({html:'',robots:'',sitemap:''});`,
-		"oversized": `globalThis.__render = () => Promise.resolve({html:'ok',music:'ok',video:'ok',events:'ok',moments:'a'.repeat(33554432),robots:'',sitemap:''});`,
-		"noentry":   `globalThis.x=1;`,
-		"network":   `globalThis.__render = () => Promise.resolve(fetch('https://example.test'));`,
-		"process":   `globalThis.__render = () => Promise.resolve(require('child_process'));`,
+		"pending":             `globalThis.__render = () => new Promise(() => {});`,
+		"rejected":            `globalThis.__render = () => Promise.reject(new Error('invalid'));`,
+		"empty":               `globalThis.__render = () => Promise.resolve({html:'',robots:'',sitemap:''});`,
+		"page-oversized":      fmt.Sprintf(`const page='a'.repeat(%d);globalThis.__render=()=>Promise.resolve({html:page,music:'ok',video:'ok',events:'ok',moments:'ok',robots:'',sitemap:''});`, maxResourceFile+1),
+		"aggregate-oversized": `const page='a'.repeat(13*1024*1024);globalThis.__render=()=>Promise.resolve({html:page,music:page,video:page,events:page,moments:page,robots:'',sitemap:''});`,
+		"noentry":             `globalThis.x=1;`,
+		"network":             `globalThis.__render = () => Promise.resolve(fetch('https://example.test'));`,
+		"process":             `globalThis.__render = () => Promise.resolve(require('child_process'));`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			generator, err := New([]byte(script), assets)
@@ -286,6 +364,9 @@ func TestRendererBoundsAndUnavailableCapabilities(t *testing.T) {
 				t.Fatal("accepted invalid renderer")
 			}
 		})
+	}
+	if !outputWithinLimit(maxOutput) || outputWithinLimit(maxOutput+1) || outputWithinLimit(-1) {
+		t.Fatal("generated output limit did not accept its boundary or reject invalid sizes")
 	}
 	generator, err := New([]byte(`while(true){}`), assets)
 	if err != nil {
