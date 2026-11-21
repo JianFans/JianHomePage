@@ -2,6 +2,28 @@ import { expect, test } from '@playwright/test'
 
 test.use({ locale: 'zh-CN' })
 
+test('静态快照首次加载失败后可重试并只水合一次', async ({ page }) => {
+  test.skip(!process.env.YUJIAN_EMBEDDED_SITE, 'Only applies to the Go-generated distribution')
+  let attempts = 0
+  await page.context().route('**/site/snapshot-*.json', async (route) => {
+    attempts++
+    if (attempts === 1) {
+      await route.fulfill({ status: 503, body: 'temporarily unavailable' })
+      return
+    }
+    await route.continue()
+  })
+
+  await page.goto('/')
+  const alert = page.getByRole('alert')
+  await expect(alert).toContainText('页面内容加载失败')
+  await alert.getByRole('button', { name: '重试' }).click()
+  await expect(page.getByRole('button', { name: 'Switch to English' })).toBeVisible()
+  await expect(page.getByTestId('audio-dock-host')).toHaveCount(1)
+  await expect(alert).toBeHidden()
+  expect(attempts).toBe(2)
+})
+
 test('Go 生成页面正确 hydration，保留语言偏好且没有运行时内容 API', async ({ page }) => {
   test.skip(!process.env.YUJIAN_EMBEDDED_SITE, 'Only applies to the Go-generated distribution')
   const failures: string[] = []

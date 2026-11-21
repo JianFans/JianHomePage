@@ -324,7 +324,7 @@ test.describe('移动首页', () => {
     expect(menuBounds.posterOverflow).toBe('hidden')
     expect(menuBounds.menuLinkCount).toBe(5)
     expect(menuBounds.menuTop).toBeLessThan(menuBounds.cardTop)
-    await page.route('https://example.com/platform-5', route => route.fulfill({ status: 200, body: 'opened' }))
+    await page.context().route('https://example.com/platform-5', route => route.fulfill({ status: 200, body: 'opened' }))
     const menuPopupPromise = page.context().waitForEvent('page')
     await page.locator('.video-card').first().locator('.platform-more__menu a').last().click()
     const menuPopup = await menuPopupPromise

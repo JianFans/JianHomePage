@@ -65,6 +65,38 @@ a {
   color: var(--color-bg);
 }
 
+.snapshot-hydration-error {
+  position: fixed;
+  z-index: 1000;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  max-width: calc(100vw - 2rem);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tool);
+  background: var(--color-surface-raised);
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.3);
+  color: var(--color-text);
+}
+
+.snapshot-hydration-error button {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tool);
+  background: var(--color-surface);
+  color: inherit;
+  cursor: pointer;
+}
+
+.snapshot-hydration-error button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
