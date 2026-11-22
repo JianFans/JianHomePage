@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Asset, Moment } from '@yujian/schema'
-import { Images } from '@lucide/vue'
+import { Images, List } from '@lucide/vue'
 import { computed } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
@@ -10,6 +10,7 @@ const props = defineProps<{
   items: Moment[]
   assets: Asset[]
   locale: SupportedLocale
+  catalogHref?: string
 }>()
 
 const assetById = computed(() => new Map(props.assets.map(asset => [asset.id, asset])))
@@ -32,11 +33,18 @@ const heading = computed(() => props.locale === 'en' ? 'Moments' : '片段')
     class="moment-section"
     :aria-label="heading"
   >
-    <div
-      class="moment-heading"
-      aria-hidden="true"
-    >
-      <Images />
+    <div class="moment-heading">
+      <Images aria-hidden="true" />
+      <a
+        v-if="catalogHref"
+        class="moment-more"
+        data-testid="moment-more"
+        :href="catalogHref"
+        :aria-label="locale === 'en' ? 'View all moments' : '查看全部片段'"
+        :title="locale === 'en' ? 'View all moments' : '查看全部片段'"
+      >
+        <List aria-hidden="true" />
+      </a>
     </div>
     <div class="moment-grid">
       <figure
@@ -75,12 +83,11 @@ const heading = computed(() => props.locale === 'en' ? 'Moments' : '片段')
 }
 
 .moment-heading {
-  display: grid;
-  width: 2.75rem;
-  height: 2.75rem;
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 1rem;
-  place-items: center;
-  border: 1px solid var(--color-border);
   color: var(--color-muted);
 }
 
@@ -89,6 +96,9 @@ const heading = computed(() => props.locale === 'en' ? 'Moments' : '片段')
   height: 1.1rem;
   stroke-width: 1.6;
 }
+
+.moment-more { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border: 1px solid var(--color-border); color: var(--color-muted); }
+.moment-more:hover, .moment-more:focus-visible { border-color: var(--color-accent); color: var(--color-text); }
 
 .moment-grid {
   display: grid;

@@ -1,14 +1,37 @@
 <script setup lang="ts">
-import { ArrowUp, CalendarDays, Languages, Music2, Video } from '@lucide/vue'
+import { ArrowUp, CalendarDays, Images, Languages, Music2, Video } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import IconButton from '../ui/IconButton.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   brand: string
   artistName: string
   locale: SupportedLocale
-}>()
+  homeHref?: string
+  musicHref?: string
+  musicCurrent?: boolean
+  videoHref?: string
+  videoCurrent?: boolean
+  eventsHref?: string
+  eventsCurrent?: boolean
+  momentsHref?: string
+  momentsCurrent?: boolean
+  showVideo?: boolean
+  showEvents?: boolean
+}>(), {
+  homeHref: '',
+  musicHref: '',
+  videoHref: '',
+  eventsHref: '',
+  momentsHref: '/moments/',
+  showVideo: true,
+  showEvents: true,
+  musicCurrent: false,
+  videoCurrent: false,
+  eventsCurrent: false,
+  momentsCurrent: false,
+})
 
 const emit = defineEmits<{
   toggleLocale: []
@@ -33,6 +56,7 @@ const labels = computed(() => props.locale === 'en'
       music: 'Music',
       video: 'Video',
       events: 'Live',
+      moments: 'Moments',
       language: '切换为中文',
       navigation: 'Primary navigation',
       top: 'Back to top',
@@ -42,6 +66,7 @@ const labels = computed(() => props.locale === 'en'
       music: '音乐',
       video: '影像',
       events: '现场',
+      moments: '片段',
       language: 'Switch to English',
       navigation: '主导航',
       top: '返回顶部',
@@ -53,7 +78,7 @@ const labels = computed(() => props.locale === 'en'
     <a
       ref="identity"
       class="site-identity"
-      href="#top"
+      :href="homeHref || '#top'"
       :title="labels.home"
     >
       <span>{{ brand }}</span>
@@ -62,25 +87,42 @@ const labels = computed(() => props.locale === 'en'
 
     <nav :aria-label="labels.navigation">
       <a
-        href="#music"
+        :href="musicHref || '#music'"
+        :aria-current="musicCurrent ? 'page' : undefined"
         :aria-label="labels.music"
         :title="labels.music"
       >
         <Music2 aria-hidden="true" />
       </a>
       <a
-        href="#video"
+        v-if="showVideo"
+        :href="videoHref || `${homeHref || ''}#video`"
+        :aria-current="videoCurrent ? 'page' : undefined"
         :aria-label="labels.video"
         :title="labels.video"
       >
         <Video aria-hidden="true" />
       </a>
       <a
-        href="#event"
+        v-if="showEvents"
+        class="site-header__events"
+        :class="{ 'site-header__events--current': eventsCurrent }"
+        :href="eventsHref || `${homeHref || ''}#event`"
+        :aria-current="eventsCurrent ? 'page' : undefined"
         :aria-label="labels.events"
         :title="labels.events"
       >
         <CalendarDays aria-hidden="true" />
+      </a>
+      <a
+        class="site-header__moments"
+        :class="{ 'site-header__moments--current': momentsCurrent }"
+        :href="momentsHref"
+        :aria-current="momentsCurrent ? 'page' : undefined"
+        :aria-label="labels.moments"
+        :title="labels.moments"
+      >
+        <Images aria-hidden="true" />
       </a>
       <IconButton
         :label="labels.language"
@@ -157,7 +199,8 @@ nav > a {
 }
 
 nav > a:hover,
-nav > a:focus-visible {
+nav > a:focus-visible,
+nav > a[aria-current="page"] {
   border-color: var(--color-border);
   color: var(--color-text);
 }
@@ -179,7 +222,8 @@ nav > a svg {
   }
 
   .site-identity small,
-  nav > a:nth-child(3) {
+  .site-header__events:not(.site-header__events--current),
+  .site-header__moments:not(.site-header__moments--current) {
     display: none;
   }
 }

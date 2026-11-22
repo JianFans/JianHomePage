@@ -46,7 +46,14 @@ type SnapshotStore interface {
 	ReadSnapshot(context.Context, string) (io.ReadCloser, error)
 }
 
+// MaxPublishSnapshotBytes matches the immutable snapshot storage contract.
 const MaxPublishSnapshotBytes = 8 * 1024 * 1024
+
+// MaxSiteArtifactBytes matches Pages' uncompressed deployment artifact budget.
+const MaxSiteArtifactBytes = 64 * 1024 * 1024
+
+// MaxSiteArtifactFileBytes matches Pages' maximum size for one deployed file.
+const MaxSiteArtifactFileBytes = 25 * 1024 * 1024
 
 type BuildRequest struct {
 	IdempotencyKey   string `json:"-"`

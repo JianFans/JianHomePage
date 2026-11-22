@@ -19,7 +19,7 @@ const server = createServer(async (request, response) => {
   try {
     const path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname)
     const base = path.startsWith('/media/') ? mediaRoot : directory
-    const file = resolve(base, `.${path === '/' ? '/index.html' : path}`)
+    const file = resolve(base, `.${path.endsWith('/') ? `${path}index.html` : path}`)
     if (!file.startsWith(base + sep) || !(await stat(file)).isFile()) throw new Error('Not found')
     response.setHeader('Content-Type', mime[extname(file)] || 'application/octet-stream')
     response.end(await readFile(file))

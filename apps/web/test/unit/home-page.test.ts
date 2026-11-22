@@ -12,16 +12,40 @@ describe('公开首页', () => {
     )
   })
 
-  it('按首页配置渲染最新音乐作品', async () => {
-    const wrapper = await mountSuspended(HomePage)
+  it('保留平台入口并增加前往音乐目录的入口', async () => {
+    const wrapper = await mountSuspended(HomePage, { props: { linkMusicCatalog: true } })
 
     expect(wrapper.find('#music').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid="music-card"]')).toHaveLength(5)
-    const more = wrapper.get('[data-testid="music-more"]')
-    expect(more.attributes('aria-label')).toMatch(/查看全部音乐|View all music/)
-    expect(more.attributes('href')).toBe(
+    const catalog = wrapper.get('[data-testid="music-more"]')
+    expect(catalog.attributes('aria-label')).toMatch(/查看全部音乐|View all music/)
+    expect(catalog.attributes('href')).toBe('/music/')
+    const external = wrapper.get('[data-testid="music-external"]')
+    expect(external.attributes('aria-label')).toMatch(/外部音乐链接|External music link/)
+    expect(external.attributes('href')).toBe(
       'https://y.qq.com/n/ryqq_v2/singer/0036zydh4H05PB',
     )
+  })
+
+  it('在影像板块提供全部作品目录入口', async () => {
+    const wrapper = await mountSuspended(HomePage, { props: { linkVideoCatalog: true } })
+    const catalog = wrapper.get('[data-testid="video-more"]')
+    expect(catalog.attributes('href')).toBe('/video/')
+    expect(catalog.attributes('aria-label')).toMatch(/查看全部影像|View all videos/)
+  })
+
+  it('在现场板块提供全部演出目录入口', async () => {
+    const wrapper = await mountSuspended(HomePage, { props: { linkEventCatalog: true } })
+    const catalog = wrapper.get('[data-testid="event-more"]')
+    expect(catalog.attributes('href')).toBe('/events/')
+    expect(catalog.attributes('aria-label')).toMatch(/查看全部现场|View all live events/)
+  })
+
+  it('在片段板块提供全部片段目录入口', async () => {
+    const wrapper = await mountSuspended(HomePage, { props: { linkMomentCatalog: true } })
+    const catalog = wrapper.get('[data-testid="moment-more"]')
+    expect(catalog.attributes('href')).toBe('/moments/')
+    expect(catalog.attributes('aria-label')).toMatch(/查看全部片段|View all moments/)
   })
 
   it('按后台顺序渲染所有有内容的启用板块', async () => {

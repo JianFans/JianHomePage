@@ -10,9 +10,12 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"yujian.me/server/internal/ports"
 )
 
-const maxArtifactBytes = 64 << 20
+const maxArtifactBytes = ports.MaxSiteArtifactBytes
+const maxArtifactFileBytes = ports.MaxSiteArtifactFileBytes
 const maxArtifactFiles = 10000
 
 // safePath requires one canonical relative POSIX name to prevent archive traversal and aliases.
@@ -39,7 +42,7 @@ func prepareArchive(ctx context.Context, files map[string][]byte) ([]byte, error
 				return nil, errors.New("conflicting Pages artifact paths")
 			}
 		}
-		if len(data) > maxArtifactBytes-total {
+		if len(data) > maxArtifactFileBytes || len(data) > maxArtifactBytes-total {
 			return nil, errors.New("Pages artifact exceeds size limit")
 		}
 		total += len(data)
