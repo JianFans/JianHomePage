@@ -108,7 +108,6 @@ function statusLabel(event: Event, upcoming: boolean) {
           :class="{ 'event-row--with-poster': poster }"
           target="_blank"
           rel="noopener noreferrer"
-          :aria-label="`${labels.open}: ${resolveLocalized(event.title, locale)}`"
         >
           <FallbackImage
             v-if="poster"

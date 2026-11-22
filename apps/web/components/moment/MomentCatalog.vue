@@ -26,12 +26,14 @@ const moments = computed(() => props.snapshot.moments.flatMap((moment) => {
   const asset = assets.value.get(moment.assetId)
   if (!asset) return []
   const target = moment.target
+  const alt = resolveLocalized(asset.alt, props.locale)
+  const caption = moment.caption ? resolveLocalized(moment.caption, props.locale) : ''
   const href = !target
     ? null
     : target.kind === 'external'
       ? target.link.url
       : internalContentUrl(props.snapshot, target.contentId)
-  return [{ moment, asset, href, external: target?.kind === 'external' }]
+  return [{ moment, asset, href, external: target?.kind === 'external', alt: caption && caption === alt ? '' : alt }]
 }))
 
 function momentLabel(moment: Moment) {
@@ -53,7 +55,7 @@ function momentLabel(moment: Moment) {
     :show-video="homeSections.some(section => section.type === 'video')"
     @toggle-locale="emit('toggleLocale')"
   />
-  <main
+  <section
     class="moment-catalog"
     aria-labelledby="moment-catalog-title"
   >
@@ -77,7 +79,7 @@ function momentLabel(moment: Moment) {
       class="moment-grid"
     >
       <li
-        v-for="{ moment, asset, href, external } in moments"
+        v-for="{ moment, asset, href, external, alt } in moments"
         :id="moment.id"
         :key="moment.id"
         data-testid="moment-card"
@@ -93,7 +95,7 @@ function momentLabel(moment: Moment) {
           >
             <FallbackImage
               :src="asset.src"
-              :alt="resolveLocalized(asset.alt, locale)"
+              :alt="alt"
               :width="asset.width"
               :height="asset.height"
               loading="lazy"
@@ -106,7 +108,7 @@ function momentLabel(moment: Moment) {
         </figure>
       </li>
     </ol>
-  </main>
+  </section>
   <SiteFooter
     :brand="brand"
     :canonical-url="snapshot.site.canonicalUrl"

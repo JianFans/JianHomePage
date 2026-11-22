@@ -54,6 +54,17 @@ test('导航、播放、平台和语言操作都可由键盘访问', async ({ pa
   }
 })
 
+test('所有公开目录都提供唯一主内容地标并通过 axe 扫描', async ({ page }) => {
+  for (const path of ['/music/', '/video/', '/events/', '/moments/']) {
+    await page.goto(path)
+    await expect(page.getByRole('main')).toHaveCount(1)
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    const results = await new AxeBuilder({ page }).analyze()
+    expect(results.violations, path).toEqual([])
+  }
+})
+
 test('所有图标操作具有可访问名称，视频出现时提供暂停控制', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
