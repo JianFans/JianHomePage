@@ -14,7 +14,7 @@ async function readYaml(path) {
 }
 
 function isVersionAtLeast(version, minimum) {
-  const actual = version.split('.').map(Number)
+  const actual = version.replace(/^[^\d]*/, '').split('.').map(Number)
   const required = minimum.split('.').map(Number)
   for (let index = 0; index < required.length; index++) {
     if ((actual[index] || 0) !== required[index]) return (actual[index] || 0) > required[index]
@@ -237,6 +237,9 @@ test('工作区覆盖使用已修复安全公告的传递依赖版本', async ()
     'node-forge': '1.4.3',
     'serialize-javascript': '7.1.3',
     '@vercel/nft': '1.11.11',
+    'js-beautify>glob': '14.0.2',
+    'js-beautify>editorconfig': '4.0.1',
+    'archiver>readdir-glob': '4.0.0',
   }
 
   for (const [name, minimum] of Object.entries(minimumVersions)) {
