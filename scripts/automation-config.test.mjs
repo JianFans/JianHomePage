@@ -309,3 +309,13 @@ test('Go API 镜像采用多阶段非 root 构建并排除无关文件', async (
     assert.ok(dockerignore.split(/\r?\n/).includes(ignored), `Docker 必须排除 ${ignored}`)
   }
 })
+
+test('Docker 与 Go 模块使用同一补丁版本的工具链', async () => {
+  const goMod = await readText('apps/server/go.mod')
+  const dockerfile = await readText('Dockerfile')
+  const moduleVersion = goMod.match(/^go (\d+\.\d+\.\d+)$/m)?.[1]
+  const imageVersion = dockerfile.match(/^FROM golang:(\d+\.\d+\.\d+)-[^\s]+ AS build$/m)?.[1]
+
+  assert.ok(moduleVersion, 'go.mod 必须声明完整 Go 版本')
+  assert.equal(imageVersion, moduleVersion)
+})
