@@ -79,6 +79,15 @@ test.describe('桌面首页', () => {
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://yujian.me/events/')
     await expect(page.locator('[data-testid="event-card"] a').first()).toHaveAttribute('rel', 'noopener noreferrer')
 
+    await page.getByRole('button', { name: /即将举行|Upcoming/ }).click()
+    await expect(page.locator('[data-testid="event-card"]')).toHaveCount(2)
+    await page.getByRole('button', { name: /往期与取消|Past & cancelled/ }).click()
+    await expect(page.locator('[data-testid="event-card"]')).toHaveCount(0)
+    await expect(page.locator('.event-catalog').getByRole('status'))
+      .toHaveText(/此分类下暂无现场信息|No events in this category/)
+    await page.getByRole('button', { name: /全部|All/ }).click()
+    await expect(page.locator('[data-testid="event-card"]')).toHaveCount(2)
+
     if (await page.locator('html').getAttribute('lang') !== 'en') {
       await page.getByRole('button', { name: /Switch to English|切换为中文/ }).click()
     }

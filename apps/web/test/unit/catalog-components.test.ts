@@ -109,4 +109,32 @@ describe('目录页面组件', () => {
     expect(wrapper.get('time').attributes('datetime')).toBeTruthy()
     expect(wrapper.find('header a[href="/video/"]').exists()).toBe(false)
   })
+
+  it('按快照时间筛选即将举行、往期及已取消场次', async () => {
+    const snapshot = structuredClone(source)
+    snapshot.generatedAt = '2027-01-01T00:00:00Z'
+    snapshot.events = [
+      { ...snapshot.events[0]!, id: 'event_upcoming', dateTime: '2027-02-01T12:00:00Z', status: 'scheduled' },
+      { ...snapshot.events[0]!, id: 'event_past', dateTime: '2026-12-01T12:00:00Z', status: 'scheduled' },
+      { ...snapshot.events[0]!, id: 'event_cancelled', dateTime: '2027-03-01T12:00:00Z', status: 'cancelled' },
+    ]
+    const wrapper = mount(EventCatalog, { props: { snapshot, locale: 'en' } })
+
+    expect(wrapper.findAll('[data-testid="event-card"]')).toHaveLength(3)
+    await wrapper.get('[aria-label="Filter events"] [aria-label="Upcoming"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="event-card"]').map(card => card.attributes('id'))).toEqual(['event_upcoming'])
+    expect(wrapper.get('[aria-label="Filter events"] [aria-label="Upcoming"]').attributes('aria-pressed')).toBe('true')
+
+    await wrapper.get('[aria-label="Filter events"] [aria-label="Past & cancelled"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="event-card"]').map(card => card.attributes('id'))).toEqual(['event_cancelled', 'event_past'])
+  })
+
+  it('没有现场数据时保留空状态且隐藏筛选器', () => {
+    const snapshot = structuredClone(source)
+    snapshot.events = []
+    const wrapper = mount(EventCatalog, { props: { snapshot, locale: 'zh-CN' } })
+
+    expect(wrapper.get('[role="status"]').text()).toBe('暂无现场信息')
+    expect(wrapper.find('[aria-label="筛选现场"]').exists()).toBe(false)
+  })
 })

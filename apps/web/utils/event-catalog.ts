@@ -8,6 +8,11 @@ export const eventCatalogLabels = {
   'zh-CN': {
     heading: '全部现场',
     empty: '暂无现场信息',
+    filteredEmpty: '此分类下暂无现场信息',
+    filter: '筛选现场',
+    all: '全部',
+    upcomingFilter: '即将举行',
+    pastFilter: '往期与取消',
     open: '打开现场详情',
     upcoming: '即将举行',
     soldOut: '已售罄',
@@ -17,6 +22,11 @@ export const eventCatalogLabels = {
   en: {
     heading: 'Live events',
     empty: 'No live events yet',
+    filteredEmpty: 'No events in this category',
+    filter: 'Filter events',
+    all: 'All',
+    upcomingFilter: 'Upcoming',
+    pastFilter: 'Past & cancelled',
     open: 'Open event details',
     upcoming: 'Upcoming',
     soldOut: 'Sold out',

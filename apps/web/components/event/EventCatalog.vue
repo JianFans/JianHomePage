@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Event, YujianContentSnapshot } from '@yujian/schema'
 import { ArrowUpRight, CalendarDays } from '@lucide/vue'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { SupportedLocale } from '../../utils/localized'
 import { resolveLocalized } from '../../utils/localized'
 import { EVENT_CATALOG_PATH, eventCatalogLabels, orderEvents } from '../../utils/event-catalog'
@@ -22,11 +22,22 @@ const artistName = computed(() => resolveLocalized(props.snapshot.site.artistNam
 const copyrightYear = computed(() => new Date(props.snapshot.generatedAt).getUTCFullYear())
 const homeSections = computed(() => resolveHomepageSections(props.snapshot, props.locale))
 const assets = computed(() => new Map(props.snapshot.assets.map(asset => [asset.id, asset])))
-const events = computed(() => orderEvents(props.snapshot).map(event => ({
+const eventFilter = ref<'all' | 'upcoming' | 'past'>('all')
+const allEvents = computed(() => orderEvents(props.snapshot).map(event => ({
   event,
   poster: event.posterAssetId ? assets.value.get(event.posterAssetId) : undefined,
   upcoming: event.status !== 'cancelled' && Date.parse(event.dateTime) > Date.parse(props.snapshot.generatedAt),
 })))
+const events = computed(() => allEvents.value.filter(({ upcoming }) => (
+  eventFilter.value === 'all'
+  || (eventFilter.value === 'upcoming' && upcoming)
+  || (eventFilter.value === 'past' && !upcoming)
+)))
+const eventFilters = computed(() => [
+  { id: 'all' as const, label: labels.value.all },
+  { id: 'upcoming' as const, label: labels.value.upcomingFilter },
+  { id: 'past' as const, label: labels.value.pastFilter },
+])
 const dateFormatter = computed(() => new Intl.DateTimeFormat(
   props.locale === 'en' ? 'en' : 'zh-CN',
   { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' },
@@ -65,14 +76,25 @@ function statusLabel(event: Event, upcoming: boolean) {
         </h1>
       </div>
     </header>
-    <p
-      v-if="!events.length"
-      class="catalog-empty"
+    <div
+      v-if="allEvents.length"
+      class="event-filters"
+      role="group"
+      :aria-label="labels.filter"
     >
-      {{ labels.empty }}
-    </p>
+      <button
+        v-for="filter in eventFilters"
+        :key="filter.id"
+        type="button"
+        :aria-label="filter.label"
+        :aria-pressed="eventFilter === filter.id"
+        @click="eventFilter = filter.id"
+      >
+        {{ filter.label }}
+      </button>
+    </div>
     <ol
-      v-else
+      v-if="events.length"
       class="event-list"
     >
       <li
@@ -111,6 +133,13 @@ function statusLabel(event: Event, upcoming: boolean) {
         </a>
       </li>
     </ol>
+    <p
+      v-else
+      class="catalog-empty"
+      role="status"
+    >
+      {{ allEvents.length ? labels.filteredEmpty : labels.empty }}
+    </p>
   </section>
   <SiteFooter
     :brand="brand"
@@ -134,6 +163,10 @@ function statusLabel(event: Event, upcoming: boolean) {
 .catalog-heading p { margin: 0 0 0.3rem; color: var(--color-accent); }
 .catalog-heading h1 { margin: 0; font-size: 2.75rem; font-weight: 620; line-height: 1.15; }
 .catalog-empty { padding-block: 2rem; border-top: 1px solid var(--color-border); color: var(--color-muted); }
+.event-filters { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.25rem; }
+.event-filters button { min-height: 2.75rem; padding: 0.45rem 0.8rem; border: 1px solid var(--color-border); border-radius: var(--radius-tool); background: var(--color-surface); color: var(--color-muted); cursor: pointer; }
+.event-filters button[aria-pressed="true"] { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface)); color: var(--color-text); }
+.event-filters button:hover { border-color: var(--color-accent); color: var(--color-text); }
 .event-list { padding: 0; margin: 0; border-top: 1px solid var(--color-border); list-style: none; }
 .event-list li { border-bottom: 1px solid var(--color-border); }
 .event-list a { display: grid; min-height: 7rem; grid-template-columns: minmax(0, 1fr) auto 2.75rem; align-items: center; gap: 1.25rem; color: inherit; text-decoration: none; }
