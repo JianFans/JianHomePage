@@ -96,7 +96,7 @@ test('各模块素材字段保持可访问名称，键盘关闭选择器后恢�
   const trigger = page.getByTestId('moment-asset').locator('..').getByTestId('asset-picker-open')
   await trigger.focus()
   await page.keyboard.press('Enter')
-  await expect(page.getByTestId('dialog-close')).toBeFocused()
+  await expect(page.getByRole('dialog').getByTestId('dialog-close')).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(trigger).toBeFocused()
