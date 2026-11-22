@@ -13,6 +13,15 @@ async function readYaml(path) {
   return parse(await readText(path))
 }
 
+function isVersionAtLeast(version, minimum) {
+  const actual = version.split('.').map(Number)
+  const required = minimum.split('.').map(Number)
+  for (let index = 0; index < required.length; index++) {
+    if ((actual[index] || 0) !== required[index]) return (actual[index] || 0) > required[index]
+  }
+  return true
+}
+
 test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', async () => {
   const workflow = await readYaml('.github/workflows/code-check.yml')
 
@@ -219,6 +228,21 @@ test('Dependabot 覆盖所有依赖生态并按周执行', async () => {
   assert.deepEqual(updates.get('npm:/').ignore ?? [], [], '依赖升级必须通过兼容性验证，不能忽略新版')
 
   assert.ok(!updates.has('docker:/apps/publisher'), '独立 Node 发布镜像已停用')
+})
+
+test('工作区覆盖使用已修复安全公告的传递依赖版本', async () => {
+  const workspace = await readYaml('pnpm-workspace.yaml')
+  const minimumVersions = {
+    'fast-uri': '3.1.9',
+    'node-forge': '1.4.3',
+    'serialize-javascript': '7.1.3',
+    '@vercel/nft': '1.11.11',
+  }
+
+  for (const [name, minimum] of Object.entries(minimumVersions)) {
+    const version = workspace.overrides[name]
+    assert.ok(version && isVersionAtLeast(version, minimum), `${name} 必须至少为 ${minimum}`)
+  }
 })
 
 test('Vue 运行库和服务端渲染器使用同一版本', async () => {
