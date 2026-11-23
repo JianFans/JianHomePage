@@ -273,16 +273,18 @@ jobs:
       - name: Run API and embedded admin smoke test
         shell: bash
         run: |
-          docker run --detach --rm --name yujian-server-ci --publish 127.0.0.1:8080:8080 yujian-server:ci
+          docker run --detach --name yujian-server-ci --publish 127.0.0.1:8080:8080 yujian-server:ci
           for attempt in {1..20}; do
-            if curl --fail --silent http://127.0.0.1:8080/healthz; then
-              curl --fail --silent http://127.0.0.1:8080/ | grep -q '<!DOCTYPE html>'
-              curl --fail --silent http://127.0.0.1:8080/preview | grep -q '<!DOCTYPE html>'
+            if curl --fail --silent http://127.0.0.1:8080/healthz >/dev/null \
+              && curl --fail --silent http://127.0.0.1:8080/ | grep -q '<!DOCTYPE html>' \
+              && curl --fail --silent http://127.0.0.1:8080/preview | grep -q '<!DOCTYPE html>'; then
               exit 0
             fi
             sleep 1
           done
-          docker logs yujian-server-ci
+          echo '::error::API and embedded admin smoke test failed'
+          docker inspect --format '{{json .State}}' yujian-server-ci || true
+          docker logs yujian-server-ci || true
           exit 1
       - name: Scan final image
         uses: aquasecurity/trivy-action@v0.36.0

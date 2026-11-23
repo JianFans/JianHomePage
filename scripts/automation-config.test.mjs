@@ -89,6 +89,14 @@ test('代码验证工作流覆盖仓库门禁并从清单读取工具版本', as
   assert.match(offline.run, /docker logs yujian-server-offline/)
   assert.match(offline.run, /State\.Status/)
   assert.match(offline.run, /docker run[^\n]*--env LOG_FORMAT=json/)
+  const apiSmoke = containerSteps.find(step => step.name === 'Run API and embedded admin smoke test')
+  assert.match(apiSmoke.run, /docker run --detach --name yujian-server-ci/)
+  assert.doesNotMatch(apiSmoke.run, /docker run[^\n]*--rm/)
+  assert.match(apiSmoke.run, /docker inspect --format .* yujian-server-ci/)
+  assert.match(apiSmoke.run, /docker logs yujian-server-ci/)
+  const apiCleanup = containerSteps.find(step => step.name === 'Stop API container')
+  assert.equal(apiCleanup.if, 'always()')
+  assert.match(apiCleanup.run, /docker rm --force yujian-server-ci/)
   const integration = workflow.jobs['publisher-integration']
   assert.ok(integration.services.postgres.image.startsWith('postgres:'))
   assert.ok(integration.env.YUJIAN_TEST_POSTGRES_URL)
@@ -313,9 +321,12 @@ test('Go API 镜像采用多阶段非 root 构建并排除无关文件', async (
 test('Docker 与 Go 模块使用同一补丁版本的工具链', async () => {
   const goMod = await readText('apps/server/go.mod')
   const dockerfile = await readText('Dockerfile')
+  const readme = await readText('README.md')
   const moduleVersion = goMod.match(/^go (\d+\.\d+\.\d+)$/m)?.[1]
   const imageVersion = dockerfile.match(/^FROM golang:(\d+\.\d+\.\d+)-[^\s]+ AS build$/m)?.[1]
+  const documentedVersion = readme.match(/^\| Go \| >=(\d+\.\d+\.\d+) \|$/m)?.[1]
 
   assert.ok(moduleVersion, 'go.mod 必须声明完整 Go 版本')
   assert.equal(imageVersion, moduleVersion)
+  assert.equal(documentedVersion, moduleVersion, 'README 必须说明实际使用的最低 Go 补丁版本')
 })
