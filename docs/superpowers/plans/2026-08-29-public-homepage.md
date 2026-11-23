@@ -1,5 +1,7 @@
 # 「遇健我」公开首页实现计划
 
+> 历史实现计划：文中的审计表、未完成项和后续计划只反映 2026-08-29 的阶段状态；相关目标已由后续首页、CMS 与片段目录计划继续实现。当前页面能力以根 README 和 [`apps/web/EDGEONE.md`](../../../apps/web/EDGEONE.md) 为准。
+
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
 **目标：** 构建可从版本化内容快照生成、可独立部署到 EdgeOne Pages 的「遇健我」响应式双语首页，并完成试听、媒体降级、可访问性和静态产物验证。

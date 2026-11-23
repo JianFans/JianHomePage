@@ -1,6 +1,6 @@
 # Go 内容与发布服务实现计划
 
-> 后续架构更新（2026-10-19）：本计划早期将不可变发布快照放入 S3/COS。现行实现已由迁移 `0009_publish_snapshots` 改为 PostgreSQL 持久化；S3/COS 仅供媒体文件使用。请以 [`apps/server/README.md`](../../../apps/server/README.md) 为准。
+> 历史计划：本计划的早期运行环境和执行状态不代表当前待办。不可变发布快照已由迁移 `0009_publish_snapshots` 改为 PostgreSQL 持久化；S3/COS 仅供媒体文件使用。当前集成测试变量为 `YUJIAN_TEST_POSTGRES_URL`，当前架构与配置以 [`apps/server/README.md`](../../../apps/server/README.md) 和 [`部署指南`](../../../docs/DEPLOYMENT.md) 为准。
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
@@ -17,7 +17,7 @@
 - 本计划实现服务商无关的发布编排和可测试 fake，不接入腾讯云专有 SDK。
 - EdgeOne Pages 的具体触发、查询、回调和回源配置由 `2026-08-29-edgeone-publishing.md` 实现。
 - 管理端页面由 `2026-08-29-admin-console.md` 实现。
-- PostgreSQL 集成测试必须使用显式 `TEST_DATABASE_URL`；没有数据库时单元测试仍可运行，但不能把集成验收标记完成。
+- PostgreSQL 集成测试必须使用显式 `YUJIAN_TEST_POSTGRES_URL`；没有数据库时单元测试仍可运行，但不能把集成验收标记完成。
 
 ## 文件结构
 
@@ -332,7 +332,7 @@ git commit -m "feat(领域模型): 定义内容状态权限与服务商端口"
 
 - [ ] **步骤 1：编写需要真实 PostgreSQL 的失败测试**
 
-集成测试读取 `TEST_DATABASE_URL`，为空时调用 `t.Skip` 并明确说明未执行集成验收；有值时创建独立 schema，执行迁移并验证：
+集成测试读取 `YUJIAN_TEST_POSTGRES_URL`，为空时调用 `t.Skip` 并明确说明未执行集成验收；有值时创建独立 schema，执行迁移并验证：
 
 1. 创建草稿后 revision 为 `1`。
 2. 使用错误 revision 更新返回 `domain.ErrConflict`。
@@ -343,7 +343,7 @@ git commit -m "feat(领域模型): 定义内容状态权限与服务商端口"
 
 运行：`go test ./internal/store/postgres -run TestRepository -count=1`
 
-预期：FAIL，提示 `Open`、`Migrate` 或仓储方法未定义；若没有 `TEST_DATABASE_URL`，输出明确的 SKIP。
+预期：FAIL，提示 `Open`、`Migrate` 或仓储方法未定义；若没有 `YUJIAN_TEST_POSTGRES_URL`，输出明确的 SKIP。
 
 - [ ] **步骤 3：创建初始迁移**
 
@@ -416,7 +416,7 @@ CREATE TABLE audit_log (
 运行：
 
 ```bash
-$env:TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/yujian_test?sslmode=disable"
+$env:YUJIAN_TEST_POSTGRES_URL="postgresql://postgres:postgres@localhost:5432/yujian_test?sslmode=disable"
 go test ./internal/store/postgres -count=1
 ```
 
@@ -754,7 +754,7 @@ go vet ./...
 go test -race ./...
 ```
 
-若 `TEST_DATABASE_URL` 可用，再运行：
+若 `YUJIAN_TEST_POSTGRES_URL` 可用，再运行：
 
 ```bash
 go test ./internal/store/postgres -count=1
@@ -786,9 +786,11 @@ git commit -m "feat(服务端): 完成内容管理与发布编排"
 - Go 服务不可用时，既有 Nuxt 静态产物仍能独立提供。
 - EdgeOne、对象存储和通知提供商没有泄漏进业务模型。
 
-## 当前执行状态（2026-08-30）
+## 历史执行状态（2026-08-30）
 
-- 已完成并验证：领域模型、RBAC 与开发身份门禁、标准库 OIDC Provider、内容状态流转、素材约束、不可变快照、发布幂等、EdgeOne HTTP 触发适配器、HTTP 路由、内存开发仓储、嵌套 JSON Schema 与跨记录引用校验、PostgreSQL 迁移器和可替换 SQL 仓储接口。
-- 已完成并验证：`apps/server/cmd/api` 可用内存依赖跑通「创建草稿 → 提交审核 → 通过 → 发起发布」闭环；`go test ./...` 与 `go vet ./...` 通过。
-- 尚未完成：真实 PostgreSQL 连接池/驱动装配、OIDC 生产密钥与 issuer 配置、OpenAPI 代码生成、EdgeOne 账号侧真实构建回调和 PostgreSQL 集成测试。
-- 阻塞原因：固定第三方依赖下载和 Docker/PostgreSQL 接入需要本机审批；在获得明确批准前不得绕过或重复尝试。
+以下内容只记录原计划在 2026-08-30 的进度。后续 Go 单程序、生产加固和 UUID 计划已补齐当时列出的服务端能力；原“阻塞原因”不代表当前依赖、Docker 或 PostgreSQL 状态。现行部署和集成测试说明以服务端 README 与部署指南为准。
+
+- 当时已完成：领域模型、RBAC 与开发身份门禁、标准库 OIDC Provider、内容状态流转、素材约束、不可变快照、发布幂等、EdgeOne HTTP 触发适配器、HTTP 路由、内存开发仓储、嵌套 JSON Schema 与跨记录引用校验、PostgreSQL 迁移器和可替换 SQL 仓储接口。
+- 当时已完成：`apps/server/cmd/api` 可用内存依赖跑通「创建草稿 → 提交审核 → 通过 → 发起发布」闭环；`go test ./...` 与 `go vet ./...` 通过。
+- 当时尚未完成：真实 PostgreSQL 连接池/驱动装配、OIDC 生产密钥与 issuer 配置、OpenAPI 代码生成、EdgeOne 账号侧真实构建回调和 PostgreSQL 集成测试。
+- 当时记录的阻塞原因：固定第三方依赖下载和 Docker/PostgreSQL 接入需要本机审批。

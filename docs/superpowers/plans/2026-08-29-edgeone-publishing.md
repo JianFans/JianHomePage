@@ -1,5 +1,7 @@
 # EdgeOne Pages 发布与构建触发计划
 
+> 历史方案：Git 直接构建与外部 `EDGEONE_*` 触发器已由 [Go 单程序计划](2026-10-16-go-all-in-one.md) 替代。当前 Pages 发布配置以 [部署指南](../../DEPLOYMENT.md) 和 [服务端说明](../../../apps/server/README.md) 为准；下文仅保留早期设计记录。
+
 ## 目标
 
 让「遇健我」的公开首页通过 EdgeOne Pages 分发，让 Go 服务通过可替换的 `BuildTrigger` 接口触发构建并查询状态。业务层只看稳定的发布请求和构建结果，不保存 EdgeOne 专有资源类型。
@@ -34,7 +36,7 @@
 
 ## 接入步骤
 
-以下保留 Git 集成基线。自动内容发布现采用 [2026-10-15 Direct Upload 设计](../specs/2026-10-15-edgeone-publisher-design.md) 与 [发布进程运维说明](../../../apps/publisher/README.md)，应按新说明创建 Direct Upload 项目，不能同时开启两条生产发布入口。
+以下步骤仅记录早期 Git 集成基线，不应作为当前生产发布配置。
 
 1. 在 EdgeOne Pages 创建生产项目，连接站点仓库。
 2. 设置构建参数并关闭 SPA fallback，确保 `robots.txt` 和 `sitemap.xml` 是真实静态文件。

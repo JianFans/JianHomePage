@@ -36,7 +36,7 @@
 
 - [x] 创建 `internal/publisher`，实现 `ports.BuildTrigger` 和定时 `Reconcile`，复用 `publisher_builds`。
 - [x] 通过 PostgreSQL 独占连接锁序列化任务；持久化提交边界与冻结目标，保留未知结果。
-- [x] 使用注入的 `Generate(context.Context, []byte)` 和 Pages 接口，读取原 COS 快照并核对原字节。
+- [x] 使用注入的 `Generate(context.Context, []byte)` 和 Pages 接口，从 PostgreSQL `publish_snapshots` 读取不可变快照并核对 checksum。
 - [x] 加入管理员恢复入口，校验身份、目标、部署及备注，写入恢复记录。
 - [x] 验证：状态机失败测试、真实数据库并发／重启／未知结果回归、race。
 
