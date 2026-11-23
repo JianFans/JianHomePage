@@ -14,7 +14,7 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "@lucide/vue": "1.73.0",
+    "@lucide/vue": "1.76.0",
     "@noble/hashes": "2.4.0",
     "@yujian/schema": "workspace:*",
     "nuxt": "4.6.4",
